@@ -1,61 +1,75 @@
-.PHONY: help tf-init tf-plan tf-apply tf-destroy svc-build svc-run image-build image-push deploy-dev port-forward smoke
+.PHONY: help bootstrap local-up local-down local-reset \
+        tf-init tf-plan tf-apply tf-destroy \
+        kube-config platform-install \
+        ecr-login build push deploy set-image smoke grafana
+
+ENV ?= dev
+AWS_REGION ?= ap-southeast-1
+ACCOUNT_ID ?= $(shell aws sts get-caller-identity --query Account --output text 2>/dev/null)
+ECR_REGISTRY := $(ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com
+CLUSTER := bss-$(ENV)-eks
+TAG ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
+SERVICE ?= customer-service
+SERVICE_DIR := $(shell test -d apps/backend/$(SERVICE) && echo apps/backend/$(SERVICE) || echo apps/frontend/$(SERVICE))
 
 help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
-# ---- Terraform ---- #
-tf-init: ## Initialise Terraform
-	cd terraform && terraform init
+# ── One-time AWS bootstrap ────────────────────────────────────────────
+bootstrap: ## One-time per-account: S3 tfstate + DynamoDB locks + budget alert
+	./scripts/bootstrap-aws.sh
 
-tf-plan: ## Show what Terraform will do
-	cd terraform && terraform plan
+# ── Local dev stack ───────────────────────────────────────────────────
+local-up: ## Start postgres + redis + LocalStack
+	cd deploy && docker compose up -d
 
-tf-apply: ## Provision GCP infrastructure
-	cd terraform && terraform apply
+local-down: ## Stop local stack (keeps data)
+	cd deploy && docker compose down
 
-tf-destroy: ## Tear it all down (do this nightly!)
-	cd terraform && terraform destroy
+local-reset: ## Stop and WIPE local data
+	cd deploy && docker compose down -v
 
-# ---- Customer service ---- #
-svc-build: ## Build the customer-service JAR
-	cd services/customer-service && mvn -B -ntp package
+# ── Terraform (ENV=dev|staging|prod) ──────────────────────────────────
+tf-init: ## Initialize Terraform for $$ENV
+	cd infrastructure/terraform/environments/$(ENV) && terraform init
 
-svc-run: ## Run the service locally against a local Postgres
-	cd services/customer-service && mvn spring-boot:run
+tf-plan: ## Plan changes for $$ENV
+	cd infrastructure/terraform/environments/$(ENV) && terraform plan
 
-# ---- Docker / Artifact Registry ---- #
-PROJECT_ID ?= $(shell gcloud config get-value project 2>/dev/null)
-REGISTRY := asia-southeast1-docker.pkg.dev/$(PROJECT_ID)/bss-docker
-TAG ?= dev
+tf-apply: ## Provision/update $$ENV infrastructure
+	cd infrastructure/terraform/environments/$(ENV) && terraform apply
 
-image-build: ## Build the customer-service container image
-	docker build -t $(REGISTRY)/customer-service:$(TAG) services/customer-service
+tf-destroy: ## Tear down $$ENV (confirms on prod)
+	./scripts/teardown.sh $(ENV)
 
-image-push: image-build ## Push image to Artifact Registry
-	gcloud auth configure-docker asia-southeast1-docker.pkg.dev --quiet
-	docker push $(REGISTRY)/customer-service:$(TAG)
+# ── Kubernetes ────────────────────────────────────────────────────────
+kube-config: ## Update local kubeconfig for $$ENV cluster
+	aws eks update-kubeconfig --region $(AWS_REGION) --name $(CLUSTER)
 
-# ---- Kubernetes ---- #
-deploy-dev: ## Apply the dev overlay
-	kubectl apply -k kubernetes/overlays/dev
-	kubectl rollout status deployment/customer-service -n bss --timeout=5m
+platform-install: ## Install ALB controller, ExternalDNS, Karpenter, CSI, Fluent Bit, OTel, Prometheus
+	@echo "See platform/README.md for the full helm install sequence."
 
-port-forward: ## Forward customer-service to localhost:8080
-	kubectl port-forward -n bss svc/customer-service 8080:80
+# ── Build + push (SERVICE=name) ───────────────────────────────────────
+ecr-login: ## Log docker into ECR
+	aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(ECR_REGISTRY)
 
-smoke: ## Smoke-test the deployed service
-	@curl -sf http://localhost:8080/actuator/health | jq .status
+build: ## Build container image for $$SERVICE (tag=git SHA)
+	docker build -t $(ECR_REGISTRY)/bss/$(SERVICE):$(TAG) $(SERVICE_DIR)
 
-# ---- Monitoring ---- #
-monitoring-install: ## Install Prometheus + Grafana stack
-	helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-	kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
-	kubectl create configmap bss-dashboards \
-		--from-file=monitoring/grafana/dashboards/ \
-		-n monitoring --dry-run=client -o yaml | kubectl apply -f -
-	helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
-		-n monitoring -f monitoring/prometheus/values.yaml
-	kubectl apply -f monitoring/alerts/bss-alerts.yaml
+push: ecr-login build ## Build + push $$SERVICE
+	docker push $(ECR_REGISTRY)/bss/$(SERVICE):$(TAG)
 
-grafana: ## Open Grafana (port-forward)
+# ── Deploy ────────────────────────────────────────────────────────────
+set-image: ## Bump $$SERVICE image to $$TAG in $$ENV overlay
+	cd infrastructure/kubernetes/overlays/$(ENV) && \
+		kustomize edit set image $(SERVICE)=$(ECR_REGISTRY)/bss/$(SERVICE):$(TAG)
+
+deploy: ## Apply $$ENV overlay (uses current image tags)
+	kubectl apply -k infrastructure/kubernetes/overlays/$(ENV)
+	kubectl -n bss rollout status deployment/$(SERVICE) --timeout=5m
+
+smoke: ## Hit the $$ENV ALB and check basic responses
+	./scripts/smoke.sh $(ENV)
+
+grafana: ## Port-forward Grafana to localhost:3000
 	kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80

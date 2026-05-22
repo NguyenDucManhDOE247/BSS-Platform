@@ -1,73 +1,86 @@
-# CLAUDE.md — BSS Platform on GKE
+# CLAUDE.md — BSS Platform (AWS / EKS)
 
-> File này là **bản kế hoạch tổng thể** đồng thời là **bộ quy ước làm việc** cho Claude Code khi tương tác với repo này. Mọi quyết định kiến trúc, công nghệ, quy ước code và lộ trình triển khai đều được mô tả ở đây để Claude và lập trình viên có cùng một bản đồ.
-
----
-
-## 1. Mục tiêu dự án
-
-Xây dựng một **Business Support System (BSS)** chuẩn viễn thông theo kiến trúc **microservices**, triển khai trên **Google Kubernetes Engine (GKE) Autopilot**, vận hành bằng **Infrastructure-as-Code**, có **CI/CD tự động** và **observability** đầy đủ.
-
-Mục đích kép:
-1. **Portfolio học tập** — chứng minh kỹ năng platform engineering end-to-end (cloud, K8s, IaC, CI/CD, observability, security).
-2. **Tham chiếu kiến trúc** — bộ khung có thể mở rộng thành một BSS hoạt động thật trong dự án telco.
-
-**Không phải là** một toy project. Mọi component phải chạy được trên GCP thật, có chi phí thật, và tuân theo best practice của production.
+> File này là **bản kế hoạch tổng thể** + **bộ quy ước làm việc** cho Claude Code khi tương tác với repo này. Mọi quyết định kiến trúc, công nghệ, quy ước code và lộ trình triển khai đều ở đây.
 
 ---
 
-## 2. Kiến trúc tổng thể
+## 1. Mục tiêu
 
-### 2.1 Sơ đồ logic
+Xây dựng một **Business Support System (BSS)** chuẩn viễn thông theo kiến trúc **microservices**, triển khai trên **Amazon EKS**, vận hành bằng **Terraform IaC**, có **CI/CD tự động** qua GitHub Actions, và **observability** đầy đủ (Prometheus + Grafana + CloudWatch + X-Ray).
+
+Mục đích kép: **portfolio học tập platform-engineering** + **tham chiếu kiến trúc** có thể mở rộng thành BSS thật.
+
+---
+
+## 2. Kiến trúc tổng thể (5 lớp + Platform)
 
 ```
-   Client (web/mobile/B2B partners)
-            │
-            ▼  HTTPS
-   ┌────────────────────┐
-   │  GCE Ingress / GW  │  (Google Cloud Load Balancer + Managed Certs)
-   └─────────┬──────────┘
-             │
-   ┌─────────▼──────────────────────────────────────────────┐
-   │  GKE Autopilot — namespace: bss                        │
-   │  ┌──────────────┐  ┌──────────────┐                    │
-   │  │ customer-svc │  │ product-svc  │   (REST: TMF629/620)│
-   │  └──────┬───────┘  └──────┬───────┘                    │
-   │         │                 │                            │
-   │  ┌──────▼───────┐  ┌──────▼───────┐                    │
-   │  │  order-svc   │──│ billing-svc  │  (REST + events)   │
-   │  └──────┬───────┘  └──────┬───────┘                    │
-   └─────────┼─────────────────┼────────────────────────────┘
-             │                 │
-             ▼                 ▼
-      ┌─────────────┐    ┌─────────────┐
-      │  Cloud SQL  │    │  Pub/Sub    │  (event bus: order→billing)
-      │ (Postgres)  │    │             │
-      └─────────────┘    └─────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│ LỚP 1  Người dùng (web/mobile/B2B)                              │
+└─────────────────────────────────────────────────────────────────┘
+                            │ HTTPS
+┌─────────────────────────────────────────────────────────────────┐
+│ LỚP 2  Edge:  CloudFront → ALB → AWS WAF                        │
+└─────────────────────────────────────────────────────────────────┘
+                            │
+┌─────────────────────────────────────────────────────────────────┐
+│ LỚP 3  Frontend  (chạy trên EKS):                               │
+│   • web-portal      Vite + React + Nginx                        │
+│   • admin-console   Vite + React + Nginx                        │
+└─────────────────────────────────────────────────────────────────┘
+                            │ REST
+┌─────────────────────────────────────────────────────────────────┐
+│ LỚP 4  Backend  (chạy trên EKS):                                │
+│   • api-gateway      Spring Cloud Gateway                       │
+│   • customer-service  TMF629                                    │
+│   • product-catalog   TMF620                                    │
+│   • order-management  TMF622  ──publish──> EventBridge          │
+│   • billing-service   TMF678  <──consume── SQS                  │
+└─────────────────────────────────────────────────────────────────┘
+                            │
+┌─────────────────────────────────────────────────────────────────┐
+│ LỚP 5  Data:                                                    │
+│   • RDS PostgreSQL  (schema per service)                        │
+│   • ElastiCache Redis (cache, optional)                         │
+│   • EventBridge + SQS (event bus)                               │
+│   • S3 (file/blob)                                              │
+└─────────────────────────────────────────────────────────────────┘
 
-   Observability: Prometheus + Grafana + OpenTelemetry → Cloud Trace
-   Secrets:       Secret Manager + Workload Identity (no JSON keys)
-   Registry:      Artifact Registry (asia-southeast1)
+         ▲ CẮT NGANG ▲
+┌─────────────────────────────────────────────────────────────────┐
+│ PLATFORM:                                                       │
+│   • EKS cluster (Managed Node Groups + Karpenter cho workload)  │
+│   • VPC, IAM (IRSA), Secrets Manager                            │
+│   • Prometheus + Grafana (in-cluster)                           │
+│   • Fluent Bit → CloudWatch Logs                                │
+│   • OTel Collector → X-Ray                                      │
+│   • AWS LB Controller, ExternalDNS, Secrets Store CSI           │
+│   • GitHub Actions OIDC → IAM Role (no static keys)             │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 Lý do lựa chọn từng thành phần
+### Tại sao chọn từng thành phần?
 
-| Lớp | Lựa chọn | Lý do |
+| Vai trò | Lựa chọn | Lý do |
 |---|---|---|
-| Cloud | **GCP** | Hệ sinh thái managed services tốt cho startup/portfolio; GKE Autopilot vận hành đơn giản |
-| Orchestration | **GKE Autopilot** | Pay-per-pod, không cần quản lý node, tự bật shielded nodes + private cluster |
-| Compute | **Java 21 + Spring Boot 3** | Telco Việt Nam (Viettel, VNPT, FPT) chủ yếu dùng Java; ecosystem TM Forum SDK trưởng thành |
-| Build | **Maven** (đã có), có thể nâng lên **Gradle** ở Phase 8 | Bắt đầu đơn giản |
-| Container | **Distroless** (gcr.io/distroless/java21) | Giảm CVE, nhẹ, không có shell |
-| DB | **Cloud SQL for PostgreSQL** | Managed, có HA, IAM auth, point-in-time recovery |
-| IaC | **Terraform 1.7+** | Tiêu chuẩn ngành, state có thể đẩy lên GCS |
-| K8s deploy | **Kustomize** | Built-in trong kubectl; đủ cho 4 service, không cần Helm rườm rà |
-| CI/CD | **GitHub Actions + WIF** | Không dùng JSON key, OIDC federation an toàn hơn |
-| Observability | **kube-prometheus-stack + OTel** | Chuẩn de-facto của K8s; OTel cho tracing đa ngôn ngữ |
-| Event bus | **Pub/Sub** (Phase 7) | Managed, không phải tự nuôi Kafka |
-| Service mesh | **Không dùng (cho đến >10 services)** | Istio quá nặng cho 4 service; kích hoạt khi cần mTLS/traffic shaping |
+| Cloud | **AWS** | Job market lớn ở VN, ecosystem trưởng thành, free-tier tốt năm 1 |
+| Orchestration | **EKS Managed Node Groups + Karpenter** | Production-realistic, Karpenter tự provision spot rẻ hơn ~70% |
+| Backend | **Java 21 + Spring Boot 3.2** | Telco VN dùng Java; Spring Cloud Gateway / Boot 3 ecosystem chuẩn |
+| Frontend | **Vite + React + TypeScript** | Vite build nhanh, React phổ biến, dễ tuyển; SSR có thể thêm sau |
+| DB | **RDS PostgreSQL** | Managed, có HA, IAM auth, PITR; 1 instance dùng chung schema-per-service |
+| Cache | **ElastiCache Redis** | (Thêm khi cần) — sub-ms latency |
+| Event bus | **EventBridge + SQS** | EventBridge routing rules + SQS per-consumer + DLQ; rẻ, không cần nuôi Kafka |
+| Storage | **S3** | Standard |
+| Container | **ECR** | Tích hợp sẵn IAM, image scan |
+| IaC | **Terraform 1.7 + hashicorp/aws 5.x** | Tiêu chuẩn ngành |
+| K8s pkg | **Kustomize** | Built-in `kubectl`, đủ cho 7 service, không cần Helm phức tạp |
+| CI/CD | **GitHub Actions + OIDC** | Free public repo, không cần JSON key |
+| Monitoring | **kube-prometheus-stack (in-cluster)** | Source of truth cho metric; CloudWatch chỉ cho log + AWS-native metrics |
+| Tracing | **OTel + X-Ray** | Vendor-neutral instrument; export sang X-Ray |
+| Secrets | **AWS Secrets Manager + Secrets Store CSI** | Pod mount secret, không cần env var với plain text |
+| Service mesh | **Không dùng (đến khi >10 services)** | Istio quá nặng cho 7 service; bật khi cần mTLS/traffic shaping |
 
-> **Nguyên tắc:** không over-engineer. Service mesh, multi-region, Spinnaker, Argo Rollouts — đều **để dành** đến khi có nhu cầu rõ ràng.
+> **Nguyên tắc:** không over-engineer. Spinnaker, ArgoCD, Argo Rollouts, multi-region, MSK — đều **để dành** đến khi có nhu cầu rõ.
 
 ---
 
@@ -75,392 +88,405 @@ Mục đích kép:
 
 | Service | Trách nhiệm | TMF API | Trạng thái |
 |---|---|---|---|
-| `customer-service` | Quản lý vòng đời khách hàng, liên hệ, identity | **TMF629** | ✅ Đã có scaffold |
-| `product-catalog` | Gói cước, ưu đãi, pricing | **TMF620** | ⏳ Phase 6 |
-| `order-management` | Capture & orchestration đơn hàng | **TMF622** | ⏳ Phase 6 |
-| `billing-service` | Charging, invoicing, payment | **TMF678** | ⏳ Phase 6 |
+| `customer-service` | Vòng đời khách hàng, identity | **TMF629** | ✅ Có scaffold CRUD |
+| `product-catalog` | Plans, offers, pricing | **TMF620** | 🚧 Placeholder controller |
+| `order-management` | Order capture + orchestration | **TMF622** | 🚧 Placeholder + EventBridge publisher |
+| `billing-service` | Charging, invoicing, payment | **TMF678** | 🚧 Placeholder + SQS consumer |
+| `api-gateway` | Routing, auth, rate-limit | — | 🚧 Routes configured |
 
-### 3.1 Tương tác giữa các service
+### Tương tác giữa service
 
-- **Synchronous (REST):** customer ← product ← order (đọc tham chiếu).
-- **Asynchronous (Pub/Sub):** order → billing (sự kiện `OrderCompleted`, `PaymentReceived`).
-- **Không gọi chéo DB** — mỗi service sở hữu schema riêng (database-per-service). Cùng một Cloud SQL instance nhưng các database/schema khác nhau để tiết kiệm chi phí ở giai đoạn đầu; tách instance khi >100 QPS.
+- **Sync (REST):** customer ← product ← order (đọc tham chiếu, qua API Gateway).
+- **Async (EventBridge → SQS):** order → billing (event `OrderCompleted`).
+- **Database-per-service:** mỗi service một schema riêng trên cùng 1 RDS instance (Phase ≤ 6). Tách instance khi >100 QPS hoặc cần isolation cứng.
 
-### 3.2 Contract & versioning
+### Contract & versioning
 
-- Mọi API public phát hành **OpenAPI 3.1** trong `services/<svc>/src/main/resources/openapi/`.
-- Versioning theo URI: `/tmf-api/customerManagement/v4/...`.
-- **Backward-compatible only** — thêm trường, không xóa; deprecate trước 1 release rồi mới xóa.
-
----
-
-## 4. Hạ tầng GCP — chi tiết
-
-### 4.1 Resources được Terraform quản lý
-
-| Resource | Module/File | Ghi chú |
-|---|---|---|
-| Project services (API enablement) | `main.tf` | container, sqladmin, artifactregistry, secretmanager, iamcredentials |
-| VPC + subnets (private) | `network.tf` | 1 subnet `/24` cho nodes + 2 secondary range cho pods/services |
-| GKE Autopilot cluster | `gke.tf` | Private cluster, master authorized networks, workload identity bật |
-| Cloud SQL PostgreSQL 15 | `cloud_sql.tf` | Private IP, regional HA tắt ở dev, bật ở prod |
-| Artifact Registry | `artifact_registry.tf` | `asia-southeast1-docker.pkg.dev/<project>/bss-docker` |
-| IAM Service Accounts | `main.tf` | `bss-deployer` (CI/CD), `bss-customer-sa` (Workload Identity) |
-| Workload Identity bindings | `gke.tf` | KSA `bss/customer-service-sa` ↔ GSA `bss-customer-sa@...` |
-
-### 4.2 Networking
-
-- **Private cluster** — node không có public IP.
-- **Master authorized networks** — chỉ IP của lập trình viên/CI được hit control plane.
-- **Cloud NAT** — node truy cập internet (pull image, gọi GCP APIs).
-- **VPC peering** — Cloud SQL → cluster VPC qua private services access.
-
-### 4.3 Security baseline
-
-- **No JSON service-account keys.** Mọi xác thực: Workload Identity (pod) hoặc WIF (GitHub Actions).
-- **Secret Manager** lưu DB password, OAuth client secrets. Pod mount qua CSI driver.
-- **Binary Authorization** (Phase 8) — chỉ cho phép deploy image đã ký bởi CI.
-- **Pod Security Standards: restricted** ở namespace `bss`.
-- **NetworkPolicy** — mặc định deny, whitelist theo cặp service.
-
-### 4.4 Regions & môi trường
-
-| Env | Region | Cluster | Cloud SQL tier | Cost ước tính/ngày |
-|---|---|---|---|---|
-| `dev` | `asia-southeast1` (Singapore) | Autopilot, 1 region | `db-f1-micro` | ~$5 USD |
-| `prod` | `asia-southeast1` | Autopilot, regional | `db-custom-2-7680` HA | ~$40 USD |
-
-> **Cost discipline:** chạy `terraform destroy` mỗi tối khi đang học. Có script `scripts/teardown.sh` để tự động hóa.
+- OpenAPI 3.1 spec trong `packages/api-contracts/`.
+- URI versioning: `/tmf-api/customerManagement/v4/...`.
+- Backward-compatible only — thêm trường, deprecate trước 1 release rồi mới xóa.
 
 ---
 
-## 5. Tech stack đầy đủ
+## 4. Hai chiều: Services × Environments
 
-```yaml
-language:        Java 21 (LTS)
-framework:       Spring Boot 3.2.x
-build:           Maven 3.9 (multi-module ở Phase 6)
-db_access:       Spring Data JPA + Hibernate 6
-migration:       Flyway (thêm ở Phase 1.5)
-testing:
-  unit:          JUnit 5 + Mockito
-  integration:   Testcontainers (Postgres)
-  contract:      Spring Cloud Contract (Phase 6)
-  e2e:           Karate (Phase 7)
-container:       Distroless java21
-orchestrator:    Kubernetes 1.29 (GKE Autopilot)
-k8s_pkg:         Kustomize (base + overlays/dev|staging|prod)
-iac:             Terraform 1.7, hashicorp/google 5.x
-ci_cd:           GitHub Actions + Workload Identity Federation
-image_scan:      Trivy (CI) + GCP Container Analysis (registry)
-observability:
-  metrics:       Prometheus (kube-prometheus-stack)
-  dashboards:    Grafana
-  logs:          Cloud Logging (stdout → Fluent Bit → GCL)
-  tracing:       OpenTelemetry Java agent → Cloud Trace
-  alerting:      Alertmanager → Slack/Discord
-secrets:         Secret Manager + Secrets Store CSI Driver
-events:          Pub/Sub (Phase 7)
-api_gateway:     GCE Ingress (Phase 3), nâng cấp Gateway API ở Phase 8
 ```
+                  ┌─────────┐   ┌─────────┐   ┌─────────┐
+                  │   DEV   │   │ STAGING │   │  PROD   │
+                  └─────────┘   └─────────┘   └─────────┘
+customer-service     SHA            rc-vX           vX
+product-catalog      SHA            rc-vX           vX
+order-management     SHA            rc-vX           vX
+billing-service      SHA            rc-vX           vX
+api-gateway          SHA            rc-vX           vX
+web-portal           SHA            rc-vX           vX
+admin-console        SHA            rc-vX           vX
+```
+
+### Sizing per env
+
+| | Dev | Staging | Prod |
+|---|---|---|---|
+| Region | ap-southeast-1 (Singapore) | ap-southeast-1 | ap-southeast-1 |
+| AZs | 2 | 3 | 3 |
+| NAT Gateway | ❌ (VPC Endpoints thay thế) | 1 | HA |
+| EKS public endpoint | 0.0.0.0/0 | restricted IPs | restricted IPs |
+| Node group | t3.medium × 2 | t3.large × 2-5 | t3.large × 3-6 |
+| RDS | db.t3.micro single-AZ | db.t3.small single-AZ | db.t3.medium **multi-AZ** |
+| Deletion protection | OFF | ON | ON |
+| Log retention | 3d | 14d | 30d |
+| X-Ray sampling | 50% | 20% | 5% |
+| Replicas/service | 1 | 2 | 3+ |
+| **Cost ước tính** | **~$5/ngày** | **~$9/ngày** | **~$30+/ngày** |
+
+> ⚠️ NAT Gateway tốn $1.10/ngày — luôn ưu tiên VPC Endpoints khi có thể.
+
+---
+
+## 5. CI/CD chiến lược
+
+### 3 nguyên tắc cốt lõi
+1. **Build once, deploy many** — image tag = git SHA, re-tag khi promote (không bao giờ rebuild).
+2. **Trunk-based + tag-based promotion** — `main` luôn deployable; tag `rc-vX` → staging; tag `vX` → prod.
+3. **Path-filter trigger** — chỉ build service nào đã thay đổi.
+
+### Workflows
+
+| File | Trigger | Hành động |
+|---|---|---|
+| `ci-backend.yml` | PR đụng `apps/backend/**` | Maven verify + Trivy + docker build (no push) |
+| `ci-frontend.yml` | PR đụng `apps/frontend/**` | npm lint/test/build + Trivy + docker build |
+| `ci-terraform.yml` | PR đụng `infrastructure/terraform/**` | fmt + tfsec + plan (post comment) |
+| `ci-k8s.yml` | PR đụng `infrastructure/kubernetes/**` | kustomize build + kubeconform 3 envs |
+| `cd-dev.yml` | Merge `main` | Build + push (tag=SHA) + apply dev overlay + smoke + rollback nếu fail |
+| `cd-staging.yml` | Tag `rc-v*` | Re-tag SHA→rc-vX + apply staging + E2E test |
+| `cd-prod.yml` | Tag `v[0-9]+.[0-9]+.[0-9]+` | **Manual approval** + re-tag rc→v + apply prod + auto rollback |
+
+### Promotion flow (1 release)
+
+```
+Day 1  dev code/merge PR  → cd-dev auto deploy DEV
+Day 3  git tag rc-v1.2.0  → cd-staging deploy STAGING (QA test)
+Day 5  git tag v1.2.0     → cd-prod chờ approve → rollout PROD
+```
+
+### Required GitHub Secrets
+
+| Secret | Mô tả |
+|---|---|
+| `AWS_DEPLOYER_ROLE_ARN` | IAM role cho dev + staging (tạo bởi Terraform `iam` module) |
+| `AWS_PROD_DEPLOYER_ROLE_ARN` | IAM role riêng cho prod (least privilege) |
+| `ECR_REGISTRY` | `{account_id}.dkr.ecr.ap-southeast-1.amazonaws.com` |
 
 ---
 
 ## 6. Cấu trúc thư mục
 
 ```
-bss-platform-gke/
-├── CLAUDE.md                  ← file này (bản kế hoạch + quy ước)
-├── README.md                  ← giới thiệu cho recruiter/người mới
-├── Makefile                   ← shortcut cho mọi tác vụ
-├── LICENSE
-├── terraform/                 ← IaC cho toàn bộ GCP
-│   ├── main.tf
-│   ├── network.tf
-│   ├── gke.tf
-│   ├── cloud_sql.tf
-│   ├── artifact_registry.tf
-│   ├── variables.tf
-│   ├── outputs.tf
-│   └── terraform.tfvars.example
-├── services/                  ← Mỗi microservice 1 thư mục
-│   ├── customer-service/      ← TMF629 — tham chiếu mẫu
-│   ├── product-catalog/       ← TMF620 (Phase 6)
-│   ├── order-management/      ← TMF622 (Phase 6)
-│   └── billing-service/       ← TMF678 (Phase 6)
-├── kubernetes/
-│   ├── base/                  ← Manifests chung (Kustomize base)
-│   └── overlays/
-│       ├── dev/
-│       ├── staging/           ← Phase 4
-│       └── prod/              ← Phase 4
-├── monitoring/
-│   ├── prometheus/values.yaml
-│   ├── grafana/dashboards/
-│   └── alerts/
-├── .github/workflows/         ← CI/CD (Phase 4)
-│   ├── ci.yml                 ← test + build trên PR
-│   └── cd.yml                 ← deploy khi merge main
+bss-platform/
+├── apps/                                ← TẤT CẢ APP CHẠY ĐƯỢC
+│   ├── frontend/
+│   │   ├── web-portal/                 ← Vite + React + Nginx
+│   │   └── admin-console/              ← Vite + React + Nginx
+│   └── backend/
+│       ├── api-gateway/                ← Spring Cloud Gateway
+│       ├── customer-service/           ← TMF629
+│       ├── product-catalog/            ← TMF620
+│       ├── order-management/           ← TMF622 (+ EventBridge publish)
+│       └── billing-service/            ← TMF678 (+ SQS consume)
+│
+├── packages/                            ← LIBRARY DÙNG CHUNG
+│   ├── bss-common-java/                ← DTO, exception, security
+│   ├── ui-kit/                         ← React components
+│   └── api-contracts/                  ← OpenAPI specs + JSON schemas
+│
+├── infrastructure/                      ← IaC
+│   ├── terraform/
+│   │   ├── modules/                    ← Reusable modules
+│   │   │   ├── vpc/                    │   • VPC, subnets, VPC Endpoints
+│   │   │   ├── eks/                    │   • EKS + IRSA OIDC + addons
+│   │   │   ├── rds/                    │   • PostgreSQL + Secrets Manager
+│   │   │   ├── ecr/                    │   • Per-service repos + lifecycle
+│   │   │   ├── eventbridge/            │   • Bus + per-consumer SQS + DLQ
+│   │   │   ├── iam/                    │   • IRSA + GitHub OIDC deployer
+│   │   │   └── observability/          │   • CloudWatch log groups + X-Ray
+│   │   └── environments/
+│   │       ├── dev/
+│   │       ├── staging/
+│   │       └── prod/
+│   │
+│   └── kubernetes/
+│       ├── base/                       ← Manifests gốc
+│       │   ├── customer-service/       │   (deployment, service, sa, hpa, pdb)
+│       │   └── ...
+│       └── overlays/
+│           ├── dev/                    │   (replicas=1, LOG_LEVEL=DEBUG)
+│           ├── staging/                │   (replicas=2)
+│           └── prod/                   │   (replicas=3, PDB minAvail=2)
+│
+├── platform/                            ← CLUSTER-WIDE ADDONS (Helm values)
+│   ├── monitoring/                     ← kube-prometheus-stack
+│   ├── logging/                        ← Fluent Bit → CloudWatch
+│   ├── tracing/                        ← OTel Collector → X-Ray
+│   ├── secrets/                        ← Secrets Store CSI + SPC examples
+│   ├── networking/                     ← ALB Controller, ExternalDNS, Karpenter
+│   └── README.md                       ← Helm install sequence
+│
+├── deploy/                              ← LOCAL DEV
+│   ├── docker-compose.yml              ← Postgres + Redis + LocalStack
+│   ├── postgres-init/                  ← Tạo 4 database service
+│   ├── localstack-init/                ← Tạo EventBridge bus + SQS queue
+│   ├── .env.example                    ← Env vars khi chạy service local
+│   └── README.md
+│
+├── .github/workflows/                   ← CI/CD
+│   ├── ci-backend.yml
+│   ├── ci-frontend.yml
+│   ├── ci-terraform.yml
+│   ├── ci-k8s.yml
+│   ├── cd-dev.yml
+│   ├── cd-staging.yml
+│   └── cd-prod.yml
+│
 ├── docs/
-│   ├── SETUP.md
-│   ├── ROADMAP.md             ← lộ trình học 6 tuần
-│   ├── adr/                   ← Architecture Decision Records (Phase 6+)
-│   └── POSTMORTEMS.md         ← sự cố và bài học (viết khi gặp bug thật)
-└── scripts/                   ← bootstrap, teardown, smoke tests
+│   ├── architecture/
+│   ├── runbooks/
+│   ├── api/
+│   ├── adr/                            ← Architecture Decision Records
+│   ├── onboarding/
+│   ├── ROADMAP.md
+│   └── SETUP.md
+│
+├── scripts/
+│   ├── bootstrap-aws.sh                ← One-time S3+DynamoDB+Budget
+│   ├── teardown.sh                     ← terraform destroy <env>
+│   └── smoke.sh                        ← Hit ALB sau deploy
+│
+├── CLAUDE.md                            ← (file này)
+├── PLAN.md                              ← Tóm tắt cho người
+├── README.md                            ← Public-facing
+├── Makefile                             ← Shortcut mọi tác vụ
+└── LICENSE
 ```
 
 ---
 
 ## 7. Coding conventions
 
-### 7.1 Java / Spring Boot
+### Java / Spring Boot
+- Package layout **per feature** (controller/service/repository/model/dto/config), không per layer.
+- **Constructor injection**, không `@Autowired` field.
+- **Records** cho DTO + value object.
+- `@Transactional` chỉ ở service layer.
+- Logging SLF4J structured JSON ở prod; không log PII (CCCD, OTP, mật khẩu).
+- Validation qua Bean Validation (`@Valid`, `@NotNull`, `@Size`).
+- **Flyway migration** `db/migration/V<ts>__<desc>.sql`.
+- PK = UUID v7.
 
-- **Package layout per feature**, không phải per layer:
-  ```
-  com.bss.customer
-  ├── controller/        # @RestController
-  ├── service/           # business logic
-  ├── repository/        # JPA repos
-  ├── model/             # JPA entities
-  ├── dto/               # request/response (TMF schema)
-  └── config/            # @Configuration beans
-  ```
-- **Constructor injection** (không dùng `@Autowired` field).
-- **Records** cho DTO và value objects.
-- **`@Transactional`** chỉ ở service layer, không ở controller hoặc repository.
-- **Validation** dùng Bean Validation (`@Valid`, `@NotNull`, `@Size`).
-- **Logging:** SLF4J + structured logs (JSON ở prod, plain ở dev). Không log PII (số CMND, OTP, password).
-- **Tránh** Lombok `@Data` (sinh equals/hashCode không phù hợp với JPA). Dùng `@Getter`, `@Setter`, `@Builder` cụ thể.
-
-### 7.2 REST API
-
-- Path: `/tmf-api/<resource>Management/v<n>/<resource>` đúng chuẩn TM Forum.
-- HTTP status codes nghiêm túc — `201` cho create, `204` cho delete, `409` cho conflict, `422` cho validation.
-- Error response theo RFC 7807 (Problem Details).
+### REST API
+- Path: `/tmf-api/<resource>Management/v<n>/<resource>` (chuẩn TM Forum).
+- HTTP status nghiêm túc: 201/204/409/422.
+- Error body theo **RFC 7807 ProblemDetail** (đã có sẵn handler trong `packages/bss-common-java`).
 - Pagination: `?offset=0&limit=20`, header `X-Total-Count`.
-- Idempotency key cho mọi POST mutating: header `Idempotency-Key`.
+- Idempotency-Key header cho mọi POST mutating.
 
-### 7.3 Database
+### Frontend (React/TS)
+- TypeScript **strict mode** — không `any`.
+- State: **react-query** cho server state, **zustand** cho local UI state.
+- Component layout: `pages/`, `components/`, `hooks/`, `api/` (generated từ OpenAPI).
+- Tests: **vitest + @testing-library/react**.
 
-- **Flyway migrations** trong `src/main/resources/db/migration/V<timestamp>__<desc>.sql`.
-- **Không có migration tự động drop column** — đổi tên qua 2 release (add new → migrate → drop old).
-- Primary key: UUID v7 (sortable).
-- Mỗi service một schema riêng trong cùng DB (Phase ≤ 6), tách instance khi cần.
+### Kubernetes
+- Mỗi service: Deployment + Service + ServiceAccount + HPA + PDB.
+- **3 probes bắt buộc:** startup + liveness + readiness.
+- Container chạy `runAsNonRoot: true, readOnlyRootFilesystem: true`, drop all caps.
+- Image tag = git SHA (không bao giờ `latest`).
+- Mọi container có cả `requests` + `limits` (Karpenter cần để chọn instance đúng).
 
-### 7.4 Testing
-
-- **Unit tests** chạy <30s tổng cho 1 service. Mock external deps.
-- **Integration tests** dùng Testcontainers (Postgres thật, không H2). Đặt trong `src/test/java/.../it/`, suffix `*IT.java`.
-- **Contract tests** (Spring Cloud Contract) cho mọi consumer/provider pair từ Phase 6.
-- Coverage gate: 80% line, 70% branch (Jacoco trong CI).
-
-### 7.5 Kubernetes
-
-- Mỗi service: `Deployment` + `Service` + `HPA` + `PodDisruptionBudget` + `ServiceAccount`.
-- **Probes bắt buộc:** `startupProbe` (cho Spring Boot warmup), `livenessProbe`, `readinessProbe` — tất cả hit `/actuator/health/...`.
-- **Resources luôn có cả `requests` lẫn `limits`** (Autopilot bắt buộc).
-- **`runAsNonRoot: true`, `readOnlyRootFilesystem: true`**, drop tất cả capabilities.
-- **Image tag = git SHA** (không bao giờ `latest`).
-
-### 7.6 Terraform
-
-- Chỉ một state file cho mỗi env. State đặt trên GCS bucket có versioning (`terraform/backend.tf`).
-- Module hóa khi có >1 service tái sử dụng cùng pattern (Phase 6).
-- `terraform plan` luôn chạy trong CI cho PR sửa `terraform/`. Apply chỉ ở môi trường được duyệt.
-- Biến nhạy cảm (DB password) không vào `.tfvars` — sinh ra random và đẩy thẳng vào Secret Manager.
+### Terraform
+- `terraform fmt && terraform validate` trước commit.
+- Module hóa khi tái sử dụng (đã có sẵn 7 module trong `modules/`).
+- Resource cost cao (HA RDS, GPU, MSK) → cảnh báo trong PR description.
+- Secret không vào `.tfvars` — sinh random → Secrets Manager.
 
 ---
 
-## 8. Lộ trình triển khai chi tiết theo Phase
+## 8. Lộ trình triển khai theo Phase
 
-> Mỗi Phase kết thúc bằng một deliverable cụ thể có thể commit/PR. Tham khảo thêm `docs/ROADMAP.md` cho góc nhìn theo tuần.
+### Phase 0 — Chuẩn bị
+- [x] Cấu trúc monorepo + scaffold đầy đủ 7 service (4 backend + 1 gateway + 2 frontend).
+- [x] Terraform modules + 3 environments.
+- [x] CI/CD 7 workflows.
+- [x] Local dev với docker-compose + LocalStack.
+- [ ] **Tạo AWS account** + bật billing + MFA + budget alert.
+- [ ] Cài `aws-cli`, `terraform 1.7+`, `kubectl`, `helm`, `kustomize`, `docker`, `jdk 21`, `node 20`.
 
-### Phase 0 — Chuẩn bị (đã xong một phần)
-- [x] Scaffold repo, README, LICENSE, Makefile.
-- [x] Khung Terraform, customer-service mẫu, monitoring values.
-- [ ] Cài đầy đủ: `jdk21`, `maven`, `docker`, `kubectl`, `kustomize`, `terraform 1.7+`, `gcloud SDK`, `jq`, `helm`.
-- [ ] Tạo GCP project, bật billing, `gcloud auth application-default login`.
+### Phase 1 — Local development
+- [ ] `make local-up` → verify Postgres + LocalStack chạy.
+- [ ] Chạy `customer-service` local (`mvn spring-boot:run` với `.env.example`).
+- [ ] Hit CRUD endpoints bằng curl/Postman.
+- [ ] Chạy `web-portal` (`npm run dev`) → test gọi qua Vite proxy.
+- [ ] Bổ sung Flyway migration thật + Testcontainers integration test.
 
-### Phase 1 — Customer service chạy local (Tuần 1)
-- [ ] Đọc & hiểu toàn bộ `services/customer-service/`.
-- [ ] Bổ sung **Flyway** + migration `V1__init_customer.sql`.
-- [ ] `docker compose up postgres`, `mvn spring-boot:run`, test CRUD đầy đủ bằng curl.
-- [ ] Viết unit test (≥10 case) + integration test (Testcontainers).
-- [ ] Build image distroless, chạy `docker run`, smoke test.
+### Phase 2 — AWS account bootstrap
+- [ ] `aws configure` với credentials (tạo IAM user dùng cho personal, MFA bật).
+- [ ] `./scripts/bootstrap-aws.sh` → tạo S3 tfstate + DynamoDB locks + budget.
+- [ ] Edit `infrastructure/terraform/environments/dev/main.tf` → uncomment `backend "s3"`.
+- [ ] `make ENV=dev tf-init && make ENV=dev tf-plan`.
 
-**Deliverable:** `feat(customer-service): TMF629 CRUD + Flyway + Testcontainers`
+### Phase 3 — Deploy infrastructure (dev)
+- [ ] `make ENV=dev tf-apply` (mất ~15-20 phút lần đầu cho EKS).
+- [ ] `make ENV=dev kube-config` → `kubectl get nodes`.
+- [ ] Cài cluster addons theo `platform/README.md` (Helm).
+- [ ] Verify ALB Controller + ExternalDNS chạy.
 
-### Phase 2 — Hạ tầng GCP với Terraform (Tuần 2)
-- [ ] `terraform apply` thành công. Vẽ tay sơ đồ network — **đây là bài kiểm tra**.
-- [ ] Push state lên GCS bucket (bật versioning).
-- [ ] Thêm `tfsec` + `tflint` chạy local trước khi commit.
-- [ ] Verify: `kubectl get nodes`, `gcloud sql instances list`, `gcloud artifacts repositories list`.
+### Phase 4 — Deploy first service
+- [ ] `make ENV=dev SERVICE=customer-service push` → image lên ECR.
+- [ ] `make ENV=dev SERVICE=customer-service set-image deploy`.
+- [ ] `make ENV=dev smoke` → ALB trả 200.
 
-**Deliverable:** `feat(terraform): GKE Autopilot + Cloud SQL + Artifact Registry + remote state`
+### Phase 5 — CI/CD wiring
+- [ ] Push repo lên GitHub.
+- [ ] GitHub Settings → Secrets thêm `AWS_DEPLOYER_ROLE_ARN` (từ `terraform output github_deployer_role_arn`).
+- [ ] Mở PR sửa nhỏ → verify `ci-backend` chạy + pass.
+- [ ] Merge → verify `cd-dev` deploy thành công.
 
-### Phase 3 — Deploy lên GKE (Tuần 3)
-- [ ] Push image lên Artifact Registry thủ công.
-- [ ] `kubectl apply -k kubernetes/overlays/dev`. Debug đến khi pod Ready.
-- [ ] Thay static DB secret bằng **Workload Identity + Cloud SQL Auth Proxy**.
-- [ ] Tạo `Ingress` (GCE LB) + managed TLS cert.
-- [ ] Thêm HPA (CPU 70%, min 2, max 5) + PDB (minAvailable 1).
+### Phase 6 — Hoàn thiện service nghiệp vụ
+- [ ] Implement TMF620 trong `product-catalog`.
+- [ ] Implement TMF622 trong `order-management` + viết integration test EventBridge publish.
+- [ ] Implement TMF678 trong `billing-service` + SQS consumer idempotent.
+- [ ] Implement frontend UI thật cho web-portal (đăng ký gói, xem hóa đơn).
 
-**Deliverable:** `feat(k8s): deploy customer-service with HPA, PDB, Workload Identity, TLS`
+### Phase 7 — Observability hoàn chỉnh
+- [ ] Cài Prometheus + Grafana qua Helm.
+- [ ] Import dashboard từ `platform/monitoring/grafana/dashboards/`.
+- [ ] Cấu hình OTel agent trong từng service Java (auto-instrument).
+- [ ] Define SLI/SLO trong `docs/SLO.md`.
+- [ ] Wire alerts → Slack/Discord webhook.
 
-### Phase 4 — CI/CD (Tuần 4)
-- [ ] Thiết lập **Workload Identity Federation** GitHub ↔ GCP (không JSON key).
-- [ ] `ci.yml`: lint + unit test + integration test + Trivy scan + build image (không push).
-- [ ] `cd.yml`: trigger trên merge `main` → push image (tag = git SHA) → `kubectl set image` → `kubectl rollout status`.
-- [ ] Cố tình deploy bug, dùng `kubectl rollout undo`. Thêm step rollback tự động khi readiness fail.
-- [ ] **Stretch:** environment `prod` với manual approval.
+### Phase 8 — Staging + prod
+- [ ] `make ENV=staging tf-apply`.
+- [ ] Tag `rc-v0.1.0` → verify cd-staging.
+- [ ] `make ENV=prod tf-apply` (với public_access_cidrs restricted thật).
+- [ ] Tag `v0.1.0` → approve trong GitHub UI → verify cd-prod.
 
-**Deliverable:** `feat(ci): WIF-based CI/CD pipeline with rollback on failure`
+### Phase 9 — Production hardening
+- [ ] Bật **AWS WAF** trước ALB.
+- [ ] **NetworkPolicy** mặc định deny + whitelist từng cặp service.
+- [ ] **Pod Security Standards: restricted** ở namespace `bss`.
+- [ ] Chaos test: `kubectl delete pod` ngẫu nhiên + verify recovery.
+- [ ] Multi-AZ verification — fail 1 AZ → cluster vẫn serve.
 
-### Phase 5 — Observability (Tuần 5)
-- [ ] Install kube-prometheus-stack qua Helm với `monitoring/prometheus/values.yaml`.
-- [ ] ConfigMap `bss-dashboards` import vào Grafana.
-- [ ] Apply `monitoring/alerts/bss-alerts.yaml`, kích hoạt thủ công `BssHighErrorRate`.
-- [ ] Cấu hình Alertmanager → webhook Slack/Discord cá nhân.
-- [ ] Tích hợp **OpenTelemetry Java agent** → Cloud Trace.
-- [ ] Định nghĩa **SLI/SLO** đầu tiên (availability 99.5%, p99 latency <500ms) trong `docs/SLO.md`.
-
-**Deliverable:** `feat(observability): full metrics/logs/traces with SLO-based alerts`
-
-### Phase 6 — Hoàn thiện 3 service còn lại (Tuần 6–7)
-- [ ] Refactor `services/` thành **Maven multi-module** với `bss-common` (DTO + exception handlers chung).
-- [ ] Scaffold `product-catalog`, `order-management`, `billing-service` theo template customer-service.
-- [ ] Mỗi service: schema DB riêng, K8s manifest riêng, dashboard Grafana riêng.
-- [ ] Viết **ADR-001: REST vs event-driven cho order→billing** trong `docs/adr/`.
-- [ ] Viết contract test cho order ↔ billing.
-
-**Deliverable:** `feat(platform): 4 TMF services with shared bss-common module`
-
-### Phase 7 — Event-driven cho order flow (Tuần 8)
-- [ ] Terraform tạo topic `bss-order-events` + subscription `billing-sub` trên Pub/Sub.
-- [ ] `order-service` publish `OrderCompleted` (CloudEvents format).
-- [ ] `billing-service` subscribe và tạo invoice idempotently.
-- [ ] Bổ sung dead-letter topic + alert khi DLQ > 0.
-- [ ] Cập nhật sơ đồ kiến trúc trong README.
-
-**Deliverable:** `feat(events): Pub/Sub-based order→billing flow with DLQ`
-
-### Phase 8 — Production hardening
-- [ ] Bật **Binary Authorization** + image signing với cosign.
-- [ ] **NetworkPolicy** mặc định deny, whitelist từng cặp.
-- [ ] **Pod Security Standards: restricted**.
-- [ ] Bật **Cloud SQL HA** ở overlay `prod`.
-- [ ] **Multi-AZ + PDB** đầy đủ.
-- [ ] Chaos test cơ bản: `kubectl delete pod` ngẫu nhiên trong giờ tải cao.
-
-**Deliverable:** `feat(security): binauthz + network policies + PSS restricted`
-
-### Phase 9 — Đánh bóng portfolio
-- [ ] Viết `docs/POSTMORTEMS.md` về bug khó nhất từng gặp.
-- [ ] Quay video demo 5 phút (deploy → smoke → break → recover).
-- [ ] Viết blog post "Building a telecom BSS on GKE in N weeks".
-- [ ] Mời 1–2 senior engineer review repo, xử lý feedback.
-
-**Deliverable:** Repo sẵn sàng phỏng vấn — narratable end-to-end.
+### Phase 10 — Đánh bóng portfolio
+- [ ] Viết `docs/POSTMORTEMS.md` về bug khó nhất.
+- [ ] Video demo 5 phút (deploy → break → recover).
+- [ ] Blog post "Building a telecom BSS on AWS EKS".
+- [ ] Mời 1-2 senior review, xử lý feedback.
 
 ---
 
 ## 9. Quy ước cho Claude khi làm việc với repo này
 
-### 9.1 Nguyên tắc chung
-- **Bám lộ trình theo Phase.** Không nhảy cóc Phase nếu user chưa khẳng định.
-- **Hỏi trước khi tốn tiền.** Bất kỳ thao tác `terraform apply`, `gcloud ... create`, `kubectl create` đụng vào tài nguyên thật trên GCP — phải confirm với user trước.
-- **Không bao giờ commit secret** — `.env`, `terraform.tfvars`, JSON keys phải nằm trong `.gitignore`.
+### Nguyên tắc chung
+- **Bám lộ trình Phase.** Không nhảy cóc nếu user chưa khẳng định.
+- **Hỏi trước khi tốn tiền.** Bất kỳ `terraform apply`, `aws ... create`, `kubectl create` đụng AWS thật → confirm trước.
+- **Không commit secret.** `.env`, `.tfvars`, AWS credentials → trong `.gitignore`.
 - **Mọi `terraform apply` đi kèm `plan` để user duyệt.**
-- **Khi user mơ hồ**, hỏi 1 câu làm rõ thay vì đoán.
+- Khi user mơ hồ — hỏi 1 câu làm rõ, không đoán.
 
-### 9.2 Khi tạo service mới
-1. Copy cấu trúc từ `customer-service` làm template.
-2. Đổi `groupId`, `artifactId`, package `com.bss.<svc>`, port, DB schema.
+### Khi tạo backend service mới
+1. Copy cấu trúc từ `customer-service` hoặc `product-catalog`.
+2. Đổi `groupId`/`artifactId` trong `pom.xml`, package `com.bss.<svc>`, DB schema.
 3. Tạo Flyway migration `V1__init_<svc>.sql`.
-4. Viết tối thiểu: 1 controller, 1 service, 1 repository, 1 entity, 1 DTO, 1 integration test pass.
-5. Thêm Kustomize base ở `kubernetes/base/<svc>-*.yaml`.
-6. Thêm dashboard skeleton ở `monitoring/grafana/dashboards/<svc>.json`.
+4. Tối thiểu: 1 controller, 1 service, 1 repo, 1 entity, 1 DTO, 1 integration test.
+5. Thêm K8s base manifests vào `infrastructure/kubernetes/base/<svc>/`.
+6. Thêm vào `infrastructure/kubernetes/base/kustomization.yaml`.
+7. Thêm IRSA role vào `infrastructure/terraform/environments/*/main.tf` (mục `services`).
 
-### 9.3 Khi sửa Terraform
-1. Luôn `terraform fmt && terraform validate` trước khi commit.
-2. Nếu thêm resource mới — cập nhật `docs/SETUP.md` phần "What you'll be charged for".
-3. Resource có chi phí cao (HA Cloud SQL, GKE Standard, BigQuery slot reservation) — **cảnh báo user trong PR description**.
+### Khi sửa Terraform
+1. `terraform fmt && terraform validate` trước commit.
+2. Resource có cost cao → cảnh báo trong PR description.
+3. Update `docs/SETUP.md` nếu có resource mới cần config.
 
-### 9.4 Khi viết K8s manifest
-1. Thêm vào `kubernetes/base/`, không thêm thẳng vào overlay.
-2. Mọi container phải có resources + probes + securityContext non-root.
-3. Image tag dùng placeholder `${IMAGE_TAG}` để Kustomize `images:` xử lý.
+### Khi viết K8s manifest
+1. Thêm vào `infrastructure/kubernetes/base/<svc>/`, không thêm thẳng overlay.
+2. Mọi container: resources + 3 probes + securityContext non-root.
+3. Image tag dùng placeholder, Kustomize `images:` set tag.
 
-### 9.5 Khi viết test
-- Bug fix → kèm test reproduce bug (test fail trước khi sửa, pass sau khi sửa).
-- Feature mới → kèm unit test cho happy path + ≥2 edge case + integration test cho contract.
-- Không mock framework (Spring, JPA, HTTP client) ở integration test — dùng Testcontainers.
+### Khi viết test
+- Bug fix → kèm test reproduce (fail trước, pass sau).
+- Feature → unit test happy path + ≥2 edge case + integration test contract.
+- Không mock framework (Spring, JPA, AWS SDK) ở integration test — dùng Testcontainers + LocalStack.
 
-### 9.6 Khi cập nhật tài liệu
-- Sửa kiến trúc → cập nhật cả sơ đồ trong README và CLAUDE.md.
-- Quyết định kiến trúc lớn → tạo ADR mới trong `docs/adr/NNNN-<slug>.md`.
-- **Không tạo file markdown mới** trừ khi user yêu cầu hoặc đang ở Phase tạo doc cụ thể.
-
-### 9.7 Trả lời câu hỏi & giải thích
-- User là người Việt — trả lời tiếng Việt, giữ thuật ngữ kỹ thuật bằng tiếng Anh.
-- Khi giải thích lựa chọn kiến trúc — luôn nói rõ **trade-off**, không chỉ ưu điểm.
-- Khi user nói "build cái này đi" — kiểm tra Phase hiện tại, nếu vượt Phase → đề xuất chia nhỏ.
+### Trả lời câu hỏi
+- User người Việt — trả lời tiếng Việt, giữ thuật ngữ kỹ thuật tiếng Anh.
+- Giải thích lựa chọn kiến trúc → luôn nói rõ **trade-off**, không chỉ ưu điểm.
+- User nói "build cái này đi" → kiểm tra Phase hiện tại; nếu vượt Phase → đề xuất chia nhỏ.
 
 ---
 
 ## 10. Best practices ràng buộc
 
-### 10.1 Security
-- ❌ Không có JSON service account key trong repo, máy local, hay CI.
-- ❌ Không có secret cleartext trong manifest hay env var (dùng Secret Manager + CSI).
-- ❌ Không log password, OTP, token, số CCCD/CMND.
-- ✅ Mọi image build trong CI phải qua Trivy, fail nếu có CVE HIGH/CRITICAL chưa fix.
-- ✅ Pod chạy non-root, readOnly root FS, drop all capabilities.
+### Security
+- ❌ Không có AWS access key trong repo/local/CI (mọi xác thực qua IRSA hoặc OIDC).
+- ❌ Không có secret cleartext trong manifest hay env var (Secrets Manager + CSI).
+- ❌ Không log PII, password, OTP, token, CCCD.
+- ✅ Mọi image qua Trivy trong CI; fail nếu HIGH/CRITICAL chưa fix.
+- ✅ Pod chạy non-root, readOnly root FS, drop all caps.
+- ✅ EKS public endpoint **restricted** ở prod.
+- ✅ ECR repo `IMMUTABLE` tags.
 
-### 10.2 Reliability
-- ✅ Mọi service ≥2 replica ở prod, có PDB minAvailable=1.
-- ✅ HPA dựa trên CPU + custom metric (req/s) khi sẵn sàng.
-- ✅ Mọi external call (DB, Pub/Sub, REST) có timeout + retry + circuit breaker (Resilience4j).
-- ✅ SLI/SLO định nghĩa rõ, có error budget burn-rate alert.
+### Reliability
+- ✅ ≥2 replica ở prod, PDB minAvailable ≥ 1.
+- ✅ HPA dựa CPU + custom metric (req/s) khi sẵn sàng.
+- ✅ Mọi external call (DB, SQS, REST) có timeout + retry + circuit breaker (Resilience4j).
+- ✅ SLI/SLO + error budget burn-rate alert.
 
-### 10.3 Cost
-- ✅ Dev cluster `terraform destroy` mỗi tối.
-- ✅ Cloud SQL dev tier `db-f1-micro`, không HA.
-- ✅ Image pull policy `IfNotPresent` để tránh egress charge.
-- ⚠️ Cảnh báo nếu tổng cost/tháng dev vượt $50 — kiểm tra `gcloud billing accounts list-usage`.
+### Cost
+- ✅ Dev cluster `make ENV=dev tf-destroy` mỗi tối.
+- ✅ Dev: t3.micro RDS, t3.medium nodes, không HA.
+- ✅ VPC Endpoints thay NAT Gateway (tiết kiệm $1.10/ngày).
+- ✅ ECR lifecycle policy auto-xóa image cũ.
+- ⚠️ Budget alert ở `$30/tháng` cho dev — cảnh báo nếu vượt.
 
-### 10.4 Operability
-- ✅ Mọi service expose `/actuator/health`, `/actuator/prometheus`, `/actuator/info`.
-- ✅ Mọi service có dashboard Grafana riêng với 4 RED metric (Rate, Errors, Duration) + saturation.
-- ✅ Mọi alert có runbook URL trong annotation `runbook_url`.
-- ✅ Log structured JSON ở prod, có `trace_id` để correlate với Cloud Trace.
+### Operability
+- ✅ Mọi service expose `/actuator/health`, `/actuator/prometheus`.
+- ✅ Mỗi service có Grafana dashboard riêng (4 RED + saturation).
+- ✅ Mọi alert có `runbook_url` annotation.
+- ✅ Log JSON ở prod, có `trace_id` correlate với X-Ray.
 
 ---
 
 ## 11. Lệnh thường dùng (cheatsheet)
 
 ```bash
-# Toàn bộ tác vụ chính đã được wrap trong Makefile:
-make help                       # liệt kê targets
+make help                                    # liệt kê target
+
+# Bootstrap (1 lần per account)
+make bootstrap                               # S3 tfstate + DynamoDB locks + budget
 
 # Local dev
-make svc-build                  # build JAR
-make svc-run                    # chạy local với Postgres
-make image-build TAG=v0.1.0     # build container
+make local-up                                # Postgres + Redis + LocalStack
+cd apps/backend/customer-service && mvn spring-boot:run
+cd apps/frontend/web-portal && npm run dev
 
-# GCP infra
-make tf-init && make tf-plan
-make tf-apply                   # CHỈ CHẠY KHI ĐÃ DUYỆT
-make tf-destroy                 # tear down mỗi tối
+# Infrastructure (ENV=dev|staging|prod)
+make ENV=dev tf-init
+make ENV=dev tf-plan
+make ENV=dev tf-apply                        # cần confirm!
+make ENV=dev tf-destroy                      # nightly để tiết kiệm
 
-# K8s
-make image-push TAG=$(git rev-parse --short HEAD)
-make deploy-dev
-make smoke
+# Cluster access
+make ENV=dev kube-config
 
-# Monitoring
-make monitoring-install
-make grafana                    # localhost:3000
+# Build + deploy single service
+make ENV=dev SERVICE=customer-service push
+make ENV=dev SERVICE=customer-service set-image deploy
+make ENV=dev smoke
+
+# Promote
+git tag rc-v0.1.0 && git push --tags         # → cd-staging
+git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 ```
 
 ---
@@ -468,21 +494,20 @@ make grafana                    # localhost:3000
 ## 12. Tài liệu tham khảo
 
 - **TM Forum Open APIs** — https://www.tmforum.org/oda/open-apis/
-- **GKE Autopilot docs** — https://cloud.google.com/kubernetes-engine/docs/concepts/autopilot-overview
-- **GKE Security best practices** — https://cloud.google.com/kubernetes-engine/docs/concepts/security-overview
-- **Workload Identity Federation** — https://cloud.google.com/iam/docs/workload-identity-federation
-- **Spring Boot 3 Reference** — https://docs.spring.io/spring-boot/docs/3.2.x/reference/html/
-- **Kustomize docs** — https://kubectl.docs.kubernetes.io/guides/introduction/kustomize/
-- **Site Reliability Workbook (Google) — SLO chapter** — https://sre.google/workbook/implementing-slos/
+- **EKS Best Practices Guide** — https://aws.github.io/aws-eks-best-practices/
+- **IRSA** — https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html
+- **GitHub OIDC + AWS** — https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services
+- **Karpenter docs** — https://karpenter.sh/
+- **Spring Boot 3.2** — https://docs.spring.io/spring-boot/docs/3.2.x/reference/html/
+- **Kustomize** — https://kubectl.docs.kubernetes.io/guides/introduction/kustomize/
+- **SRE Workbook — SLO chapter** — https://sre.google/workbook/implementing-slos/
 
 ---
 
-## 13. Trạng thái hiện tại (cập nhật khi cần)
+## 13. Trạng thái hiện tại (cập nhật khi chuyển Phase)
 
-- **Ngày bắt đầu kế hoạch:** 2026-05-22
-- **Phase hiện tại:** 0 → 1 (đang chuẩn bị môi trường local + làm chủ customer-service)
-- **GCP project ID:** chưa tạo
+- **Ngày khởi tạo:** 2026-05-22
+- **Phase hiện tại:** 0 → 1 (chuẩn bị môi trường local + cài dependencies)
+- **AWS account:** chưa tạo
+- **Ngân sách dev/tháng mục tiêu:** < $50 USD
 - **Người maintain:** chủ repo (1 người, học part-time)
-- **Ngân sách dev/tháng:** mục tiêu < $50 USD
-
-> Khi chuyển Phase, cập nhật mục này để Claude biết bối cảnh hiện tại.

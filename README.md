@@ -1,115 +1,143 @@
-# BSS Platform on GKE
+# BSS Platform on AWS EKS
 
-> Production-grade reference implementation of a **Business Support System (BSS)** running on **Google Kubernetes Engine** — with Infrastructure-as-Code, automated CI/CD, and full observability stack.
+> Production-grade reference implementation of a **Business Support System (BSS)** running on **Amazon EKS** — full monorepo with frontend, backend microservices, Infrastructure-as-Code, GitHub Actions CI/CD, and an observability stack.
 
-[![CI](https://github.com/YOUR_USERNAME/bss-platform-gke/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/bss-platform-gke/actions/workflows/ci.yml)
+[![CI Backend](https://github.com/YOUR_USERNAME/bss-platform/actions/workflows/ci-backend.yml/badge.svg)](https://github.com/YOUR_USERNAME/bss-platform/actions/workflows/ci-backend.yml)
 [![Terraform](https://img.shields.io/badge/Terraform-1.7+-7B42BC?logo=terraform)](https://www.terraform.io/)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.29+-326CE5?logo=kubernetes)](https://kubernetes.io/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.30+-326CE5?logo=kubernetes)](https://kubernetes.io/)
+[![AWS](https://img.shields.io/badge/AWS-EKS-FF9900?logo=amazon-aws)](https://aws.amazon.com/eks/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Why this repo exists
+## What's here
 
-Most "Kubernetes on GCP" tutorials show toy apps. This repo demonstrates a **realistic telecom BSS workload** — the kind of system that actually runs revenue-critical operations at carriers like Viettel, VNPT, and Orange.
+A complete monorepo: **2 frontends + 5 backends + shared libs + 3-env infrastructure + CI/CD**.
 
-It is structured as a **learning portfolio**: every component is real, runnable, and explained. Use it to:
-
-- **Learn** how production microservices on GKE actually fit together
-- **Showcase** end-to-end platform engineering skills to recruiters
-- **Bootstrap** a real BSS modernization project
+```
+bss-platform/
+├── apps/
+│   ├── frontend/       web-portal, admin-console        (Vite + React)
+│   └── backend/        api-gateway + 4 services         (Spring Boot 3, Java 21)
+├── packages/           bss-common-java, ui-kit, api-contracts
+├── infrastructure/
+│   ├── terraform/      modules/ + environments/{dev,staging,prod}
+│   └── kubernetes/     base/ + overlays/{dev,staging,prod}
+├── platform/           helm values for cluster addons (ALB, ExternalDNS, Karpenter, ...)
+├── deploy/             docker-compose + LocalStack for local dev
+├── .github/workflows/  7 CI/CD pipelines (path-filter + tag-based promotion)
+└── scripts/            bootstrap-aws, teardown, smoke
+```
 
 ## Architecture
 
 ```
-                         ┌───────────────────────────────────┐
-                         │         GCP Project               │
-                         │                                   │
-   Developers ──► GitHub │  ┌─────────────────────────────┐  │
-                  Actions│  │  Artifact Registry          │  │
-                    │    │  │  (container images)         │  │
-                    │    │  └──────────────┬──────────────┘  │
-                    │    │                 │ pull             │
-                    ▼    │  ┌──────────────▼──────────────┐  │
-   ┌────────────────────►│  │  GKE Autopilot Cluster      │  │
-   │  Terraform (IaC)    │  │  ┌──────────────────────┐   │  │
-   │                     │  │  │  Namespace: bss      │   │  │
-   │                     │  │  │   • customer-svc     │   │  │
-   │                     │  │  │   • billing-svc      │   │  │
-   │                     │  │  │   • product-svc      │   │  │
-   │                     │  │  │   • order-svc        │   │  │
-   │                     │  │  └──────────────────────┘   │  │
-   │                     │  │  ┌──────────────────────┐   │  │
-   │                     │  │  │  Namespace: monitor  │   │  │
-   │                     │  │  │   • Prometheus       │   │  │
-   │                     │  │  │   • Grafana          │   │  │
-   │                     │  │  │   • AlertManager     │   │  │
-   │                     │  │  └──────────────────────┘   │  │
-   │                     │  └─────────────────────────────┘  │
-   │                     │  ┌─────────────────────────────┐  │
-   │                     │  │  Cloud SQL (PostgreSQL)     │  │
-   │                     │  └─────────────────────────────┘  │
-   │                     └───────────────────────────────────┘
-   │
-   └── VPC, Subnets, IAM, Workload Identity, Private Cluster
+   Internet
+      │ HTTPS
+      ▼
+  CloudFront → ALB → AWS WAF
+      │
+      ▼
+  ┌──────────────────────── EKS Cluster ────────────────────────┐
+  │                                                              │
+  │  Frontend pods       Backend pods            Platform        │
+  │  ─────────────       ────────────            ────────        │
+  │  web-portal          api-gateway             Prometheus      │
+  │  admin-console       customer-service        Grafana         │
+  │                      product-catalog         Fluent Bit      │
+  │                      order-management ──┐    OTel Collector  │
+  │                      billing-service  <─┤    Karpenter       │
+  │                                         │                    │
+  └─────────────────────────────────────────┼────────────────────┘
+                                            │
+       ┌────────────────────────────────────┼────────────────┐
+       ▼                                    ▼                ▼
+  RDS PostgreSQL                   EventBridge → SQS    Secrets Manager
+                                                        + X-Ray + CloudWatch
 ```
-
-## What's inside
-
-| Folder | Component | Tech |
-|---|---|---|
-| `terraform/` | GCP infrastructure as code | Terraform 1.7, GCP provider 5.x |
-| `services/` | BSS microservices | Spring Boot 3, Java 21 |
-| `kubernetes/` | K8s manifests (Kustomize) | Kubernetes 1.29 |
-| `monitoring/` | Observability stack | Prometheus, Grafana, AlertManager |
-| `.github/workflows/` | CI/CD pipelines | GitHub Actions |
-| `docs/` | Setup guides & ADRs | Markdown |
 
 ## Microservices (TM Forum-aligned)
 
-The BSS domain is modeled loosely after **TM Forum Open APIs**, the industry standard for telecom operations:
-
-| Service | Responsibility | TM Forum API |
+| Service | Responsibility | TMF API |
 |---|---|---|
-| `customer-service` | Customer lifecycle, identity, contacts | TMF629 |
-| `product-catalog` | Plans, offers, pricing | TMF620 |
-| `order-management` | Order capture and orchestration | TMF622 |
-| `billing-service` | Charging, invoicing, payment | TMF678 |
+| `customer-service` | Customer lifecycle, identity | TMF629 |
+| `product-catalog`  | Plans, offers, pricing       | TMF620 |
+| `order-management` | Order capture + orchestration | TMF622 |
+| `billing-service`  | Charging, invoicing, payment | TMF678 |
+| `api-gateway`      | Routing, auth, rate limit    | — |
 
-> Only `customer-service` is implemented in this repo as the reference. The other three follow the same pattern — implementing them is part of the learning roadmap (see [docs/ROADMAP.md](docs/ROADMAP.md)).
+## Tech stack
+
+| Layer | Tech |
+|---|---|
+| Cloud | AWS (EKS, RDS, ECR, EventBridge, SQS, S3, ALB, CloudFront, Route 53) |
+| Backend | Java 21, Spring Boot 3.2, Spring Cloud Gateway, AWS SDK v2 |
+| Frontend | Vite, React 18, TypeScript, react-query |
+| Container | Multi-stage Docker (distroless-style), non-root |
+| Orchestration | EKS 1.30 + Managed Node Groups + Karpenter |
+| IaC | Terraform 1.7 + hashicorp/aws 5.x |
+| K8s packaging | Kustomize (base + overlays/dev|staging|prod) |
+| CI/CD | GitHub Actions + OIDC → IAM Role (no static keys) |
+| Observability | kube-prometheus-stack (in-cluster) + Fluent Bit → CloudWatch + OTel → X-Ray |
+| Secrets | AWS Secrets Manager + Secrets Store CSI Driver |
 
 ## Quick start
 
-**Prerequisites:** `gcloud`, `terraform`, `kubectl`, `docker`, a GCP project with billing enabled.
+**Prerequisites:** `aws-cli`, `terraform 1.7+`, `kubectl`, `helm`, `kustomize`, `docker`, `jdk21`, `node 20`, `make`.
+
+### 1. Local development (no AWS needed)
 
 ```bash
-# 1. Bootstrap GCP infrastructure
-cd terraform
-cp terraform.tfvars.example terraform.tfvars   # edit with your project_id
-terraform init
-terraform apply
-
-# 2. Connect kubectl to the new cluster
-gcloud container clusters get-credentials bss-cluster --region asia-southeast1
-
-# 3. Deploy the monitoring stack
-kubectl apply -f monitoring/
-
-# 4. Deploy the customer service
-kubectl apply -k kubernetes/overlays/dev
-
-# 5. Open the Grafana dashboard
-kubectl port-forward -n monitoring svc/grafana 3000:80
-# → http://localhost:3000
+make local-up                                         # Postgres + Redis + LocalStack
+cd apps/backend/customer-service && mvn spring-boot:run
+# In another shell:
+cd apps/frontend/web-portal && npm install && npm run dev
 ```
 
-Full step-by-step instructions in [docs/SETUP.md](docs/SETUP.md).
+Open http://localhost:3000.
 
-## Cost warning
+### 2. Deploy dev infrastructure on AWS
 
-Running this on GCP costs roughly **$5–10 USD per day** with default settings (GKE Autopilot + Cloud SQL + load balancer). Always `terraform destroy` when not actively learning. Better yet, follow the cost-optimized config in [docs/SETUP.md](docs/SETUP.md#cost-optimization).
+```bash
+make bootstrap                                        # one-time: S3 tfstate + DynamoDB + budget
+make ENV=dev tf-init && make ENV=dev tf-apply         # ~20 minutes for EKS
+make ENV=dev kube-config                              # update local kubeconfig
+
+# Install cluster addons (see platform/README.md for full sequence)
+helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller -n kube-system ...
+# ... etc.
+
+# Push + deploy customer-service:
+make ENV=dev SERVICE=customer-service push set-image deploy
+make ENV=dev smoke
+```
+
+### 3. Promote to staging / prod
+
+```bash
+git tag rc-v0.1.0 && git push --tags                  # → cd-staging
+git tag v0.1.0    && git push --tags                  # → cd-prod (manual approval)
+```
+
+Full step-by-step guide in [docs/SETUP.md](docs/SETUP.md).
+
+## Cost
+
+| Environment | USD/day |
+|---|---|
+| Dev (`tf-destroy` nightly) | ~$5 |
+| Dev (always on) | ~$5 |
+| Staging | ~$9 |
+| Prod | ~$30+ |
+
+> AWS Free Tier (first 12 months) reduces dev cost to ~$3/day for RDS + EC2.
+> The EKS control plane ($0.10/hour) is **not** free-tier eligible.
 
 ## Learning roadmap
 
-This repo is designed to be built up, not just cloned. See [docs/ROADMAP.md](docs/ROADMAP.md) for the 6-week structured learning path.
+10 phases from "install tooling" to "publish blog post." See [docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Repo conventions
+
+This repo is co-developed with Claude Code. The full set of architectural decisions, coding conventions, security rules, and Phase-by-phase plan lives in [CLAUDE.md](CLAUDE.md).
 
 ## License
 
