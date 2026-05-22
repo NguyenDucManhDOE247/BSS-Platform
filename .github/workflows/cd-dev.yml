@@ -1,0 +1,117 @@
+name: CD — dev
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/**'
+
+permissions:
+  id-token: write   # GitHub OIDC
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-1
+  ENVIRONMENT: dev
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }} # e.g. 123456789012.dkr.ecr.ap-southeast-1.amazonaws.com
+  EKS_CLUSTER: bss-dev-eks
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      backend_services: ${{ steps.f.outputs.changes }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: f
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            customer-service: 'apps/backend/customer-service/**'
+            product-catalog:  'apps/backend/product-catalog/**'
+            order-management: 'apps/backend/order-management/**'
+            billing-service:  'apps/backend/billing-service/**'
+            api-gateway:      'apps/backend/api-gateway/**'
+            web-portal:       'apps/frontend/web-portal/**'
+            admin-console:    'apps/frontend/admin-console/**'
+
+  build-push:
+    name: Build + push ${{ matrix.service }}
+    needs: detect
+    if: needs.detect.outputs.backend_services != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJson(needs.detect.outputs.backend_services) }}
+    outputs:
+      sha: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOYER_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
+            docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
+
+      - name: Determine app dir
+        id: dir
+        run: |
+          if [ -d "apps/backend/${{ matrix.service }}" ]; then
+            echo "path=apps/backend/${{ matrix.service }}" >> $GITHUB_OUTPUT
+          else
+            echo "path=apps/frontend/${{ matrix.service }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build + push (tag = git SHA)
+        working-directory: ${{ steps.dir.outputs.path }}
+        run: |
+          IMG=${{ env.ECR_REGISTRY }}/bss/${{ matrix.service }}:${{ github.sha }}
+          docker build -t "$IMG" .
+          docker push "$IMG"
+
+  deploy:
+    needs: [detect, build-push]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOYER_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER }}
+
+      - uses: imranismail/setup-kustomize@v2
+
+      - name: Update image tags in dev overlay
+        working-directory: infrastructure/kubernetes/overlays/dev
+        run: |
+          for svc in $(echo '${{ needs.detect.outputs.backend_services }}' | jq -r '.[]'); do
+            IMG=${{ env.ECR_REGISTRY }}/bss/$svc:${{ github.sha }}
+            kustomize edit set image $svc=$IMG || true
+          done
+
+      - name: Apply
+        run: kubectl apply -k infrastructure/kubernetes/overlays/dev
+
+      - name: Wait for rollout
+        run: |
+          for svc in $(echo '${{ needs.detect.outputs.backend_services }}' | jq -r '.[]'); do
+            kubectl -n bss rollout status deployment/$svc --timeout=5m || \
+              { kubectl -n bss rollout undo deployment/$svc; exit 1; }
+          done
+
+      - name: Smoke test
+        run: |
+          INGRESS=$(kubectl -n bss get ingress bss-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          curl -fsSL "http://$INGRESS/api/actuator/health" | jq .status || true

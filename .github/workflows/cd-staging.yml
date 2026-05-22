@@ -1,0 +1,75 @@
+name: CD — staging
+
+# Triggered by tags like rc-v1.2.0
+on:
+  push:
+    tags:
+      - 'rc-v*'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+  EKS_CLUSTER: bss-staging-eks
+
+jobs:
+  promote-and-deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOYER_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        run: aws ecr get-login-password | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
+
+      - name: Resolve commit SHA the tag points at
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Re-tag images (SHA → tag name)
+        run: |
+          TAG=${GITHUB_REF_NAME}
+          for svc in customer-service product-catalog order-management billing-service api-gateway web-portal admin-console; do
+            SRC=${{ env.ECR_REGISTRY }}/bss/$svc:${{ steps.sha.outputs.sha }}
+            DST=${{ env.ECR_REGISTRY }}/bss/$svc:$TAG
+            docker pull "$SRC" || { echo "skip $svc (no image for this SHA)"; continue; }
+            docker tag "$SRC" "$DST"
+            docker push "$DST"
+          done
+
+      - name: Update kubeconfig (staging)
+        run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER }}
+
+      - uses: imranismail/setup-kustomize@v2
+
+      - name: Bump image tags in staging overlay
+        working-directory: infrastructure/kubernetes/overlays/staging
+        run: |
+          TAG=${GITHUB_REF_NAME}
+          for svc in customer-service product-catalog order-management billing-service api-gateway web-portal admin-console; do
+            kustomize edit set image $svc=${{ env.ECR_REGISTRY }}/bss/$svc:$TAG || true
+          done
+
+      - name: Apply
+        run: kubectl apply -k infrastructure/kubernetes/overlays/staging
+
+      - name: Wait for all rollouts
+        run: |
+          for d in $(kubectl -n bss get deploy -o name); do
+            kubectl -n bss rollout status "$d" --timeout=10m
+          done
+
+      - name: E2E smoke tests
+        run: |
+          # TODO: add Karate / Playwright suite once contracts stabilize.
+          INGRESS=$(kubectl -n bss get ingress bss-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          curl -fsSL "http://$INGRESS/api/actuator/health"

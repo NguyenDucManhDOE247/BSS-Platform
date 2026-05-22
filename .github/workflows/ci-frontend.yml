@@ -1,0 +1,76 @@
+name: CI — frontend
+
+on:
+  pull_request:
+    paths:
+      - 'apps/frontend/**'
+      - 'packages/ui-kit/**'
+      - '.github/workflows/ci-frontend.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/frontend/**'
+      - 'packages/ui-kit/**'
+
+concurrency:
+  group: ci-frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.filter.outputs.changes }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            web-portal:    'apps/frontend/web-portal/**'
+            admin-console: 'apps/frontend/admin-console/**'
+
+  build-and-test:
+    needs: detect
+    if: needs.detect.outputs.apps != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJson(needs.detect.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/frontend/${{ matrix.app }}/package-lock.json
+
+      - name: Install
+        working-directory: apps/frontend/${{ matrix.app }}
+        run: npm ci || npm install
+
+      - name: Lint
+        working-directory: apps/frontend/${{ matrix.app }}
+        run: npm run lint --if-present
+
+      - name: Test
+        working-directory: apps/frontend/${{ matrix.app }}
+        run: npm test --if-present
+
+      - name: Build
+        working-directory: apps/frontend/${{ matrix.app }}
+        run: npm run build
+
+      - name: Docker build (no push)
+        working-directory: apps/frontend/${{ matrix.app }}
+        run: docker build -t ${{ matrix.app }}:ci .
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ${{ matrix.app }}:ci
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true

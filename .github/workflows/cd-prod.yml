@@ -1,0 +1,80 @@
+name: CD — prod
+
+# Triggered by tags like v1.2.0 (note: NOT rc-v*)
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+  EKS_CLUSTER: bss-prod-eks
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Requires manual approval via repository Environment protection rules.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PROD_DEPLOYER_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        run: aws ecr get-login-password | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
+
+      - name: Promote images (rc-v* → v*)
+        run: |
+          TAG=${GITHUB_REF_NAME}
+          RC_TAG="rc-${TAG}"
+          for svc in customer-service product-catalog order-management billing-service api-gateway web-portal admin-console; do
+            SRC=${{ env.ECR_REGISTRY }}/bss/$svc:$RC_TAG
+            DST=${{ env.ECR_REGISTRY }}/bss/$svc:$TAG
+            docker pull "$SRC" || { echo "skip $svc (no rc image)"; continue; }
+            docker tag "$SRC" "$DST"
+            docker push "$DST"
+          done
+
+      - name: Update kubeconfig (prod)
+        run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER }}
+
+      - uses: imranismail/setup-kustomize@v2
+
+      - name: Bump image tags in prod overlay
+        working-directory: infrastructure/kubernetes/overlays/prod
+        run: |
+          TAG=${GITHUB_REF_NAME}
+          for svc in customer-service product-catalog order-management billing-service api-gateway web-portal admin-console; do
+            kustomize edit set image $svc=${{ env.ECR_REGISTRY }}/bss/$svc:$TAG || true
+          done
+
+      - name: Apply (canary-aware rolling update)
+        # For a real canary, install Argo Rollouts and replace Deployments with
+        # Rollouts that have analysis templates. Plain Deployments do gradual
+        # rollouts via maxSurge/maxUnavailable, which is good enough for now.
+        run: kubectl apply -k infrastructure/kubernetes/overlays/prod
+
+      - name: Wait + rollback on failure
+        run: |
+          for d in $(kubectl -n bss get deploy -o name); do
+            if ! kubectl -n bss rollout status "$d" --timeout=10m; then
+              echo "Rollout failed for $d — rolling back"
+              kubectl -n bss rollout undo "$d"
+              exit 1
+            fi
+          done
+
+      - name: Notify
+        if: always()
+        run: |
+          echo "Deployment of ${GITHUB_REF_NAME} to prod: ${{ job.status }}"
+          # TODO: post to Slack via webhook

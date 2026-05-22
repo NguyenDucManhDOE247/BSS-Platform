@@ -1,0 +1,36 @@
+name: CI — kubernetes manifests
+
+on:
+  pull_request:
+    paths:
+      - 'infrastructure/kubernetes/**'
+      - 'platform/**'
+      - '.github/workflows/ci-k8s.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
+
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Install kubeconform
+        run: |
+          curl -sL https://github.com/yannh/kubeconform/releases/download/v0.6.6/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: Build and validate each overlay
+        run: |
+          for env in dev staging prod; do
+            echo "── overlay: $env ──"
+            kustomize build infrastructure/kubernetes/overlays/$env | \
+              kubeconform -strict -ignore-missing-schemas -summary -
+          done
