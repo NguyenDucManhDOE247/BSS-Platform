@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars and edit.
+
+owner_email  = "you@example.com"
+github_repos = ["YOUR_GH_USERNAME/bss-platform"]
+
+# For better security, find your public IP and put it here:
+#   curl -s https://checkip.amazonaws.com
+# Then: public_access_cidrs = ["1.2.3.4/32"]
+public_access_cidrs = ["0.0.0.0/0"]

@@ -1,0 +1,2 @@
+owner_email         = "you@example.com"
+public_access_cidrs = ["1.2.3.4/32"] # tighten in staging
