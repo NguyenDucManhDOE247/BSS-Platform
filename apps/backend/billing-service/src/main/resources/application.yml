@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: billing-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/billing}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+aws:
+  sqs:
+    queue-url: ${SQS_QUEUE_URL:https://sqs.ap-southeast-1.amazonaws.com/000000000000/bss-dev-billing-orders}
+
+server:
+  port: 8080
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true

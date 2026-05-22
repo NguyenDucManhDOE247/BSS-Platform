@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      routes:
+        - id: customer
+          uri: http://customer-service.bss.svc.cluster.local
+          predicates:
+            - Path=/api/customers/**, /api/tmf-api/customerManagement/**
+        - id: product
+          uri: http://product-catalog.bss.svc.cluster.local
+          predicates:
+            - Path=/api/products/**, /api/tmf-api/productCatalog/**
+        - id: order
+          uri: http://order-management.bss.svc.cluster.local
+          predicates:
+            - Path=/api/orders/**, /api/tmf-api/orderManagement/**
+        - id: billing
+          uri: http://billing-service.bss.svc.cluster.local
+          predicates:
+            - Path=/api/bills/**, /api/tmf-api/billingManagement/**
+      default-filters:
+        - StripPrefix=1 # strip "/api"
+        - AddResponseHeader=X-Gateway, bss-api-gateway
+
+server:
+  port: 8080
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,gateway
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
