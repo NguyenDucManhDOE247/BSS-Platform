@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.bss.example.com/events/OrderCompleted",
+  "title": "OrderCompleted",
+  "type": "object",
+  "required": ["orderId", "customerId", "amount", "completedAt"],
+  "properties": {
+    "orderId": { "type": "string", "format": "uuid" },
+    "customerId": { "type": "string", "format": "uuid" },
+    "amount": { "type": "string", "description": "Decimal as string (avoid float)" },
+    "currency": { "type": "string", "default": "VND" },
+    "completedAt": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

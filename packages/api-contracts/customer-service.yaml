@@ -1,0 +1,78 @@
+openapi: 3.1.0
+info:
+  title: BSS Customer Management API
+  description: TM Forum TMF629 Customer Management
+  version: 4.0.0
+
+servers:
+  - url: https://api.bss.example.com/api/tmf-api/customerManagement/v4
+
+paths:
+  /customer:
+    get:
+      summary: List customers
+      parameters:
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        '200':
+          description: A list of customers.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Customer' }
+
+    post:
+      summary: Create a customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerCreate' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+
+  /customer/{id}:
+    get:
+      summary: Get a customer
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: A customer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '404':
+          description: Not found.
+
+components:
+  schemas:
+    Customer:
+      type: object
+      required: [id, name, status]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        status: { type: string, enum: [active, suspended, closed] }
+        createdAt: { type: string, format: date-time }
+
+    CustomerCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+        email: { type: string, format: email }
