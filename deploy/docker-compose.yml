@@ -1,0 +1,79 @@
+# Local development stack. Brings up the same dependencies the services
+# would talk to in AWS — but on your laptop, free, offline-capable.
+#
+# Usage:
+#   docker compose up -d              # start everything in background
+#   docker compose ps                 # check status
+#   docker compose logs -f localstack # follow logs
+#   docker compose down               # stop
+#   docker compose down -v            # stop AND wipe data
+#
+# After bring-up:
+#   - Postgres on   localhost:5432
+#   - Redis on      localhost:6379
+#   - LocalStack on localhost:4566 (S3, SQS, EventBridge, Secrets Manager emulation)
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: bss-postgres
+    environment:
+      POSTGRES_USER: bss
+      POSTGRES_PASSWORD: bss
+      POSTGRES_MULTIPLE_DATABASES: customer,product,orders,billing
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bss"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: bss-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  localstack:
+    image: localstack/localstack:3.4
+    container_name: bss-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: s3,sqs,events,secretsmanager,iam,sts
+      DEBUG: "0"
+      DEFAULT_REGION: ap-southeast-1
+      EAGER_SERVICE_LOADING: "1"
+      PERSISTENCE: "1"
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - ./localstack-init:/etc/localstack/init/ready.d:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:4566/_localstack/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Optional: Postgres admin UI
+  adminer:
+    image: adminer:4
+    container_name: bss-adminer
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  localstack-data:
