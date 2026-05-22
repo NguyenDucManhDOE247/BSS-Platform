@@ -1,49 +1,52 @@
-# Values for prometheus-community/kube-prometheus-stack
-#
-# Install with:
+# kube-prometheus-stack values, tuned for AWS EKS.
+# Install:
 #   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 #   helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
-#     --namespace monitoring --create-namespace \
-#     -f monitoring/prometheus/values.yaml
-#
-# This bundle includes:
-#   • Prometheus operator + Prometheus server
-#   • Grafana with default Kubernetes dashboards
-#   • Alertmanager
-#   • node-exporter + kube-state-metrics
+#     -n monitoring --create-namespace \
+#     -f platform/monitoring/prometheus/values.yaml
 
 prometheus:
   prometheusSpec:
-    retention: 15d
-    retentionSize: "8GiB"
+    retention: 10d
+    retentionSize: 8GB
     resources:
       requests:
         cpu: 200m
-        memory: 512Mi
+        memory: 1Gi
       limits:
         memory: 2Gi
-
-    # Scrape pods that have prometheus.io/scrape=true annotations
-    # (this is what the customer-service deployment sets).
     serviceMonitorSelectorNilUsesHelmValues: false
     podMonitorSelectorNilUsesHelmValues: false
-
     storageSpec:
       volumeClaimTemplate:
         spec:
-          storageClassName: standard-rwo
+          storageClassName: gp3
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:
-              storage: 20Gi
-
+              storage: 10Gi
   ingress:
-    enabled: false   # use kubectl port-forward locally; expose properly later
+    enabled: false
 
 grafana:
-  adminPassword: changeme   # rotate immediately; better: use secret + external secrets
-
-  # Pre-load our custom BSS dashboards (mounted from a ConfigMap).
+  adminPassword: CHANGE_ME
+  persistence:
+    enabled: true
+    storageClassName: gp3
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  service:
+    type: ClusterIP
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
   dashboardProviders:
     dashboardproviders.yaml:
       apiVersion: 1
@@ -53,38 +56,46 @@ grafana:
           type: file
           options:
             path: /var/lib/grafana/dashboards/bss
-
   dashboardsConfigMaps:
-    bss: bss-dashboards   # references the ConfigMap we apply separately
-
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
+    bss: bss-dashboards
 
 alertmanager:
   alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 2Gi
     resources:
       requests:
         cpu: 50m
         memory: 128Mi
-
   config:
     route:
-      group_by: ['alertname', 'service']
+      group_by: ["alertname", "service"]
       group_wait: 30s
       group_interval: 5m
       repeat_interval: 4h
-      receiver: 'default'
+      receiver: "default"
     receivers:
-      - name: 'default'
-        # Hook this up to Slack / PagerDuty / email later.
-        # See: https://prometheus.io/docs/alerting/latest/configuration/
+      - name: "default"
+        # Wire to Slack / Discord / PagerDuty:
+        # slack_configs:
+        #   - api_url: https://hooks.slack.com/services/...
+        #     channel: "#bss-alerts"
 
-# Use GKE's managed Prometheus where possible; we still run the operator for
-# Grafana + Alertmanager, but disable the in-cluster Prometheus scraping of
-# heavy node-level metrics that managed Prometheus already covers.
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false # EKS managed
+    kubeScheduler: false         # EKS managed
+    kubeProxy: false
+
 kube-state-metrics:
   enabled: true
+
 nodeExporter:
   enabled: true

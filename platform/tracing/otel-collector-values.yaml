@@ -1,0 +1,55 @@
+# OpenTelemetry Collector — receives OTLP traces from services, exports to AWS X-Ray.
+# Install:
+#   helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+#   helm upgrade --install otel-collector open-telemetry/opentelemetry-collector \
+#     -n observability --create-namespace \
+#     -f platform/tracing/otel-collector-values.yaml \
+#     --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::ACCOUNT_ID:role/bss-dev-otel
+
+mode: deployment
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+  processors:
+    batch:
+      timeout: 5s
+      send_batch_size: 1000
+    memory_limiter:
+      check_interval: 5s
+      limit_mib: 400
+      spike_limit_mib: 100
+
+  exporters:
+    awsxray:
+      region: ap-southeast-1
+    debug:
+      verbosity: basic
+
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [awsxray]
+
+serviceAccount:
+  create: true
+  name: otel-collector
+  annotations: {} # IRSA on install
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 200Mi
+  limits:
+    memory: 500Mi
