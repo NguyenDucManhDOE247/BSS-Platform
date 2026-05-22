@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Root base — pulls in every service's base. Overlays consume this.
+resources:
+  - namespace.yaml
+  - customer-service
+  # Add other services as they are scaffolded:
+  # - product-catalog
+  # - order-management
+  # - billing-service
+  # - api-gateway
+  # - web-portal
+  # - admin-console

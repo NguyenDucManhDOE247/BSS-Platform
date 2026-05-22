@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bss
+  labels:
+    name: bss
+    purpose: business-support-system

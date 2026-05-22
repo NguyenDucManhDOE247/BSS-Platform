@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: bss
+
+resources:
+  - ../../base
+
+# Image tag is overridden by CD (kustomize edit set image).
+images:
+  - name: customer-service
+    newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/customer-service
+    newTag: dev
+
+# Env-specific config (DB endpoint, log level, feature flags).
+configMapGenerator:
+  - name: customer-service-config
+    literals:
+      - DB_URL=jdbc:postgresql://bss-dev.cluster-xyz.ap-southeast-1.rds.amazonaws.com:5432/customer
+      - LOG_LEVEL=DEBUG
+
+# IRSA: bind the KSA to an IAM role that grants access to Secrets Manager / RDS.
+patches:
+  - target:
+      kind: ServiceAccount
+      name: customer-service
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-dev-customer-service

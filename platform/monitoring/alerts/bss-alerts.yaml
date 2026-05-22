@@ -1,0 +1,82 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: bss-alerts
+  namespace: monitoring
+  labels:
+    release: monitoring   # so kube-prometheus-stack picks it up
+spec:
+  groups:
+    - name: bss.platform.rules
+      interval: 30s
+      rules:
+        # ---- Availability ---- #
+        - alert: BssServiceDown
+          expr: |
+            up{namespace="bss"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Service {{ $labels.job }} is down"
+            description: "{{ $labels.job }} in {{ $labels.namespace }} has been unreachable for 2 minutes."
+
+        # ---- Latency (Spring Boot via Micrometer) ---- #
+        - alert: BssHighRequestLatency
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le, application, uri) (
+                rate(http_server_requests_seconds_bucket{namespace="bss"}[5m])
+              )
+            ) > 1.0
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "p95 latency above 1s for {{ $labels.application }} {{ $labels.uri }}"
+            description: "p95 latency has been > 1s for 10 minutes."
+
+        # ---- Error rate ---- #
+        - alert: BssHighErrorRate
+          expr: |
+            sum by (application) (
+              rate(http_server_requests_seconds_count{namespace="bss",status=~"5.."}[5m])
+            )
+            /
+            sum by (application) (
+              rate(http_server_requests_seconds_count{namespace="bss"}[5m])
+            )
+            > 0.05
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "{{ $labels.application }} 5xx rate above 5%"
+
+        # ---- Pod restarts (CrashLoopBackoff canary) ---- #
+        - alert: BssPodCrashLooping
+          expr: |
+            rate(kube_pod_container_status_restarts_total{namespace="bss"}[15m]) > 0
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Pod {{ $labels.pod }} restarting repeatedly"
+
+        # ---- JVM heap pressure ---- #
+        - alert: BssJvmHeapHigh
+          expr: |
+            sum by (pod) (jvm_memory_used_bytes{area="heap",namespace="bss"})
+            /
+            sum by (pod) (jvm_memory_max_bytes{area="heap",namespace="bss"})
+            > 0.85
+          for: 15m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "JVM heap > 85% on {{ $labels.pod }}"
