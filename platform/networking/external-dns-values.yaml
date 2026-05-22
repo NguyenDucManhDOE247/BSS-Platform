@@ -1,0 +1,32 @@
+# Helm values for external-dns (creates Route 53 records from Ingress/Service annotations).
+# Install:
+#   helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/
+#   helm upgrade --install external-dns external-dns/external-dns -n kube-system \
+#     -f platform/networking/external-dns-values.yaml \
+#     --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::ACCOUNT_ID:role/bss-dev-external-dns
+
+provider: aws
+
+aws:
+  region: ap-southeast-1
+  zoneType: public
+
+policy: sync # also delete records when Ingress is removed
+
+sources:
+  - service
+  - ingress
+
+txtOwnerId: "" # set to your cluster name on install
+
+serviceAccount:
+  create: true
+  name: external-dns
+  annotations: {} # set IRSA role-arn on install
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 100Mi
+  limits:
+    memory: 200Mi

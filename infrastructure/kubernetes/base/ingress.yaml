@@ -1,0 +1,42 @@
+# Single ALB fronting the whole platform.
+# Host names are filled per-env in overlays.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bss-ingress
+  namespace: bss
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health
+    # Cert ARN injected per env via overlay (acm.aws/listener-arn or certificate-arn).
+    # external-dns annotation creates a Route 53 record automatically.
+spec:
+  rules:
+    - host: REPLACE_ME_HOST
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 80
+          - path: /admin
+            pathType: Prefix
+            backend:
+              service:
+                name: admin-console
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web-portal
+                port:
+                  number: 80

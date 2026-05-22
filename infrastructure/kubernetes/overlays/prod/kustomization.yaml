@@ -6,27 +6,25 @@ namespace: bss
 resources:
   - ../../base
 
-# Image tag overridden by CD pipeline via: kustomize edit set image NAME=NEW
 images:
   - name: customer-service
     newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/customer-service
-    newTag: dev
+    newTag: v0.0.0
 
-# Env-specific config (DB host injected via Secrets CSI; only logging knobs here).
 configMapGenerator:
   - name: customer-service-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
-      - LOG_LEVEL=DEBUG
+      - LOG_LEVEL=INFO
       - AWS_REGION=ap-southeast-1
       - DB_NAME=customer
 
 replicas:
   - name: customer-service
-    count: 1 # dev runs fewer replicas to save cost
+    count: 3
 
+# Production-only patches: tighter resources, stricter PDB.
 patches:
-  # IRSA binding for customer-service
   - target:
       kind: ServiceAccount
       name: customer-service
@@ -34,16 +32,34 @@ patches:
       - op: add
         path: /metadata/annotations
         value:
-          eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-dev-customer-service
+          eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-prod-customer-service
 
-  # Ingress hostname for dev
   - target:
       kind: Ingress
       name: bss-ingress
     patch: |-
       - op: replace
         path: /spec/rules/0/host
-        value: dev.bss.example.com
+        value: bss.example.com
       - op: add
         path: /metadata/annotations/external-dns.alpha.kubernetes.io~1hostname
-        value: dev.bss.example.com
+        value: bss.example.com
+
+  - target:
+      kind: PodDisruptionBudget
+      name: customer-service
+    patch: |-
+      - op: replace
+        path: /spec/minAvailable
+        value: 2 # tighter in prod
+
+  - target:
+      kind: Deployment
+      name: customer-service
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "500m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "768Mi"

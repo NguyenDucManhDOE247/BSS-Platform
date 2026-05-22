@@ -5,7 +5,8 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - customer-service
-  # Add other services as they are scaffolded:
+  - ingress.yaml
+  # Add when scaffolded:
   # - product-catalog
   # - order-management
   # - billing-service
