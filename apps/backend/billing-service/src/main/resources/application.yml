@@ -3,18 +3,24 @@ spring:
     name: billing-service
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/billing}
-    username: ${DB_USER:postgres}
-    password: ${DB_PASSWORD:postgres}
+    username: ${DB_USER:bss}
+    password: ${DB_PASSWORD:bss}
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
 
 aws:
+  region: ${AWS_REGION:ap-southeast-1}
+  endpoint-url: ${AWS_ENDPOINT_URL:} # set to http://localhost:4566 for LocalStack
   sqs:
-    queue-url: ${SQS_QUEUE_URL:https://sqs.ap-southeast-1.amazonaws.com/000000000000/bss-dev-billing-orders}
+    queue-url: ${SQS_QUEUE_URL:http://localhost:4566/000000000000/bss-dev-billing-orders}
 
 server:
   port: 8080
