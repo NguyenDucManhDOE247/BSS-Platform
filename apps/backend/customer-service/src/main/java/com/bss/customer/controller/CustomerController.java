@@ -1,63 +1,67 @@
 package com.bss.customer.controller;
 
+import com.bss.customer.dto.PatchCustomerRequest;
 import com.bss.customer.model.Customer;
-import com.bss.customer.repository.CustomerRepository;
+import com.bss.customer.service.CustomerService;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.net.URI;
 import java.util.List;
 import java.util.UUID;
 
 /**
- * Customer REST API.
- *
- * Paths intentionally follow TMF629 conventions:
+ * TMF629 Customer Management.
  *   GET    /tmf-api/customerManagement/v4/customer
  *   POST   /tmf-api/customerManagement/v4/customer
  *   GET    /tmf-api/customerManagement/v4/customer/{id}
- *   PATCH  /tmf-api/customerManagement/v4/customer/{id}
+ *   PATCH  /tmf-api/customerManagement/v4/customer/{id}     (application/merge-patch+json)
  *   DELETE /tmf-api/customerManagement/v4/customer/{id}
  */
 @RestController
 @RequestMapping("/tmf-api/customerManagement/v4/customer")
 public class CustomerController {
 
-    private final CustomerRepository repository;
+    private final CustomerService service;
 
-    public CustomerController(CustomerRepository repository) {
-        this.repository = repository;
+    public CustomerController(CustomerService service) {
+        this.service = service;
     }
 
     @GetMapping
-    public List<Customer> list() {
-        return repository.findAll();
+    public ResponseEntity<List<Customer>> list(
+            @RequestParam(defaultValue = "0") int offset,
+            @RequestParam(defaultValue = "20") int limit) {
+        var page = service.list(offset, Math.min(limit, 100));
+        return ResponseEntity.ok()
+                .header("X-Total-Count", String.valueOf(page.getTotalElements()))
+                .body(page.getContent());
     }
 
     @PostMapping
     public ResponseEntity<Customer> create(@Valid @RequestBody Customer customer) {
-        Customer saved = repository.save(customer);
+        var saved = service.create(customer);
         return ResponseEntity
                 .created(URI.create("/tmf-api/customerManagement/v4/customer/" + saved.getId()))
                 .body(saved);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Customer> get(@PathVariable UUID id) {
-        return repository.findById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public Customer get(@PathVariable UUID id) {
+        return service.get(id);
+    }
+
+    @PatchMapping(value = "/{id}",
+            consumes = {MediaType.APPLICATION_JSON_VALUE, "application/merge-patch+json"})
+    public Customer patch(@PathVariable UUID id, @Valid @RequestBody PatchCustomerRequest req) {
+        return service.patch(id, req);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
-        if (!repository.existsById(id)) {
-            return ResponseEntity.notFound().build();
-        }
-        repository.deleteById(id);
+        service.delete(id);
         return ResponseEntity.noContent().build();
     }
-
-    // TODO(learner): implement PATCH (TMF629 uses application/merge-patch+json),
-    // plus filtering, pagination, and event notification via TMF688.
 }
