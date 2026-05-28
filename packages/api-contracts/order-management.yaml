@@ -1,0 +1,96 @@
+openapi: 3.1.0
+info:
+  title: BSS Product Order Management API
+  description: TM Forum TMF622 Product Order Management (subset)
+  version: 4.0.0
+
+servers:
+  - url: https://api.bss.example.com/api/tmf-api/orderManagement/v4
+
+paths:
+  /productOrder:
+    post:
+      summary: Create a product order
+      description: Order is created in Acknowledged state; outbox emits OrderCompleted on commit.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOrder' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductOrder' }
+        '422': { description: Validation error. }
+    get:
+      summary: List orders for a customer
+      parameters:
+        - { in: query, name: customerId, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: offset,     schema: { type: integer, default: 0 } }
+        - { in: query, name: limit,      schema: { type: integer, default: 20, maximum: 100 } }
+      responses:
+        '200':
+          description: A list of orders.
+          headers:
+            X-Total-Count: { schema: { type: integer } }
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ProductOrder' }
+
+  /productOrder/{id}:
+    get:
+      summary: Get an order
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: An order., content: { application/json: { schema: { $ref: '#/components/schemas/ProductOrder' } } } }
+        '404': { description: Not found. }
+
+components:
+  schemas:
+    OrderState:
+      type: string
+      enum: [Acknowledged, InProgress, Completed, Cancelled, Failed]
+
+    OrderItem:
+      type: object
+      required: [productOfferingId, quantity, unitPrice]
+      properties:
+        id:                   { type: string, format: uuid }
+        productOfferingId:    { type: string, format: uuid }
+        productOfferingName:  { type: string }
+        quantity:             { type: integer, minimum: 1 }
+        unitPrice:            { type: number, format: float }
+
+    ProductOrder:
+      type: object
+      required: [id, customerId, state, totalAmount, currency]
+      properties:
+        id:           { type: string, format: uuid }
+        customerId:   { type: string, format: uuid }
+        state:        { $ref: '#/components/schemas/OrderState' }
+        category:     { type: string }
+        description:  { type: string }
+        totalAmount:  { type: number, format: float }
+        currency:     { type: string, default: VND }
+        completedAt:  { type: string, format: date-time }
+        createdAt:    { type: string, format: date-time }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OrderItem' }
+
+    CreateOrder:
+      type: object
+      required: [customerId, items]
+      properties:
+        customerId:  { type: string, format: uuid }
+        category:    { type: string }
+        description: { type: string }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/OrderItem' }
