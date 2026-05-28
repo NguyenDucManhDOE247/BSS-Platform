@@ -1,0 +1,56 @@
+name: Feature request
+description: Suggest an improvement or a new capability.
+title: "feat: <short summary>"
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea! Please describe the problem first, then the proposed solution.
+        Architectural changes should reference a draft ADR under `docs/adr/`.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What user need or pain point does this address?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should change? Mention affected services / APIs / infra.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you think about and why is the proposal better?
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Roadmap phase
+      description: See `docs/ROADMAP.md`. Roughly which phase does this belong to?
+      options:
+        - "Phase 1 — local dev"
+        - "Phase 2 — AWS bootstrap"
+        - "Phase 3 — deploy infra"
+        - "Phase 4 — first service to AWS"
+        - "Phase 5 — CI/CD wiring"
+        - "Phase 6 — business logic"
+        - "Phase 7 — observability"
+        - "Phase 8 — staging / prod"
+        - "Phase 9 — production hardening"
+        - "Phase 10 — portfolio polish"
+        - "Beyond current roadmap"
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Diagrams, links, screenshots, references.

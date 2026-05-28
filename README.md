@@ -12,6 +12,21 @@
 [![AWS](https://img.shields.io/badge/AWS-EKS-FF9900?logo=amazon-aws)](https://aws.amazon.com/eks/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-WIP%20%E2%80%94%20Phase%201%20complete-blue)](docs/ROADMAP.md)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+## Table of contents
+
+- [What's here](#whats-here)
+- [Architecture](#architecture)
+- [Microservices (TM Forum-aligned)](#microservices-tm-forum-aligned)
+- [Tech stack](#tech-stack)
+- [Quick start](#quick-start)
+- [Project status](#project-status)
+- [Cost](#cost)
+- [Learning roadmap](#learning-roadmap)
+- [Repo conventions](#repo-conventions)
+- [Contributing & security](#contributing--security)
+- [License](#license)
 
 ## What's here
 
@@ -124,6 +139,20 @@ git tag v0.1.0    && git push --tags                  # → cd-prod (manual appr
 
 Full step-by-step guide in [docs/SETUP.md](docs/SETUP.md).
 
+## Project status
+
+Phase-by-phase tracking lives in [docs/ROADMAP.md](docs/ROADMAP.md). Today:
+
+| Phase | Status |
+|---|---|
+| 0 — Scaffold (monorepo, Terraform modules, CI/CD, docker-compose) | ✅ done |
+| 1 — Local dev (4 TMF services, frontend, contracts, K8s manifests) | ✅ code-complete |
+| 2 — AWS account bootstrap | ⏳ pending |
+| 3 — Deploy dev infra to EKS | ⏳ pending |
+| 4–10 — First service to AWS → CI/CD → observability → prod hardening | ⏳ pending |
+
+See [CHANGELOG.md](CHANGELOG.md) for the detailed v0.1.0 changelog.
+
 ## Cost
 
 | Environment | USD/day |
@@ -143,6 +172,12 @@ Full step-by-step guide in [docs/SETUP.md](docs/SETUP.md).
 ## Repo conventions
 
 This repo is co-developed with Claude Code. The full set of architectural decisions, coding conventions, security rules, and Phase-by-phase plan lives in [CLAUDE.md](CLAUDE.md).
+
+## Contributing & security
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — dev environment, commit convention, code style, PR checklist.
+- [SECURITY.md](SECURITY.md) — how to report a vulnerability (please **don't** open public issues for security bugs).
+- [CHANGELOG.md](CHANGELOG.md) — Keep-a-Changelog history.
 
 ## License
 

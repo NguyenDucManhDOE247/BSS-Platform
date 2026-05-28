@@ -1,0 +1,78 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly.
+title: "bug: <short summary>"
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. A clear repro is the single most important thing.
+        For security issues, please follow [SECURITY.md](../../SECURITY.md) instead.
+
+  - type: dropdown
+    id: service
+    attributes:
+      label: Affected service / area
+      multiple: true
+      options:
+        - customer-service
+        - product-catalog
+        - order-management
+        - billing-service
+        - api-gateway
+        - web-portal
+        - admin-console
+        - Terraform / AWS infra
+        - Kubernetes manifests
+        - CI/CD pipelines
+        - Local dev (docker-compose / LocalStack)
+        - Docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the bug.
+      placeholder: When I do X, Y happens but I expected Z.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands / API calls that trigger the bug.
+      render: bash
+      placeholder: |
+        1. make local-up
+        2. curl -X POST http://localhost:8081/tmf-api/customerManagement/v4/customer -d '...'
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / stack trace
+      render: shell
+
+  - type: input
+    id: commit
+    attributes:
+      label: Commit SHA / version
+      placeholder: e.g. v0.1.0 or 9533751
+
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: e.g. macOS 14 / JDK 21 / Docker Desktop 4.x
