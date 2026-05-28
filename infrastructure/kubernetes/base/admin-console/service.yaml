@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-console
+  namespace: bss
+  labels: { app: admin-console }
+spec:
+  type: ClusterIP
+  selector: { app: admin-console }
+  ports:
+    - { name: http, port: 80, targetPort: 8080 }

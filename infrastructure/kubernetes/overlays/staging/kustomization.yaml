@@ -7,9 +7,13 @@ resources:
   - ../../base
 
 images:
-  - name: customer-service
-    newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/customer-service
-    newTag: rc
+  - { name: customer-service,  newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/customer-service,  newTag: rc }
+  - { name: product-catalog,   newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/product-catalog,   newTag: rc }
+  - { name: order-management,  newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/order-management,  newTag: rc }
+  - { name: billing-service,   newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/billing-service,   newTag: rc }
+  - { name: api-gateway,       newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/api-gateway,       newTag: rc }
+  - { name: web-portal,        newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/web-portal,        newTag: rc }
+  - { name: admin-console,     newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/admin-console,     newTag: rc }
 
 configMapGenerator:
   - name: customer-service-config
@@ -17,25 +21,60 @@ configMapGenerator:
       - SPRING_PROFILES_ACTIVE=aws
       - LOG_LEVEL=INFO
       - AWS_REGION=ap-southeast-1
-      - DB_NAME=customer
+      - DB_URL=jdbc:postgresql://bss-staging-rds.CHANGE_ME.rds.amazonaws.com:5432/customer
+  - name: product-catalog-config
+    literals:
+      - SPRING_PROFILES_ACTIVE=aws
+      - LOG_LEVEL=INFO
+      - AWS_REGION=ap-southeast-1
+      - DB_URL=jdbc:postgresql://bss-staging-rds.CHANGE_ME.rds.amazonaws.com:5432/product
+  - name: order-management-config
+    literals:
+      - SPRING_PROFILES_ACTIVE=aws
+      - LOG_LEVEL=INFO
+      - AWS_REGION=ap-southeast-1
+      - EVENT_BUS_NAME=bss-staging-events
+      - DB_URL=jdbc:postgresql://bss-staging-rds.CHANGE_ME.rds.amazonaws.com:5432/orders
+  - name: billing-service-config
+    literals:
+      - SPRING_PROFILES_ACTIVE=aws
+      - LOG_LEVEL=INFO
+      - AWS_REGION=ap-southeast-1
+      - SQS_QUEUE_URL=https://sqs.ap-southeast-1.amazonaws.com/CHANGE_ME_ACCOUNT_ID/bss-staging-billing-orders
+      - DB_URL=jdbc:postgresql://bss-staging-rds.CHANGE_ME.rds.amazonaws.com:5432/billing
 
 replicas:
-  - name: customer-service
-    count: 2
+  - { name: customer-service,  count: 2 }
+  - { name: product-catalog,   count: 2 }
+  - { name: order-management,  count: 2 }
+  - { name: billing-service,   count: 2 }
+  - { name: api-gateway,       count: 2 }
+  - { name: web-portal,        count: 2 }
+  - { name: admin-console,     count: 2 }
 
 patches:
-  - target:
-      kind: ServiceAccount
-      name: customer-service
+  - target: { kind: ServiceAccount, name: customer-service }
     patch: |-
       - op: add
         path: /metadata/annotations
-        value:
-          eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-staging-customer-service
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-staging-customer-service }
+  - target: { kind: ServiceAccount, name: product-catalog }
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-staging-product-catalog }
+  - target: { kind: ServiceAccount, name: order-management }
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-staging-order-management }
+  - target: { kind: ServiceAccount, name: billing-service }
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-staging-billing-service }
 
-  - target:
-      kind: Ingress
-      name: bss-ingress
+  - target: { kind: Ingress, name: bss-ingress }
     patch: |-
       - op: replace
         path: /spec/rules/0/host
