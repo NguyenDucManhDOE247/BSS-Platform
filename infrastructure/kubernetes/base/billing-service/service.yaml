@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-service
+  namespace: bss
+  labels: { app: billing-service }
+spec:
+  type: ClusterIP
+  selector: { app: billing-service }
+  ports:
+    - { name: http, port: 80, targetPort: 8080 }

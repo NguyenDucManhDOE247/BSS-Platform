@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-console
+  namespace: bss
+  labels:
+    app: admin-console
+    tier: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: admin-console }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels:
+        app: admin-console
+        tier: frontend
+    spec:
+      serviceAccountName: admin-console
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app: admin-console }
+      containers:
+        - name: app
+          image: admin-console:latest
+          ports:
+            - { containerPort: 8080, name: http }
+          startupProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            failureThreshold: 20
+            periodSeconds: 3
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: "50m",  memory: "64Mi" }
+            limits:   { cpu: "300m", memory: "128Mi" }
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: cache,   mountPath: /var/cache/nginx }
+            - { name: pid,     mountPath: /var/run }
+            - { name: tmp,     mountPath: /tmp }
+      volumes:
+        - { name: cache, emptyDir: {} }
+        - { name: pid,   emptyDir: {} }
+        - { name: tmp,   emptyDir: {} }

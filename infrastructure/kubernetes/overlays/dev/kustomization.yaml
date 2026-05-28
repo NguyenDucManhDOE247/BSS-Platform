@@ -6,40 +6,93 @@ namespace: bss
 resources:
   - ../../base
 
-# Image tag overridden by CD pipeline via: kustomize edit set image NAME=NEW
+# Image tags: CD pipeline runs `kustomize edit set image NAME=registry/bss/NAME:SHA`.
 images:
   - name: customer-service
     newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/customer-service
     newTag: dev
+  - name: product-catalog
+    newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/product-catalog
+    newTag: dev
+  - name: order-management
+    newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/order-management
+    newTag: dev
+  - name: billing-service
+    newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/billing-service
+    newTag: dev
+  - name: api-gateway
+    newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/api-gateway
+    newTag: dev
+  - name: web-portal
+    newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/web-portal
+    newTag: dev
+  - name: admin-console
+    newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/admin-console
+    newTag: dev
 
-# Env-specific config (DB host injected via Secrets CSI; only logging knobs here).
 configMapGenerator:
   - name: customer-service-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOG_LEVEL=DEBUG
       - AWS_REGION=ap-southeast-1
-      - DB_NAME=customer
+      - DB_URL=jdbc:postgresql://bss-dev-rds.CHANGE_ME.rds.amazonaws.com:5432/customer
+  - name: product-catalog-config
+    literals:
+      - SPRING_PROFILES_ACTIVE=aws
+      - LOG_LEVEL=DEBUG
+      - AWS_REGION=ap-southeast-1
+      - DB_URL=jdbc:postgresql://bss-dev-rds.CHANGE_ME.rds.amazonaws.com:5432/product
+  - name: order-management-config
+    literals:
+      - SPRING_PROFILES_ACTIVE=aws
+      - LOG_LEVEL=DEBUG
+      - AWS_REGION=ap-southeast-1
+      - EVENT_BUS_NAME=bss-dev-events
+      - DB_URL=jdbc:postgresql://bss-dev-rds.CHANGE_ME.rds.amazonaws.com:5432/orders
+  - name: billing-service-config
+    literals:
+      - SPRING_PROFILES_ACTIVE=aws
+      - LOG_LEVEL=DEBUG
+      - AWS_REGION=ap-southeast-1
+      - SQS_QUEUE_URL=https://sqs.ap-southeast-1.amazonaws.com/CHANGE_ME_ACCOUNT_ID/bss-dev-billing-orders
+      - DB_URL=jdbc:postgresql://bss-dev-rds.CHANGE_ME.rds.amazonaws.com:5432/billing
 
+# Dev runs 1 replica each to save cost.
 replicas:
-  - name: customer-service
-    count: 1 # dev runs fewer replicas to save cost
+  - { name: customer-service,  count: 1 }
+  - { name: product-catalog,   count: 1 }
+  - { name: order-management,  count: 1 }
+  - { name: billing-service,   count: 1 }
+  - { name: api-gateway,       count: 1 }
+  - { name: web-portal,        count: 1 }
+  - { name: admin-console,     count: 1 }
 
 patches:
-  # IRSA binding for customer-service
-  - target:
-      kind: ServiceAccount
-      name: customer-service
+  # IRSA bindings — one IAM role per service, scoped to the resources it needs.
+  - target: { kind: ServiceAccount, name: customer-service }
     patch: |-
       - op: add
         path: /metadata/annotations
-        value:
-          eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-dev-customer-service
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-dev-customer-service }
+  - target: { kind: ServiceAccount, name: product-catalog }
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-dev-product-catalog }
+  - target: { kind: ServiceAccount, name: order-management }
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-dev-order-management }
+  - target: { kind: ServiceAccount, name: billing-service }
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-dev-billing-service }
 
-  # Ingress hostname for dev
-  - target:
-      kind: Ingress
-      name: bss-ingress
+  # Ingress hostname for dev.
+  - target: { kind: Ingress, name: bss-ingress }
     patch: |-
       - op: replace
         path: /spec/rules/0/host

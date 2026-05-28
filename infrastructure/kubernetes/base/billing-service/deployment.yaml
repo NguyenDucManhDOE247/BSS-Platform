@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-service
+  namespace: bss
+  labels:
+    app: billing-service
+    tier: backend
+    tm-forum-api: tmf678
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: billing-service }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels:
+        app: billing-service
+        tier: backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: billing-service
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app: billing-service }
+      containers:
+        - name: app
+          image: billing-service:latest
+          ports:
+            - { containerPort: 8080, name: http }
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "aws"
+            - name: DB_URL
+              valueFrom:
+                configMapKeyRef: { name: billing-service-config, key: DB_URL }
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef: { name: billing-db-credentials, key: username }
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: billing-db-credentials, key: password }
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef: { name: billing-service-config, key: AWS_REGION }
+            - name: SQS_QUEUE_URL
+              valueFrom:
+                configMapKeyRef: { name: billing-service-config, key: SQS_QUEUE_URL }
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8080 }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits:   { cpu: "1000m", memory: "1Gi" }
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }

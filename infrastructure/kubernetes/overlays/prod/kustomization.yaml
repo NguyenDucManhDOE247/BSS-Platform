@@ -7,9 +7,13 @@ resources:
   - ../../base
 
 images:
-  - name: customer-service
-    newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/customer-service
-    newTag: v0.0.0
+  - { name: customer-service,  newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/customer-service,  newTag: v0.0.0 }
+  - { name: product-catalog,   newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/product-catalog,   newTag: v0.0.0 }
+  - { name: order-management,  newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/order-management,  newTag: v0.0.0 }
+  - { name: billing-service,   newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/billing-service,   newTag: v0.0.0 }
+  - { name: api-gateway,       newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/api-gateway,       newTag: v0.0.0 }
+  - { name: web-portal,        newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/web-portal,        newTag: v0.0.0 }
+  - { name: admin-console,     newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/admin-console,     newTag: v0.0.0 }
 
 configMapGenerator:
   - name: customer-service-config
@@ -17,26 +21,60 @@ configMapGenerator:
       - SPRING_PROFILES_ACTIVE=aws
       - LOG_LEVEL=INFO
       - AWS_REGION=ap-southeast-1
-      - DB_NAME=customer
+      - DB_URL=jdbc:postgresql://bss-prod-rds.CHANGE_ME.rds.amazonaws.com:5432/customer
+  - name: product-catalog-config
+    literals:
+      - SPRING_PROFILES_ACTIVE=aws
+      - LOG_LEVEL=INFO
+      - AWS_REGION=ap-southeast-1
+      - DB_URL=jdbc:postgresql://bss-prod-rds.CHANGE_ME.rds.amazonaws.com:5432/product
+  - name: order-management-config
+    literals:
+      - SPRING_PROFILES_ACTIVE=aws
+      - LOG_LEVEL=INFO
+      - AWS_REGION=ap-southeast-1
+      - EVENT_BUS_NAME=bss-prod-events
+      - DB_URL=jdbc:postgresql://bss-prod-rds.CHANGE_ME.rds.amazonaws.com:5432/orders
+  - name: billing-service-config
+    literals:
+      - SPRING_PROFILES_ACTIVE=aws
+      - LOG_LEVEL=INFO
+      - AWS_REGION=ap-southeast-1
+      - SQS_QUEUE_URL=https://sqs.ap-southeast-1.amazonaws.com/CHANGE_ME_ACCOUNT_ID/bss-prod-billing-orders
+      - DB_URL=jdbc:postgresql://bss-prod-rds.CHANGE_ME.rds.amazonaws.com:5432/billing
 
 replicas:
-  - name: customer-service
-    count: 3
+  - { name: customer-service,  count: 3 }
+  - { name: product-catalog,   count: 3 }
+  - { name: order-management,  count: 3 }
+  - { name: billing-service,   count: 3 }
+  - { name: api-gateway,       count: 3 }
+  - { name: web-portal,        count: 3 }
+  - { name: admin-console,     count: 2 }
 
-# Production-only patches: tighter resources, stricter PDB.
 patches:
-  - target:
-      kind: ServiceAccount
-      name: customer-service
+  - target: { kind: ServiceAccount, name: customer-service }
     patch: |-
       - op: add
         path: /metadata/annotations
-        value:
-          eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-prod-customer-service
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-prod-customer-service }
+  - target: { kind: ServiceAccount, name: product-catalog }
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-prod-product-catalog }
+  - target: { kind: ServiceAccount, name: order-management }
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-prod-order-management }
+  - target: { kind: ServiceAccount, name: billing-service }
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-prod-billing-service }
 
-  - target:
-      kind: Ingress
-      name: bss-ingress
+  - target: { kind: Ingress, name: bss-ingress }
     patch: |-
       - op: replace
         path: /spec/rules/0/host
@@ -45,21 +83,37 @@ patches:
         path: /metadata/annotations/external-dns.alpha.kubernetes.io~1hostname
         value: bss.example.com
 
-  - target:
-      kind: PodDisruptionBudget
-      name: customer-service
+  # Production hardening: tighter PDB minAvailable for backend.
+  - target: { kind: PodDisruptionBudget, name: customer-service }
     patch: |-
-      - op: replace
-        path: /spec/minAvailable
-        value: 2 # tighter in prod
+      - { op: replace, path: /spec/minAvailable, value: 2 }
+  - target: { kind: PodDisruptionBudget, name: product-catalog }
+    patch: |-
+      - { op: replace, path: /spec/minAvailable, value: 2 }
+  - target: { kind: PodDisruptionBudget, name: order-management }
+    patch: |-
+      - { op: replace, path: /spec/minAvailable, value: 2 }
+  - target: { kind: PodDisruptionBudget, name: billing-service }
+    patch: |-
+      - { op: replace, path: /spec/minAvailable, value: 2 }
+  - target: { kind: PodDisruptionBudget, name: api-gateway }
+    patch: |-
+      - { op: replace, path: /spec/minAvailable, value: 2 }
 
-  - target:
-      kind: Deployment
-      name: customer-service
+  # Bump backend resources for prod traffic.
+  - target: { kind: Deployment, name: customer-service }
     patch: |-
-      - op: replace
-        path: /spec/template/spec/containers/0/resources/requests/cpu
-        value: "500m"
-      - op: replace
-        path: /spec/template/spec/containers/0/resources/requests/memory
-        value: "768Mi"
+      - { op: replace, path: /spec/template/spec/containers/0/resources/requests/cpu, value: "500m" }
+      - { op: replace, path: /spec/template/spec/containers/0/resources/requests/memory, value: "768Mi" }
+  - target: { kind: Deployment, name: product-catalog }
+    patch: |-
+      - { op: replace, path: /spec/template/spec/containers/0/resources/requests/cpu, value: "500m" }
+      - { op: replace, path: /spec/template/spec/containers/0/resources/requests/memory, value: "768Mi" }
+  - target: { kind: Deployment, name: order-management }
+    patch: |-
+      - { op: replace, path: /spec/template/spec/containers/0/resources/requests/cpu, value: "500m" }
+      - { op: replace, path: /spec/template/spec/containers/0/resources/requests/memory, value: "768Mi" }
+  - target: { kind: Deployment, name: billing-service }
+    patch: |-
+      - { op: replace, path: /spec/template/spec/containers/0/resources/requests/cpu, value: "500m" }
+      - { op: replace, path: /spec/template/spec/containers/0/resources/requests/memory, value: "768Mi" }
