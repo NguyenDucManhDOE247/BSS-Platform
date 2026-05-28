@@ -1,36 +1,75 @@
 package com.bss.order.event;
 
+import com.bss.order.model.EventOutbox;
+import com.bss.order.repository.EventOutboxRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import software.amazon.awssdk.services.eventbridge.EventBridgeClient;
 import software.amazon.awssdk.services.eventbridge.model.PutEventsRequest;
 import software.amazon.awssdk.services.eventbridge.model.PutEventsRequestEntry;
+import software.amazon.awssdk.services.eventbridge.model.PutEventsResultEntry;
 
 import java.time.Instant;
+import java.util.List;
 
+/**
+ * Outbox drainer: scans unpublished rows and ships them to EventBridge.
+ * If PutEvents reports a failed entry, the corresponding row stays unpublished
+ * and we retry on the next tick.
+ */
 @Component
 public class OrderEventPublisher {
 
+    private static final Logger log = LoggerFactory.getLogger(OrderEventPublisher.class);
+    private static final int BATCH_SIZE = 10; // EventBridge PutEvents hard limit is 10 entries.
+
     private final EventBridgeClient client;
+    private final EventOutboxRepository outbox;
     private final String eventBusName;
 
     public OrderEventPublisher(EventBridgeClient client,
+                               EventOutboxRepository outbox,
                                @Value("${aws.eventbridge.bus-name}") String eventBusName) {
         this.client = client;
+        this.outbox = outbox;
         this.eventBusName = eventBusName;
     }
 
-    public void publishOrderCompleted(String orderId, String customerId, String amount) {
-        var entry = PutEventsRequestEntry.builder()
-                .eventBusName(eventBusName)
-                .source("bss.order")
-                .detailType("OrderCompleted")
-                .time(Instant.now())
-                .detail(String.format(
-                        "{\"orderId\":\"%s\",\"customerId\":\"%s\",\"amount\":\"%s\"}",
-                        orderId, customerId, amount))
-                .build();
+    @Scheduled(fixedDelay = 2000)
+    @Transactional
+    public void drain() {
+        List<EventOutbox> pending = outbox.findUnpublished(PageRequest.of(0, BATCH_SIZE));
+        if (pending.isEmpty()) {
+            return;
+        }
 
-        client.putEvents(PutEventsRequest.builder().entries(entry).build());
+        var entries = pending.stream()
+                .map(e -> PutEventsRequestEntry.builder()
+                        .eventBusName(eventBusName)
+                        .source("bss.order")
+                        .detailType(e.getEventType())
+                        .time(Instant.now())
+                        .detail(e.getPayload())
+                        .build())
+                .toList();
+
+        var result = client.putEvents(PutEventsRequest.builder().entries(entries).build());
+
+        List<PutEventsResultEntry> resultEntries = result.entries();
+        for (int i = 0; i < resultEntries.size(); i++) {
+            PutEventsResultEntry r = resultEntries.get(i);
+            if (r.errorCode() == null) {
+                pending.get(i).markPublished();
+            } else {
+                log.warn("EventBridge failed for outbox {}: {} {}",
+                        pending.get(i).getId(), r.errorCode(), r.errorMessage());
+            }
+        }
+        outbox.saveAll(pending);
     }
 }
