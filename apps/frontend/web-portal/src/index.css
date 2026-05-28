@@ -1,0 +1,29 @@
+/* Minimal portal styling — only what the views actually need. */
+
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; color: #1a1a1a; }
+a { color: #0066cc; text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { cursor: pointer; border-radius: 4px; border: 1px solid #0066cc; background: #0066cc; color: #fff; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+h1 { font-size: 1.5rem; margin-top: 0; }
+code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
+
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.plan-card {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fff;
+}
+
+.plan-card h2 { font-size: 1.1rem; margin: 0 0 8px; }
+.plan-card__price { font-size: 1.3rem; font-weight: 600; color: #0066cc; margin: 8px 0; }
+.plan-card__price span { font-size: 0.9rem; color: #666; font-weight: 400; margin-left: 4px; }
+
+table th, table td { padding: 8px; }
