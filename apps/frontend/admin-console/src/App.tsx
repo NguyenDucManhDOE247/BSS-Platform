@@ -1,35 +1,22 @@
 import { Routes, Route, Link } from 'react-router-dom';
-
-function Dashboard() {
-  return (
-    <section>
-      <h1>Admin Dashboard</h1>
-      <p>Internal-only console for ops and customer support staff.</p>
-    </section>
-  );
-}
-
-function CustomersPage() {
-  return (
-    <section>
-      <h1>Customers</h1>
-      <p>TODO: search + manage TMF629 customers.</p>
-    </section>
-  );
-}
+import DashboardPage from './pages/DashboardPage';
+import CustomersPage from './pages/CustomersPage';
+import OfferingsPage from './pages/OfferingsPage';
 
 export default function App() {
   return (
     <div>
-      <nav style={{ padding: 16, borderBottom: '1px solid #ddd', background: '#f8f8f8' }}>
-        <strong style={{ marginRight: 16 }}>BSS Admin</strong>
-        <Link to="/" style={{ marginRight: 12 }}>Dashboard</Link>
+      <nav style={{ padding: 16, borderBottom: '1px solid #ddd', background: '#f8f8f8', display: 'flex', gap: 16, alignItems: 'baseline' }}>
+        <strong>BSS Admin</strong>
+        <Link to="/">Dashboard</Link>
         <Link to="/customers">Customers</Link>
+        <Link to="/offerings">Catalog</Link>
       </nav>
-      <main style={{ padding: 16 }}>
+      <main style={{ padding: 16, maxWidth: 1100, margin: '0 auto' }}>
         <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<DashboardPage />} />
           <Route path="/customers" element={<CustomersPage />} />
+          <Route path="/offerings" element={<OfferingsPage />} />
         </Routes>
       </main>
     </div>
