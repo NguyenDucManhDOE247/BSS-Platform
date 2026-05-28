@@ -56,6 +56,11 @@ Thumbs.db
 *.swp
 *.swo
 
+# ─── Claude Code / AI assistants ──────────────────────────────────
+.agent/
+.claude/
+CLAUDE.local.md
+
 # ─── K8s ──────────────────────────────────────────────────────────
 kubeconfig
 *.kubeconfig

@@ -2,11 +2,16 @@
 
 > Production-grade reference implementation of a **Business Support System (BSS)** running on **Amazon EKS** — full monorepo with frontend, backend microservices, Infrastructure-as-Code, GitHub Actions CI/CD, and an observability stack.
 
-[![CI Backend](https://github.com/YOUR_USERNAME/bss-platform/actions/workflows/ci-backend.yml/badge.svg)](https://github.com/YOUR_USERNAME/bss-platform/actions/workflows/ci-backend.yml)
+[![CI Backend](https://github.com/gemmy94/bss-platform/actions/workflows/ci-backend.yml/badge.svg)](https://github.com/gemmy94/bss-platform/actions/workflows/ci-backend.yml)
+[![CI Frontend](https://github.com/gemmy94/bss-platform/actions/workflows/ci-frontend.yml/badge.svg)](https://github.com/gemmy94/bss-platform/actions/workflows/ci-frontend.yml)
+[![CI Terraform](https://github.com/gemmy94/bss-platform/actions/workflows/ci-terraform.yml/badge.svg)](https://github.com/gemmy94/bss-platform/actions/workflows/ci-terraform.yml)
+[![Java](https://img.shields.io/badge/Java-21-007396?logo=openjdk)](https://openjdk.org/projects/jdk/21/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2-6DB33F?logo=spring-boot)](https://spring.io/projects/spring-boot)
 [![Terraform](https://img.shields.io/badge/Terraform-1.7+-7B42BC?logo=terraform)](https://www.terraform.io/)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.30+-326CE5?logo=kubernetes)](https://kubernetes.io/)
 [![AWS](https://img.shields.io/badge/AWS-EKS-FF9900?logo=amazon-aws)](https://aws.amazon.com/eks/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/Status-WIP%20%E2%80%94%20Phase%201%20complete-blue)](docs/ROADMAP.md)
 
 ## What's here
 
