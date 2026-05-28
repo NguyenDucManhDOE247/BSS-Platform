@@ -1,0 +1,127 @@
+openapi: 3.1.0
+info:
+  title: BSS Customer Bill Management API
+  description: TM Forum TMF678 Customer Bill / Billing Account (subset)
+  version: 4.0.0
+
+servers:
+  - url: https://api.bss.example.com/api/tmf-api/billingManagement/v4
+
+paths:
+  /billingAccount:
+    get:
+      summary: List billing accounts
+      parameters:
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+        - { in: query, name: limit,  schema: { type: integer, default: 20, maximum: 100 } }
+      responses:
+        '200':
+          description: A list of billing accounts.
+          headers:
+            X-Total-Count: { schema: { type: integer } }
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/BillingAccount' }
+    post:
+      summary: Open a billing account (idempotent per customerId)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAccount' }
+      responses:
+        '201':
+          description: Created or existing account.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillingAccount' }
+
+  /billingAccount/{id}:
+    get:
+      summary: Get a billing account
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: A billing account., content: { application/json: { schema: { $ref: '#/components/schemas/BillingAccount' } } } }
+        '404': { description: Not found. }
+
+  /customerBill:
+    get:
+      summary: List invoices for a customer
+      parameters:
+        - { in: query, name: customerId, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: offset,     schema: { type: integer, default: 0 } }
+        - { in: query, name: limit,      schema: { type: integer, default: 20, maximum: 100 } }
+      responses:
+        '200':
+          description: A list of invoices.
+          headers:
+            X-Total-Count: { schema: { type: integer } }
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Invoice' }
+
+  /customerBill/{id}:
+    get:
+      summary: Get an invoice
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: An invoice., content: { application/json: { schema: { $ref: '#/components/schemas/Invoice' } } } }
+        '404': { description: Not found. }
+
+components:
+  schemas:
+    BillingAccount:
+      type: object
+      required: [id, customerId, name, state]
+      properties:
+        id:             { type: string, format: uuid }
+        customerId:     { type: string, format: uuid }
+        name:           { type: string }
+        state:          { type: string, enum: [Active, Suspended, Closed] }
+        paymentMethod:  { type: string, enum: [BankTransfer, CreditCard, EWallet, Cash] }
+        currency:       { type: string, default: VND }
+        createdAt:      { type: string, format: date-time }
+
+    CreateAccount:
+      type: object
+      required: [customerId, name]
+      properties:
+        customerId:     { type: string, format: uuid }
+        name:           { type: string, minLength: 1 }
+        paymentMethod:  { type: string, enum: [BankTransfer, CreditCard, EWallet, Cash] }
+        currency:       { type: string }
+
+    InvoiceItem:
+      type: object
+      required: [description, quantity, unitPrice, amount]
+      properties:
+        id:             { type: string, format: uuid }
+        description:    { type: string }
+        sourceOrderId:  { type: string, format: uuid }
+        quantity:       { type: integer, minimum: 1 }
+        unitPrice:      { type: number, format: float }
+        amount:         { type: number, format: float }
+
+    Invoice:
+      type: object
+      required: [id, billingAccountId, invoiceNumber, state, amount, currency, invoiceDate, dueDate]
+      properties:
+        id:                { type: string, format: uuid }
+        billingAccountId:  { type: string, format: uuid }
+        invoiceNumber:     { type: string }
+        state:             { type: string, enum: [New, Validated, Paid, PartiallyPaid, Cancelled] }
+        amount:            { type: number, format: float }
+        taxAmount:         { type: number, format: float }
+        currency:          { type: string, default: VND }
+        invoiceDate:       { type: string, format: date }
+        dueDate:           { type: string, format: date }
+        paidAt:            { type: string, format: date-time }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/InvoiceItem' }
