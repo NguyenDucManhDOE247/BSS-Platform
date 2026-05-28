@@ -88,11 +88,11 @@ Mục đích kép: **portfolio học tập platform-engineering** + **tham chi�
 
 | Service | Trách nhiệm | TMF API | Trạng thái |
 |---|---|---|---|
-| `customer-service` | Vòng đời khách hàng, identity | **TMF629** | ✅ Có scaffold CRUD |
-| `product-catalog` | Plans, offers, pricing | **TMF620** | 🚧 Placeholder controller |
-| `order-management` | Order capture + orchestration | **TMF622** | 🚧 Placeholder + EventBridge publisher |
-| `billing-service` | Charging, invoicing, payment | **TMF678** | 🚧 Placeholder + SQS consumer |
-| `api-gateway` | Routing, auth, rate-limit | — | 🚧 Routes configured |
+| `customer-service` | Vòng đời khách hàng, identity | **TMF629** | ✅ CRUD + PATCH (merge-patch+json), Flyway, Testcontainers IT |
+| `product-catalog` | Plans, offers, pricing | **TMF620** | ✅ Offering + Category + Specification, seed data, IT |
+| `order-management` | Order capture + orchestration | **TMF622** | ✅ Order + Item + **transactional outbox** → EventBridge |
+| `billing-service` | Charging, invoicing, payment | **TMF678** | ✅ Account + Invoice (VAT 10%) + **idempotent SQS consumer** |
+| `api-gateway` | Routing, auth, rate-limit | — | ✅ Routes configured (Spring Cloud Gateway) |
 
 ### Tương tác giữa service
 
@@ -507,7 +507,37 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 ## 13. Trạng thái hiện tại (cập nhật khi chuyển Phase)
 
 - **Ngày khởi tạo:** 2026-05-22
-- **Phase hiện tại:** 0 → 1 (chuẩn bị môi trường local + cài dependencies)
+- **Phase hiện tại:** 1 ✅ code-complete cho local (chờ user cài Java 21 + Docker để chạy)
 - **AWS account:** chưa tạo
 - **Ngân sách dev/tháng mục tiêu:** < $50 USD
 - **Người maintain:** chủ repo (1 người, học part-time)
+
+### Cập nhật ngày 2026-05-22 (sau khi user nâng plan Max)
+
+**Đã hoàn thành (vượt scope Phase 0 scaffold):**
+- ✅ **Flyway migrations** cho 4 backend (customer, product, order, billing) — `ddl-auto: validate`, schema do Flyway sở hữu
+- ✅ **product-catalog TMF620** hoàn chỉnh: `Category`, `ProductSpecification`, `ProductOffering` + repo/service/controller + seed data 4 gói mẫu
+- ✅ **billing-service TMF678** hoàn chỉnh: `BillingAccount`, `Invoice`, `InvoiceItem` + VAT 10% + `processed_event` để dedup SQS + idempotent `OrderEventListener`
+- ✅ **order-management TMF622** hoàn chỉnh: `ProductOrder`, `OrderItem` + **transactional outbox** pattern (`EventOutbox` JSONB) → `OrderEventPublisher` drainer
+- ✅ **customer-service**: thêm PATCH (`application/merge-patch+json`), tách `CustomerService` layer, pagination
+- ✅ **Testcontainers IT** cho cả 4 service (Postgres container, `@ServiceConnection`)
+- ✅ **K8s manifests** cho 6 service còn thiếu (api-gateway, product-catalog, order-management, billing-service, web-portal, admin-console) + cập nhật 3 overlay (dev/staging/prod) với image, configmap, IRSA, replicas
+- ✅ **OpenAPI 3.1 specs** cho product/order/billing trong `packages/api-contracts/`
+- ✅ **LocalStack-aware AwsConfig** (`endpointOverride` qua env var)
+- ✅ **Web portal**: HomePage, PlansPage (gọi real API), OrderPage (place order), BillsPage (poll invoices)
+- ✅ **Admin console**: Dashboard với metrics tiles, CustomersPage CRUD, OfferingsPage
+
+**Còn lại trước khi chạy được Phase 1:**
+- ⏳ User cần cài **Java 21** (đang có 17) — `brew install openjdk@21` hoặc `sdk install java 21.0.5-tem`
+- ⏳ User cần **bật Docker Desktop** (binary đã cài)
+
+**Còn lại trước khi đụng AWS (Phase 2+):**
+- ⏳ Cài `terraform`, `aws-cli`, `kustomize`, `helm`
+- ⏳ Tạo AWS account + bật MFA + budget alert
+- ⏳ Replace tất cả `CHANGE_ME` / `CHANGE_ME_ACCOUNT_ID` trong overlays sau khi có account ID + RDS hostname
+
+**Chưa làm (deferred):**
+- Spring Boot Actuator graceful shutdown timeouts cho prod
+- NetworkPolicy default-deny + per-service whitelist (Phase 9)
+- WAF + Shield (Phase 9)
+- bss-common-java chưa được import bởi các service (mỗi service vẫn tự viết NotFoundException/handler — duplication có thể refactor sau)
