@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/gemmy94/bss-platform/security/policy
+    about: Please do NOT open a public issue for security problems — see SECURITY.md.
+  - name: Architecture / design discussion
+    url: https://github.com/gemmy94/bss-platform/discussions
+    about: For open-ended design conversations, prefer Discussions.
