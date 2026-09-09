@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BSS Platform - Interactive System Architecture</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #080B11;
+            --card-bg: rgba(17, 24, 39, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-primary: #F3F4F6;
+            --text-secondary: #9CA3AF;
+            
+            /* Theme Colors */
+            --aws-orange: #FF9900;
+            --spring-green: #6DB33F;
+            --react-blue: #61DAFB;
+            --postgres-blue: #336791;
+            --accent-purple: #A78BFA;
+            --accent-blue: #3B82F6;
+            --accent-red: #EF4444;
+            --glow-color: rgba(59, 130, 246, 0.15);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(31, 41, 55, 0.3) 0, transparent 50%),
+                radial-gradient(at 50% 0%, rgba(99, 102, 241, 0.08) 0, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(219, 39, 119, 0.05) 0, transparent 50%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 30px;
+            overflow-x: hidden;
+        }
+
+        /* Header styling */
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            position: relative;
+        }
+
+        .main-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.2rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            text-transform: uppercase;
+            background: linear-gradient(135deg, #FFF 30%, #9CA3AF 70%, var(--aws-orange) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            font-weight: 400;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .badge {
+            background: rgba(255, 153, 0, 0.15);
+            color: var(--aws-orange);
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            border: 1px solid rgba(255, 153, 0, 0.3);
+            text-transform: uppercase;
+        }
+
+        /* Container Layout */
+        .architecture-grid {
+            display: grid;
+            grid-template-columns: 240px 1fr 280px;
+            gap: 25px;
+            max-width: 1700px;
+            margin: 0 auto;
+            align-items: start;
+        }
+
+        /* Sidebars common styling */
+        .sidebar {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .sidebar:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+        }
+
+        .sidebar-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 20px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Side Items */
+        .side-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.2s ease;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .side-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            transform: translateX(3px);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .side-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.05);
+            font-size: 1.1rem;
+        }
+
+        .side-info h4 {
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .side-info p {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+        }
+
+        /* Central Architecture Board */
+        .board {
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        /* User Channels Layer */
+        .channels-layer {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.01);
+            border-radius: 16px;
+            border: 1px dashed rgba(255, 255, 255, 0.05);
+        }
+
+        .channel-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 15px 25px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            min-width: 200px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .channel-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent-blue);
+            box-shadow: 0 8px 20px rgba(59, 130, 246, 0.15);
+        }
+
+        /* Load Balancer Gateway Box */
+        .gateway-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .edge-card, .api-gw-card {
+            background: linear-gradient(135deg, rgba(20, 28, 45, 0.8) 0%, rgba(13, 18, 30, 0.8) 100%);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 14px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.25);
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .edge-card:hover, .api-gw-card:hover {
+            border-color: var(--accent-blue);
+            box-shadow: 0 10px 30px rgba(59, 130, 246, 0.25);
+            transform: translateY(-2px);
+        }
+
+        .edge-card::before, .api-gw-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-blue), var(--aws-orange));
+            border-radius: 14px 14px 0 0;
+        }
+
+        /* EKS Cluster Container */
+        .eks-cluster {
+            background: rgba(10, 15, 30, 0.85);
+            border: 2px solid rgba(59, 130, 246, 0.25);
+            border-radius: 20px;
+            padding: 30px;
+            position: relative;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 0 30px rgba(59, 130, 246, 0.05);
+            transition: border-color 0.4s ease;
+        }
+
+        .eks-cluster:hover {
+            border-color: rgba(99, 102, 241, 0.4);
+        }
+
+        .eks-title-tag {
+            position: absolute;
+            top: -14px;
+            left: 30px;
+            background: linear-gradient(135deg, #3B82F6 0%, #6366F1 100%);
+            padding: 4px 16px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* EKS Pods / Namespaces Grid */
+        .namespaces-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .namespace-box {
+            background: rgba(255, 255, 255, 0.015);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 14px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .namespace-box:hover {
+            background: rgba(255, 255, 255, 0.025);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .ns-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .ns-badge {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-secondary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.65rem;
+        }
+
+        /* Microservice Pod Cards */
+        .pod-card {
+            background: linear-gradient(135deg, rgba(26, 36, 57, 0.9) 0%, rgba(18, 25, 41, 0.9) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            padding: 14px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .pod-card::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Hover effects & Specific service themes */
+        .pod-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+        }
+
+        .pod-card.frontend-type:hover {
+            border-color: var(--react-blue);
+            box-shadow: 0 8px 25px rgba(97, 218, 251, 0.15);
+        }
+        .pod-card.frontend-type::after {
+            background: var(--react-blue);
+        }
+
+        .pod-card.backend-type:hover {
+            border-color: var(--spring-green);
+            box-shadow: 0 8px 25px rgba(109, 179, 63, 0.15);
+        }
+        .pod-card.backend-type::after {
+            background: var(--spring-green);
+        }
+
+        .pod-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .pod-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+        }
+
+        .pod-icon {
+            font-size: 1rem;
+            opacity: 0.7;
+        }
+
+        .pod-desc {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            line-height: 1.3;
+        }
+
+        .pod-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .pod-tag {
+            font-size: 0.6rem;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1px 6px;
+            border-radius: 4px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        /* Infrastructure Integration Layer inside EKS */
+        .infra-container {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 14px;
+            padding: 20px;
+        }
+
+        .infra-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .infra-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .infra-box {
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px dashed rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 12px;
+        }
+
+        .infra-box-title {
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .infra-items {
+            display: flex;
+            gap: 10px;
+        }
+
+        .infra-card {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .infra-card:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 153, 0, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .infra-card h5 {
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .infra-card p {
+            font-size: 0.6rem;
+            color: var(--text-secondary);
+        }
+
+        /* SVG Line Connections overlays */
+        .svg-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .flow-line {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.1);
+            stroke-width: 2;
+            stroke-dasharray: 4,4;
+            transition: all 0.5s ease;
+        }
+
+        .flow-line.active {
+            stroke: var(--aws-orange);
+            stroke-width: 2.5;
+            animation: dash 30s linear infinite;
+        }
+
+        @keyframes dash {
+            to {
+                stroke-dashoffset: -1000;
+            }
+        }
+
+        /* Interactive Detail Drawer */
+        .detail-drawer {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(150px);
+            width: 90%;
+            max-width: 800px;
+            background: rgba(17, 24, 39, 0.95);
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            border-radius: 16px;
+            padding: 20px;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6), 0 0 30px rgba(59, 130, 246, 0.15);
+            z-index: 100;
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex;
+            gap: 20px;
+        }
+
+        .detail-drawer.open {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .drawer-close {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: color 0.2s ease;
+        }
+
+        .drawer-close:hover {
+            color: white;
+        }
+
+        .drawer-badge {
+            background: var(--accent-blue);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .drawer-content h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.3rem;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .drawer-desc {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-bottom: 15px;
+        }
+
+        .drawer-metadata {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+
+        .meta-box {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        .meta-box h6 {
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .meta-box p {
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+
+        .pulse-light {
+            width: 8px;
+            height: 8px;
+            background: #10B981;
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 10px #10B981;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1 class="main-title">Business Support System (BSS) Microservices</h1>
+        <div class="subtitle">
+            <span class="pulse-light"></span> Live Reference Architecture
+            <span class="badge">AWS EKS Cluster</span>
+            <span class="badge" style="background: rgba(109, 179, 63, 0.15); color: var(--spring-green); border-color: rgba(109, 179, 63, 0.3)">Spring Boot 3</span>
+        </div>
+    </header>
+
+    <div class="architecture-grid">
+        
+        <!-- LEFT SIDEBAR: CI/CD & DEVOPS -->
+        <div class="sidebar">
+            <div class="sidebar-title">
+                <span style="color: #6366F1;">🚀</span> CI/CD & Devops
+            </div>
+            
+            <div class="side-item" onclick="openDrawer('GitHub Actions', 'Hệ thống tự động hóa hoàn toàn với 7 CI/CD pipelines chạy trên GitHub Actions. Sử dụng OIDC IAM Role để deploy bảo mật không cần access keys.', 'GitHub Actions', '.github/workflows/*', 'OIDC IAM Role / runner')">
+                <div class="side-icon">🐙</div>
+                <div class="side-info">
+                    <h4>GitHub Actions</h4>
+                    <p>7 CI/CD Pipelines</p>
+                </div>
+            </div>
+            
+            <div class="side-item" onclick="openDrawer('Amazon ECR', 'Thư viện lưu trữ Docker Images an toàn của AWS. Sử dụng chính sách Docker Image Immutable tags và Lifecycle policies tự động dọn dẹp ảnh cũ.', 'Amazon ECR', 'infrastructure/terraform/modules/ecr', 'Immutable Tag / Scan on push')">
+                <div class="side-icon" style="color: var(--aws-orange);">📦</div>
+                <div class="side-info">
+                    <h4>Amazon ECR</h4>
+                    <p>Secure Docker Registry</p>
+                </div>
+            </div>
+
+            <div class="side-item" onclick="openDrawer('Terraform 1.7', 'Mã nguồn hạ tầng (IaC) chuẩn hóa 3 môi trường dev, staging, prod giúp đảm bảo tính nhất quán hạ tầng tuyệt đối.', 'Terraform', 'infrastructure/terraform/*', 'v1.7.0 / AWS Provider v5.x')">
+                <div class="side-icon" style="color: #7B42BC;">🏗️</div>
+                <div class="side-info">
+                    <h4>Terraform IaC</h4>
+                    <p>VPC, EKS, RDS, IAM</p>
+                </div>
+            </div>
+
+            <div class="side-item" onclick="openDrawer('Kustomize', 'Quản lý cấu hình tài nguyên Kubernetes base & overlays linh hoạt cho dev, staging và prod không cần Helm phức tạp.', 'Kustomize', 'infrastructure/kubernetes/*', 'Native overlays')">
+                <div class="side-icon">☸️</div>
+                <div class="side-info">
+                    <h4>Kustomize Manifests</h4>
+                    <p>Base & overlays config</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- CENTER ARCHITECTURE BOARD -->
+        <div class="board">
+            
+            <!-- User Channels Layer -->
+            <div class="channels-layer">
+                <div class="channel-card">
+                    <div style="font-size: 1.5rem;">📱</div>
+                    <div>
+                        <h4 style="font-size: 0.8rem; font-weight: 700;">Customer Mobile Portal</h4>
+                        <p style="font-size: 0.65rem; color: var(--text-secondary);">End Users / Web Portal</p>
+                    </div>
+                </div>
+
+                <div class="channel-card">
+                    <div style="font-size: 1.5rem;">💻</div>
+                    <div>
+                        <h4 style="font-size: 0.8rem; font-weight: 700;">Admin Console</h4>
+                        <p style="font-size: 0.65rem; color: var(--text-secondary);">Operations Staff</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Edge & Routing Gateway -->
+            <div class="gateway-container">
+                <div class="edge-card" onclick="openDrawer('AWS Route 53 & ALB Ingress', 'Bản ghi DNS tự động nhờ ExternalDNS kết hợp với Application Load Balancer (ALB) điều hướng traffic HTTP/HTTPS thông minh dựa theo URI prefix Path.', 'AWS ALB Controller', 'platform/networking/*', 'Route 53 & AWS ALB')">
+                    <div style="display: flex; gap: 15px; align-items: center;">
+                        <span style="font-size: 1.8rem;">🌐</span>
+                        <div style="text-align: left;">
+                            <h4 style="font-size: 0.85rem; font-weight: 700;">AWS ALB Ingress Controller</h4>
+                            <p style="font-size: 0.7rem; color: var(--text-secondary);">Route 53 / AWS ALB / ACM SSL</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-gw-card" onclick="openDrawer('API Gateway (api-gateway)', 'Spring Cloud Gateway làm nhiệm vụ kiểm soát toàn bộ lưu lượng đầu vào, strip API prefix, định tuyến và phân tải thông minh đến các service nội bộ.', 'Spring Cloud Gateway', 'apps/backend/api-gateway', 'Port 8080 / Gateway Actuator')">
+                    <div style="display: flex; gap: 15px; align-items: center;">
+                        <span style="font-size: 1.8rem; color: var(--spring-green);">⚡</span>
+                        <div style="text-align: left;">
+                            <h4 style="font-size: 0.85rem; font-weight: 700;">Spring Cloud API Gateway</h4>
+                            <p style="font-size: 0.7rem; color: var(--text-secondary);">Central Routing, Auth, Rate Limit</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EKS CLUSTER CONTAINER -->
+            <div class="eks-cluster">
+                <div class="eks-title-tag">
+                    <span>☸️</span> AWS EKS Cluster (Managed Node Groups)
+                </div>
+
+                <!-- Namespaces Grid -->
+                <div class="namespaces-grid">
+                    
+                    <!-- FRONTEND & CUSTOMER NAMESPACE -->
+                    <div class="namespace-box">
+                        <div class="ns-title">
+                            <span>Frontends & Customer</span>
+                            <span class="ns-badge">ns: bss</span>
+                        </div>
+
+                        <!-- web-portal -->
+                        <div class="pod-card frontend-type" onclick="openDrawer('web-portal (Frontend)', 'Cổng thông tin khách hàng giao diện tuyệt đẹp viết bằng React + Vite. Hỗ trợ xem các gói cước và đặt đơn hàng trực tiếp.', 'Vite / React 18 / TS', 'apps/frontend/web-portal', 'Port 80 (Nginx Container)')">
+                            <div class="pod-header">
+                                <span class="pod-title">web-portal</span>
+                                <span class="pod-icon" style="color: var(--react-blue);">⚛️</span>
+                            </div>
+                            <p class="pod-desc">Vite + React. Đăng ký mua gói cước, xem lịch sử hóa đơn.</p>
+                            <div class="pod-meta">
+                                <span class="pod-tag">React</span>
+                                <span class="pod-tag">Nginx</span>
+                            </div>
+                        </div>
+
+                        <!-- admin-console -->
+                        <div class="pod-card frontend-type" onclick="openDrawer('admin-console (Frontend)', 'Giao diện bảng quản trị (Admin Console) cung cấp cái nhìn tổng quan về lượng khách hàng, các gói cước và doanh thu.', 'Vite / React 18 / TS', 'apps/frontend/admin-console', 'Port 80 (Nginx Container)')">
+                            <div class="pod-header">
+                                <span class="pod-title">admin-console</span>
+                                <span class="pod-icon" style="color: var(--react-blue);">⚛️</span>
+                            </div>
+                            <p class="pod-desc">Bảng quản trị cho nhân viên vận hành, quản lý Offers.</p>
+                            <div class="pod-meta">
+                                <span class="pod-tag">React</span>
+                                <span class="pod-tag">Admin UI</span>
+                            </div>
+                        </div>
+
+                        <!-- customer-service -->
+                        <div class="pod-card backend-type" onclick="openDrawer('customer-service (TMF629)', 'Quản lý vòng đời và thông tin danh tính của khách hàng. Tuân thủ tiêu chuẩn TMF629 API với các API RESTful CRUD & PATCH.', 'Java 21 / Spring Boot 3', 'apps/backend/customer-service', 'Port 8080 / DB: customer')">
+                            <div class="pod-header">
+                                <span class="pod-title">customer-service</span>
+                                <span class="pod-icon" style="color: var(--spring-green);">☕</span>
+                            </div>
+                            <p class="pod-desc">Quản lý định danh và vòng đời khách hàng chuẩn TMF629.</p>
+                            <div class="pod-meta">
+                                <span class="pod-tag">TMF629</span>
+                                <span class="pod-tag">Postgres</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PRODUCT & ORDER NAMESPACE -->
+                    <div class="namespace-box">
+                        <div class="ns-title">
+                            <span>Product & Orders</span>
+                            <span class="ns-badge">ns: bss</span>
+                        </div>
+
+                        <!-- product-catalog -->
+                        <div class="pod-card backend-type" onclick="openDrawer('product-catalog (TMF620)', 'Quản lý danh mục sản phẩm, định nghĩa gói cước viễn thông, chu kỳ thanh toán và các chính sách giá bán offering.', 'Java 21 / Spring Boot 3', 'apps/backend/product-catalog', 'Port 8080 / DB: product')">
+                            <div class="pod-header">
+                                <span class="pod-title">product-catalog</span>
+                                <span class="pod-icon" style="color: var(--spring-green);">☕</span>
+                            </div>
+                            <p class="pod-desc">Quản lý Category, Specification, Offering chuẩn TMF620.</p>
+                            <div class="pod-meta">
+                                <span class="pod-tag">TMF620</span>
+                                <span class="pod-tag">Catalog</span>
+                            </div>
+                        </div>
+
+                        <!-- order-management -->
+                        <div class="pod-card backend-type" onclick="openDrawer('order-management (TMF622)', 'Tiếp nhận đơn hàng đặt mua gói cước. Triển khai Transactional Outbox Pattern lưu Event đặt hàng thành công vào bảng event_outbox trước khi quét đẩy lên EventBridge.', 'Java 21 / Spring Boot 3', 'apps/backend/order-management', 'Port 8080 / DB: orders')">
+                            <div class="pod-header">
+                                <span class="pod-title">order-management</span>
+                                <span class="pod-icon" style="color: var(--spring-green);">☕</span>
+                            </div>
+                            <p class="pod-desc">Tiếp nhận đơn hàng TMF622 + Outbox Publisher lên EventBridge.</p>
+                            <div class="pod-meta">
+                                <span class="pod-tag">TMF622</span>
+                                <span class="pod-tag">Outbox</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- BILLING & CHARGING NAMESPACE -->
+                    <div class="namespace-box">
+                        <div class="ns-title">
+                            <span>Billing & Charging</span>
+                            <span class="ns-badge">ns: bss</span>
+                        </div>
+
+                        <!-- billing-service -->
+                        <div class="pod-card backend-type" onclick="openDrawer('billing-service (TMF678)', 'Tính toán hóa đơn và quản lý tài khoản thanh toán. Lắng nghe SQS Event OrderCompleted, tự động tạo hóa đơn và xử lý idempotent chống tính tiền trùng lặp.', 'Java 21 / Spring Boot 3', 'apps/backend/billing-service', 'Port 8080 / DB: billing')">
+                            <div class="pod-header">
+                                <span class="pod-title">billing-service</span>
+                                <span class="pod-icon" style="color: var(--spring-green);">☕</span>
+                            </div>
+                            <p class="pod-desc">Tạo tài khoản thanh toán và xuất hóa đơn TMF678. SQS Consumer.</p>
+                            <div class="pod-meta">
+                                <span class="pod-tag">TMF678</span>
+                                <span class="pod-tag">SQS Listener</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Infrastructure Layer inside EKS -->
+                <div class="infra-container">
+                    <div class="infra-title">
+                        <span>⚙️</span> Infrastructure & Integration Layer
+                    </div>
+
+                    <div class="infra-grid">
+                        
+                        <!-- Event Bus -->
+                        <div class="infra-box">
+                            <div class="infra-box-title">Event Bus & Message Queues</div>
+                            <div class="infra-items">
+                                <div class="infra-card" onclick="openDrawer('AWS EventBridge', 'Sử dụng Custom Event Bus bss-{env}-events để định tuyến và chuyển tải các sự kiện nghiệp vụ phi đồng bộ (ví dụ: OrderCompleted) đến các hàng đợi tiêu thụ.', 'AWS EventBridge', 'infrastructure/terraform/modules/eventbridge', 'Custom Event Bus')">
+                                    <h5>EventBridge</h5>
+                                    <p>AWS Event Bus</p>
+                                </div>
+                                <div class="infra-card" onclick="openDrawer('AWS SQS + DLQ', 'Hàng đợi tin nhắn phân phối sự kiện đến Billing Service. Hỗ trợ hàng đợi chết DLQ tự động chuyển tin nhắn lỗi sau 5 lần retry thất bại.', 'AWS SQS', 'infrastructure/terraform/modules/eventbridge', 'Queue + Dead-letter SQS')">
+                                    <h5>Amazon SQS</h5>
+                                    <p>Message Queue & DLQ</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Databases & Storage -->
+                        <div class="infra-box">
+                            <div class="infra-box-title">Databases & Shared Persistence</div>
+                            <div class="infra-items">
+                                <div class="infra-card" onclick="openDrawer('RDS PostgreSQL', 'Một cơ sở dữ liệu RDS PostgreSQL chung nhưng tách biệt cứng 4 Schema (customer, product, orders, billing) đảm bảo tối ưu chi phí và độc lập dữ liệu.', 'Amazon RDS PostgreSQL', 'infrastructure/terraform/modules/rds', 'Multi-AZ DB Instance')">
+                                    <h5>RDS PostgreSQL</h5>
+                                    <p>Isolated DB Schemas</p>
+                                </div>
+                                <div class="infra-card" onclick="openDrawer('Amazon S3', 'Lưu trữ các đối tượng blob, file hóa đơn hóa đơn PDF, static assets của frontend portal.', 'Amazon S3', 'infrastructure/terraform/environments/dev', 'Object Storage')">
+                                    <h5>Amazon S3</h5>
+                                    <p>File/Blob Storage</p>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- RIGHT SIDEBAR: OBSERVABILITY & SECURITY -->
+        <div class="sidebar">
+            <div class="sidebar-title">
+                <span style="color: #EF4444;">📊</span> Observability Stack
+            </div>
+
+            <div class="side-item" onclick="openDrawer('Prometheus & Grafana', 'Thu thập chỉ số Actuator Prometheus từ các Pod Java và hiển thị lên Grafana dashboards định nghĩa dưới dạng ConfigMaps.', 'kube-prometheus-stack', 'platform/monitoring/*', 'In-cluster Prometheus')">
+                <div class="side-icon" style="color: #E6522C;">🔥</div>
+                <div class="side-info">
+                    <h4>Prometheus & Grafana</h4>
+                    <p>Cluster-wide Metrics & Dashboards</p>
+                </div>
+            </div>
+
+            <div class="side-item" onclick="openDrawer('Fluent Bit', 'Agent thu thập log hiệu năng cao chạy dưới dạng DaemonSet trên các node của EKS cluster, tự động đẩy log lên AWS CloudWatch Logs.', 'AWS Fluent Bit', 'platform/logging/*', 'Fluent Bit -> CloudWatch')">
+                <div class="side-icon" style="color: #4285F4;">📝</div>
+                <div class="side-info">
+                    <h4>Fluent Bit Agent</h4>
+                    <p>Logs to AWS CloudWatch</p>
+                </div>
+            </div>
+
+            <div class="side-item" onclick="openDrawer('OpenTelemetry Collector', 'Nhận các span tracing được sinh ra tự động từ thư viện JVM OpenTelemetry agent trong các service Java và gửi lên AWS X-Ray.', 'OTel Collector', 'platform/tracing/*', 'OTel Agent -> AWS X-Ray')">
+                <div class="side-icon" style="color: #00A699;">🔍</div>
+                <div class="side-info">
+                    <h4>OTel Collector</h4>
+                    <p>Distributed Traces to X-Ray</p>
+                </div>
+            </div>
+
+            <div class="sidebar-title" style="margin-top: 25px; border-bottom: 2px solid rgba(255, 255, 255, 0.05);">
+                <span style="color: #10B981;">🛡️</span> Security & Identity
+            </div>
+
+            <div class="side-item" onclick="openDrawer('AWS Secrets Manager', 'Lưu trữ thông tin cấu hình nhạy cảm tập trung. Pod mount secrets an toàn bằng Secrets Store CSI driver dạng temporary volume.', 'AWS Secrets Manager', 'platform/secrets/*', 'Secrets CSI Store Driver')">
+                <div class="side-icon" style="color: var(--aws-orange);">🔑</div>
+                <div class="side-info">
+                    <h4>AWS Secrets Manager</h4>
+                    <p>Secrets CSI Store Driver</p>
+                </div>
+            </div>
+
+            <div class="side-item" onclick="openDrawer('EKS IRSA (IAM Roles)', 'Mỗi ServiceAccount của Kubernetes được gán (annotate) một AWS IAM Role riêng biệt, đảm bảo đặc quyền tối thiểu (Least Privilege).', 'EKS IRSA', 'infrastructure/terraform/modules/iam', 'IAM Role for Service Account')">
+                <div class="side-icon">🆔</div>
+                <div class="side-info">
+                    <h4>EKS IRSA Roles</h4>
+                    <p>Kubernetes Service Accounts</p>
+                </div>
+            </div>
+            
+            <div class="side-item" onclick="openDrawer('AWS WAF & Shield', 'Tường lửa ứng dụng web đặt trước ALB ngăn chặn tấn công XSS, SQL Injection và bảo vệ chống tấn công từ chối dịch vụ DDoS.', 'AWS WAF', 'infrastructure/terraform/environments/prod', 'ALB Front-protection WAF')">
+                <div class="side-icon">🛡️</div>
+                <div class="side-info">
+                    <h4>AWS WAF & Shield</h4>
+                    <p>Edge DDoS & Web Protection</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- DETAIL DRAWER -->
+    <div class="detail-drawer" id="detail-drawer">
+        <button class="drawer-close" onclick="closeDrawer()">✕</button>
+        <div class="drawer-content" style="flex: 1;">
+            <h3 id="drawer-title">Tên Component <span class="drawer-badge" id="drawer-tech">Technology</span></h3>
+            <p class="drawer-desc" id="drawer-desc">Mô tả chi tiết về thành phần này trong hệ thống...</p>
+            
+            <div class="drawer-metadata">
+                <div class="meta-box">
+                    <h6>Vị trí trong Repo</h6>
+                    <p id="drawer-repo">path/to/folder</p>
+                </div>
+                <div class="meta-box">
+                    <h6>Chi tiết kỹ thuật</h6>
+                    <p id="drawer-details">Details</p>
+                </div>
+                <div class="meta-box">
+                    <h6>Môi trường chạy</h6>
+                    <p><span class="pulse-light"></span> Đã cấu hình (Dev/Stg/Prod)</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openDrawer(title, desc, tech, repo, details) {
+            document.getElementById('drawer-title').innerText = title;
+            document.getElementById('drawer-desc').innerText = desc;
+            document.getElementById('drawer-tech').innerText = tech;
+            document.getElementById('drawer-repo').innerText = repo;
+            document.getElementById('drawer-details').innerText = details;
+            
+            document.getElementById('detail-drawer').classList.add('open');
+        }
+
+        function closeDrawer() {
+            document.getElementById('detail-drawer').classList.remove('open');
+        }
+        
+        // Close drawer when clicking outside
+        document.addEventListener('click', function(event) {
+            const drawer = document.getElementById('detail-drawer');
+            const clickedInside = drawer.contains(event.target);
+            const clickedSideItem = event.target.closest('.side-item') || event.target.closest('.pod-card') || event.target.closest('.infra-card') || event.target.closest('.edge-card') || event.target.closest('.api-gw-card');
+            
+            if (!clickedInside && !clickedSideItem && drawer.classList.contains('open')) {
+                closeDrawer();
+            }
+        });
+    </script>
+</body>
+</html>
