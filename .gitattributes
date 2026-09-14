@@ -1,0 +1,6 @@
+# Ensure shell scripts always check out with LF line endings, regardless of
+# the platform's core.autocrlf setting — CRLF in a .sh file breaks it inside
+# any Linux container/shell with "$'\r': command not found".
+# See learning/01-hien-trang-va-danh-sach-loi.md#B-07.
+* text=auto
+*.sh text eol=lf
