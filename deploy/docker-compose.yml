@@ -20,7 +20,12 @@ services:
     environment:
       POSTGRES_USER: bss
       POSTGRES_PASSWORD: bss
-      POSTGRES_MULTIPLE_DATABASES: customer,product,orders,billing
+      # B-08: this variable used to be declared here as if the postgres image supported
+      # "create N databases from one env var" out of the box — it doesn't; that convention
+      # belongs to a different, unofficial postgres image. The real work happens in
+      # ./postgres-init/01-create-databases.sh (mounted below), which hardcodes the same 4
+      # names. Removed the unused variable instead of leaving a lever that looks like it does
+      # something but doesn't.
     ports:
       - "5432:5432"
     volumes:
@@ -32,6 +37,9 @@ services:
       timeout: 5s
       retries: 10
 
+  # Not consumed by any service yet (CLAUDE.md marks ElastiCache Redis as "optional, add when
+  # needed" — see §2). Kept running here so the wiring exists for whenever a service adds a
+  # cache dependency; until then this container is just idle memory (B-08).
   redis:
     image: redis:7-alpine
     container_name: bss-redis
@@ -53,11 +61,20 @@ services:
       DEBUG: "0"
       DEFAULT_REGION: ap-southeast-1
       EAGER_SERVICE_LOADING: "1"
-      PERSISTENCE: "1"
+      # B-08: PERSISTENCE=1 is a LocalStack Pro feature — the free/community image silently
+      # ignores it, so state does NOT actually survive a restart despite this looking like it
+      # configures that. It doesn't need to: the outbox + idempotent-consumer patterns in
+      # order-management/billing-service are specifically what make "LocalStack restarted
+      # mid-flight" safe to recover from (see the checkpoint in learning/20, and
+      # docs/adr/ADR-000-local-dev.md) — real persistence was never required here.
     volumes:
       - localstack-data:/var/lib/localstack
       - ./localstack-init:/etc/localstack/init/ready.d:ro
-      - /var/run/docker.sock:/var/run/docker.sock
+      # B-08: the previous /var/run/docker.sock mount gave the LocalStack container control
+      # over the host's Docker daemon (start/stop/inspect any container on the machine) for no
+      # reason this project needs — none of the emulated services here (S3, SQS, EventBridge,
+      # Secrets Manager, IAM, STS) spin up their own Docker containers. Removed as an
+      # unnecessary privilege escalation.
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://localhost:4566/_localstack/health || exit 1"]
       interval: 10s
@@ -65,11 +82,16 @@ services:
       retries: 10
 
   # Optional: Postgres admin UI
+  # B-02 fix: was published on host port 8081, which collides with customer-service's local
+  # dev port (see application-local.yml / docs/adr/ADR-000-local-dev.md) — both would try to
+  # bind :8081 the moment you run customer-service outside Docker, and whichever started
+  # second gets "Address already in use". Moved to 8090, which nothing else in the port map
+  # uses.
   adminer:
     image: adminer:4
     container_name: bss-adminer
     ports:
-      - "8081:8080"
+      - "8090:8080"
     depends_on:
       postgres:
         condition: service_healthy
