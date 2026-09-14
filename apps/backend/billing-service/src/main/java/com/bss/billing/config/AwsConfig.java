@@ -6,11 +6,13 @@ import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.SqsClientBuilder;
 
 import java.net.URI;
+import java.time.Duration;
 
 @Configuration
 public class AwsConfig {
@@ -24,7 +26,17 @@ public class AwsConfig {
 
     @Bean
     public SqsClient sqsClient() {
-        SqsClientBuilder builder = SqsClient.builder().region(Region.of(region));
+        // See the identical note in order-management's AwsConfig: without a bounded timeout,
+        // one hung receiveMessage() call (e.g. right after LocalStack/SQS restarts) can
+        // permanently stall the single-threaded @Scheduled pool that OrderEventListener.poll()
+        // runs on. waitTimeSeconds(10) on the long-poll request itself means the attempt
+        // timeout needs to be a bit more than that, not less.
+        SqsClientBuilder builder = SqsClient.builder()
+                .region(Region.of(region))
+                .overrideConfiguration(ClientOverrideConfiguration.builder()
+                        .apiCallTimeout(Duration.ofSeconds(15))
+                        .apiCallAttemptTimeout(Duration.ofSeconds(13))
+                        .build());
         if (endpointOverride != null && !endpointOverride.isBlank()) {
             // LocalStack path — static dummy credentials, override endpoint.
             builder.endpointOverride(URI.create(endpointOverride))

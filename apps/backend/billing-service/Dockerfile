@@ -1,10 +1,11 @@
 # syntax=docker/dockerfile:1.6
-FROM eclipse-temurin:21-jdk-jammy AS build
+# B-01 fix — see product-catalog/Dockerfile for the full explanation.
+FROM maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
 COPY pom.xml .
-RUN --mount=type=cache,target=/root/.m2 mvn dependency:go-offline -B -f pom.xml || true
+RUN --mount=type=cache,target=/root/.m2 mvn -B dependency:go-offline
 COPY src/ src/
-RUN --mount=type=cache,target=/root/.m2 mvn -B clean package -DskipTests -f pom.xml
+RUN --mount=type=cache,target=/root/.m2 mvn -B clean package -DskipTests
 
 FROM eclipse-temurin:21-jre-jammy
 RUN groupadd --system bss && useradd --system --gid bss bss

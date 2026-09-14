@@ -18,7 +18,9 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
+// B-14: disable the @Scheduled SQS poller — a @MockBean SqsClient returns null from
+// receiveMessage(), which would otherwise NPE every 5s and drown real test failures in noise.
+@SpringBootTest(properties = "bss.sqs.consumer.enabled=false")
 @Testcontainers
 class BillingServiceIT {
 
@@ -26,7 +28,7 @@ class BillingServiceIT {
     @ServiceConnection
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine");
 
-    /** SQS isn't wired in tests — the scheduled poll would NPE without a mock. */
+    /** SQS isn't wired in tests; AwsConfig still needs a bean to satisfy DI. */
     @MockBean SqsClient sqsClient;
 
     @Autowired BillingService billing;
