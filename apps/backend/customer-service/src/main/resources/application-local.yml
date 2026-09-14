@@ -1,0 +1,18 @@
+# B-02 fix: activated by SPRING_PROFILES_ACTIVE=local (see deploy/.env.example). Every
+# service's base application.yml hardcodes server.port: 8080 because on K8s each service is
+# its own Pod with its own network namespace — port collision there simply doesn't exist.
+# Running 5 backends directly on one laptop (mvn spring-boot:run, no containers) is the one
+# case where they all share the same "localhost", so each needs a distinct port here.
+#
+# Port map for local dev (see docs/adr/ADR-000-local-dev.md):
+#   api-gateway       8080  (unchanged — matches web-portal/admin-console's Vite proxy target)
+#   customer-service  8081
+#   product-catalog   8082
+#   order-management  8083
+#   billing-service   8084
+server:
+  port: 8081
+
+logging:
+  level:
+    com.bss: DEBUG

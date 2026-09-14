@@ -1,25 +1,32 @@
 # syntax=docker/dockerfile:1.6
 #
 # Multi-stage build:
-#   • Stage 1 builds the fat JAR with Maven + JDK 21
-#   • Stage 2 ships the JAR on a minimal JRE 21 runtime
+#   • Stage 1 builds the fat JAR with a Maven image that already has Maven on it.
+#   • Stage 2 ships the JAR on a minimal JRE 21 runtime.
 #
-# The final image is < 250 MB. For something even smaller, look into
-# jlink or GraalVM native-image — both are reasonable next steps.
+# B-01 fix: this used to COPY a Maven Wrapper (`.mvn/`, `mvnw`) that the repo never actually
+# committed — `COPY mvnw .` failed outright ("not found"). Using a `maven:...-eclipse-temurin-21`
+# image sidesteps the whole wrapper question: Maven is already on the image, so the build just
+# calls `mvn` directly, and a real failure now actually fails `docker build` (the previous
+# `|| true` on the dependency step — see the other 4 Dockerfiles before this fix — hid errors
+# instead of surfacing them).
+#
+# The final image is ~500 MB (eclipse-temurin:21-jre-jammy base + Spring Boot fat jar +
+# dependencies — measured after this fix, not guessed). For something meaningfully smaller,
+# look into jlink (custom minimal JRE) or GraalVM native-image — both are reasonable next steps
+# once the app itself is stable; premature at Giai đoạn 1.
 
-FROM eclipse-temurin:21-jdk-jammy AS build
+FROM maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
 
 # Cache dependencies layer separately from source code.
 COPY pom.xml .
-COPY .mvn/ .mvn/
-COPY mvnw .
 RUN --mount=type=cache,target=/root/.m2 \
-    ./mvnw dependency:go-offline -B
+    mvn -B dependency:go-offline
 
 COPY src/ src/
 RUN --mount=type=cache,target=/root/.m2 \
-    ./mvnw -B clean package -DskipTests
+    mvn -B clean package -DskipTests
 
 # ---------- runtime ---------- #
 
