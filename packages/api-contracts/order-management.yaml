@@ -56,15 +56,28 @@ components:
       type: string
       enum: [Acknowledged, InProgress, Completed, Cancelled, Failed]
 
+    # B-13 fix (Giai đoạn 1): this schema used to be shared by BOTH the create request and the
+    # response, with productOfferingName/unitPrice required in both directions — meaning the
+    # contract itself documented a client-supplied price. Split into CreateOrderItem (request:
+    # only the offering id + quantity) and OrderItem (response: everything else, filled in by
+    # order-management from product-catalog — see apps/backend/order-management's
+    # ProductCatalogClient).
+    CreateOrderItem:
+      type: object
+      required: [productOfferingId, quantity]
+      properties:
+        productOfferingId: { type: string, format: uuid }
+        quantity:          { type: integer, minimum: 1 }
+
     OrderItem:
       type: object
-      required: [productOfferingId, quantity, unitPrice]
+      required: [id, productOfferingId, productOfferingName, quantity, unitPrice]
       properties:
         id:                   { type: string, format: uuid }
         productOfferingId:    { type: string, format: uuid }
-        productOfferingName:  { type: string }
+        productOfferingName:  { type: string, description: "Filled in server-side from product-catalog, not client-supplied." }
         quantity:             { type: integer, minimum: 1 }
-        unitPrice:            { type: number, format: float }
+        unitPrice:            { type: number, format: float, description: "Filled in server-side from product-catalog's current price, not client-supplied." }
 
     ProductOrder:
       type: object
@@ -93,4 +106,4 @@ components:
         items:
           type: array
           minItems: 1
-          items: { $ref: '#/components/schemas/OrderItem' }
+          items: { $ref: '#/components/schemas/CreateOrderItem' }
