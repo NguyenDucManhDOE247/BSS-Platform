@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1.6
 #
 # Multi-stage:
-#   • build:  Node 20 builds the static bundle
+#   • build:  Node 24 (Active LTS) builds the static bundle
 #   • runtime: Nginx serves the bundle on port 8080, running as a non-root user
 
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
@@ -19,7 +19,7 @@ RUN npm run build
 # `nginxinc/nginx-unprivileged` is the same nginx image reconfigured specifically for this:
 # pid file moved to /tmp, cache/log directories already owned by the non-root user, and it
 # listens on 8080 by default — no manual `adduser`/`chown`/`USER` dance needed at all.
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+FROM nginxinc/nginx-unprivileged:1.30-alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 8080

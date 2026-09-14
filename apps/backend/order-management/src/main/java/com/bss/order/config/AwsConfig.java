@@ -47,7 +47,10 @@ public class AwsConfig {
                     .credentialsProvider(StaticCredentialsProvider.create(
                             AwsBasicCredentials.create("test", "test")));
         } else {
-            builder.credentialsProvider(DefaultCredentialsProvider.create());
+            // .create() still works but is deprecated as of AWS SDK 2.5x -- .builder().build()
+            // is the replacement (found via a real compiler warning after bumping the BOM,
+            // not from the changelog).
+            builder.credentialsProvider(DefaultCredentialsProvider.builder().build());
         }
         return builder.build();
     }

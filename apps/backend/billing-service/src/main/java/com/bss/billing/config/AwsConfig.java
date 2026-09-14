@@ -44,7 +44,9 @@ public class AwsConfig {
                             AwsBasicCredentials.create("test", "test")));
         } else {
             // Real AWS — DefaultCredentialsProvider picks up IRSA on EKS.
-            builder.credentialsProvider(DefaultCredentialsProvider.create());
+            // .create() still works but is deprecated as of AWS SDK 2.5x -- .builder().build()
+            // is the replacement (see order-management's AwsConfig for how this was found).
+            builder.credentialsProvider(DefaultCredentialsProvider.builder().build());
         }
         return builder.build();
     }

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.6
 # B-01 fix — see product-catalog/Dockerfile for the full explanation (Maven wasn't on the
 # base image; `|| true` was hiding that instead of failing the build where it actually broke).
-FROM maven:3.9.9-eclipse-temurin-21 AS build
+FROM maven:3.9.16-eclipse-temurin-21 AS build
 WORKDIR /workspace
 COPY pom.xml .
 RUN --mount=type=cache,target=/root/.m2 mvn -B dependency:go-offline

@@ -18,8 +18,8 @@
     <description>BSS Order Management (TMF622) — publishes domain events to EventBridge</description>
     <properties>
         <java.version>21</java.version>
-        <aws.sdk.version>2.25.16</aws.sdk.version>
-        <resilience4j.version>2.2.0</resilience4j.version>
+        <aws.sdk.version>2.54.17</aws.sdk.version>
+        <resilience4j.version>2.4.0</resilience4j.version>
     </properties>
     <dependencyManagement>
         <dependencies>
