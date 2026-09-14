@@ -1,0 +1,16 @@
+# B-02 fix — see customer-service/application-local.yml for the full explanation.
+# Port map: api-gateway 8080, customer-service 8081, product-catalog 8082,
+# order-management 8083 (this service), billing-service 8084.
+server:
+  port: 8083
+
+# B-13: on a laptop there is no "product-catalog.bss.svc.cluster.local" DNS name — that only
+# resolves inside the K8s cluster. Point straight at product-catalog's local port instead.
+bss:
+  clients:
+    product-catalog:
+      base-url: http://localhost:8082
+
+logging:
+  level:
+    com.bss: DEBUG

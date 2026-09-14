@@ -14,13 +14,20 @@ Toàn bộ các cuộc gọi từ bên ngoài đều đi qua **api-gateway** (Sp
        ▼
  ┌─────────── api-gateway (Port 8080) ───────────┐
  │                                               │
- ├─ StripPrefix=1 (loại bỏ /api)                │
- ├─ /api/customers/** ──► http://customer-service│
- ├─ /api/products/**  ──► http://product-catalog │
- ├─ /api/orders/**    ──► http://order-management│
- ├─ /api/bills/**     ──► http://billing-service │
- └───────────────────────────────────────────────┘
+ ├─ StripPrefix=1 (loại bỏ /api)                              │
+ ├─ /api/tmf-api/customerManagement/** ──► http://customer-service│
+ ├─ /api/tmf-api/productCatalog/**     ──► http://product-catalog │
+ ├─ /api/tmf-api/orderManagement/**    ──► http://order-management│
+ ├─ /api/tmf-api/billingManagement/**  ──► http://billing-service │
+ └───────────────────────────────────────────────────────────────┘
 ```
+
+> ⚠️ Cập nhật (Giai đoạn 1, B-03): sơ đồ này **trước đây** ghi route rút gọn
+> (`/api/customers/**`...). Route đó chưa bao giờ hoạt động — sau `StripPrefix=1` nó trở thành
+> `/customers/**`, path không tồn tại ở bất kỳ service nào (chỉ có
+> `/tmf-api/customerManagement/v4/customer`) — nên đã bị xóa khỏi
+> `apps/backend/api-gateway/src/main/resources/application.yml` thay vì sửa lại tài liệu để mô
+> tả một hành vi sai. Xem `docs/adr/ADR-000-local-dev.md`.
 
 ---
 

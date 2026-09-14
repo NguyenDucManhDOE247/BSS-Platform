@@ -28,7 +28,7 @@ curl http://localhost:8080/actuator/health
 | Postgres    | 5432 | `localhost:5432` (user/pass: bss/bss)  |
 | Redis       | 6379 | `localhost:6379`                       |
 | LocalStack  | 4566 | `http://localhost:4566`                |
-| Adminer     | 8081 | `http://localhost:8081`                |
+| Adminer     | 8090 | `http://localhost:8090`                |
 
 ## Talking to LocalStack
 

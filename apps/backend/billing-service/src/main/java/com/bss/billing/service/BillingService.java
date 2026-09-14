@@ -7,10 +7,10 @@ import com.bss.billing.exception.NotFoundException;
 import com.bss.billing.model.BillingAccount;
 import com.bss.billing.model.Invoice;
 import com.bss.billing.model.InvoiceItem;
+import com.bss.billing.paging.OffsetPageRequest;
 import com.bss.billing.repository.BillingAccountRepository;
 import com.bss.billing.repository.InvoiceRepository;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,15 +57,14 @@ public class BillingService {
 
     @Transactional(readOnly = true)
     public Page<BillingAccountDto> listAccounts(int offset, int limit) {
-        var pageable = PageRequest.of(offset / Math.max(limit, 1), limit,
-                Sort.by("createdAt").descending());
+        // B-15 fix: OffsetPageRequest, not PageRequest.of(offset/limit,...) — see its javadoc.
+        var pageable = OffsetPageRequest.of(offset, limit, Sort.by("createdAt").descending());
         return accounts.findAll(pageable).map(BillingAccountDto::from);
     }
 
     @Transactional(readOnly = true)
     public Page<InvoiceDto> listInvoicesForCustomer(UUID customerId, int offset, int limit) {
-        var pageable = PageRequest.of(offset / Math.max(limit, 1), limit,
-                Sort.by("invoiceDate").descending());
+        var pageable = OffsetPageRequest.of(offset, limit, Sort.by("invoiceDate").descending());
         return invoices.findByBillingAccount_CustomerId(customerId, pageable)
                 .map(InvoiceDto::from);
     }

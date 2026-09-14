@@ -1,0 +1,38 @@
+# B-02 / B-03 fix. Two things only matter on a laptop, never inside K8s:
+#   1. There's no "customer-service.bss.svc.cluster.local" DNS — that name is created by
+#      K8s Services and only resolves inside the cluster's own network. Locally each backend
+#      is just a plain process on localhost with its own port.
+#   2. Spring Boot's config binding replaces a List property wholesale when a higher-priority
+#      profile document redefines it — it does NOT merge route-by-route with the base
+#      application.yml. So the full route list has to be repeated here (predicates unchanged,
+#      only `uri` differs) rather than just overriding `uri`.
+#
+# Port map (see docs/adr/ADR-000-local-dev.md): customer-service 8081, product-catalog 8082,
+# order-management 8083, billing-service 8084.
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: customer
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/tmf-api/customerManagement/**
+        - id: product
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/tmf-api/productCatalog/**
+        - id: order
+          uri: http://localhost:8083
+          predicates:
+            - Path=/api/tmf-api/orderManagement/**
+        - id: billing
+          uri: http://localhost:8084
+          predicates:
+            - Path=/api/tmf-api/billingManagement/**
+      default-filters:
+        - StripPrefix=1
+        - AddResponseHeader=X-Gateway, bss-api-gateway
+
+logging:
+  level:
+    com.bss: DEBUG

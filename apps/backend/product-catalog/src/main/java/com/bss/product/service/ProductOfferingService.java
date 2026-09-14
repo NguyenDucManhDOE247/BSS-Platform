@@ -6,9 +6,9 @@ import com.bss.product.exception.NotFoundException;
 import com.bss.product.model.LifecycleStatus;
 import com.bss.product.model.ProductOffering;
 import com.bss.product.model.ProductOffering.RecurringPeriod;
+import com.bss.product.paging.OffsetPageRequest;
 import com.bss.product.repository.ProductOfferingRepository;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,8 +30,8 @@ public class ProductOfferingService {
                                          LifecycleStatus status,
                                          int offset,
                                          int limit) {
-        var pageable = PageRequest.of(offset / Math.max(limit, 1), limit,
-                Sort.by("createdAt").descending());
+        // B-15 fix: OffsetPageRequest, not PageRequest.of(offset/limit,...) — see its javadoc.
+        var pageable = OffsetPageRequest.of(offset, limit, Sort.by("createdAt").descending());
 
         Page<ProductOffering> page;
         if (categoryId != null && status != null) {

@@ -4,22 +4,31 @@ spring:
   cloud:
     gateway:
       routes:
+        # B-03 fix: each route used to ALSO match a shortened alias (e.g.
+        # "/api/customers/**"). After StripPrefix=1 removes "/api", that became
+        # "/customers/**" — a path none of the 4 backends actually expose (they only expose
+        # the full TMF path, "/tmf-api/customerManagement/v4/customer") — so every call
+        # through the short alias 404'd. Nothing in the frontend ever called the short form
+        # (grep confirms both apps only ever call the "/tmf-api/..." paths), so instead of
+        # patching it with a RewritePath filter, the dead alias is just removed: one route,
+        # one real path, no silent 404 trap for the next person who tries the "obvious" REST
+        # shortcut.
         - id: customer
           uri: http://customer-service.bss.svc.cluster.local
           predicates:
-            - Path=/api/customers/**, /api/tmf-api/customerManagement/**
+            - Path=/api/tmf-api/customerManagement/**
         - id: product
           uri: http://product-catalog.bss.svc.cluster.local
           predicates:
-            - Path=/api/products/**, /api/tmf-api/productCatalog/**
+            - Path=/api/tmf-api/productCatalog/**
         - id: order
           uri: http://order-management.bss.svc.cluster.local
           predicates:
-            - Path=/api/orders/**, /api/tmf-api/orderManagement/**
+            - Path=/api/tmf-api/orderManagement/**
         - id: billing
           uri: http://billing-service.bss.svc.cluster.local
           predicates:
-            - Path=/api/bills/**, /api/tmf-api/billingManagement/**
+            - Path=/api/tmf-api/billingManagement/**
       default-filters:
         - StripPrefix=1 # strip "/api"
         - AddResponseHeader=X-Gateway, bss-api-gateway
@@ -37,6 +46,14 @@ management:
     health:
       probes:
         enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http:
+          server:
+            requests: true
   prometheus:
     metrics:
       export:

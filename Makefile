@@ -1,4 +1,5 @@
 .PHONY: help bootstrap local-up local-down local-reset \
+        verify verify-all e2e-local lint-frontend test-frontend build-images \
         tf-init tf-plan tf-apply tf-destroy \
         kube-config platform-install \
         ecr-login build push deploy set-image smoke grafana
@@ -28,6 +29,39 @@ local-down: ## Stop local stack (keeps data)
 
 local-reset: ## Stop and WIPE local data
 	cd deploy && docker compose down -v
+
+# ── Giai đoạn 1: build + verify (Java 21 + Maven + Docker required) ────
+verify: ## mvn verify for one backend $$SERVICE (default customer-service) — runs *IT tests
+	cd apps/backend/$(SERVICE) && mvn -B verify
+
+verify-all: ## mvn verify for all 4 backend services (Testcontainers — needs Docker)
+	@for s in customer-service product-catalog order-management billing-service; do \
+		echo "=== $$s ==="; \
+		(cd apps/backend/$$s && mvn -B verify) || exit 1; \
+	done
+
+e2e-local: ## Full local flow: docker compose + 5 backends + curl through the gateway (B-52 pattern)
+	./scripts/e2e-local.sh
+
+lint-frontend: ## eslint for both frontend apps (fails on any warning — see .eslintrc.cjs)
+	@for a in web-portal admin-console; do \
+		echo "=== $$a ==="; \
+		(cd apps/frontend/$$a && npm run lint) || exit 1; \
+	done
+
+test-frontend: ## vitest for both frontend apps
+	@for a in web-portal admin-console; do \
+		echo "=== $$a ==="; \
+		(cd apps/frontend/$$a && npm test) || exit 1; \
+	done
+
+build-images: ## docker build for all 7 services (tag=local) — see docs/adr/ADR-000-local-dev.md
+	@for s in customer-service product-catalog order-management billing-service api-gateway; do \
+		docker build -t bss/$$s:local apps/backend/$$s || exit 1; \
+	done
+	@for a in web-portal admin-console; do \
+		docker build -t bss/$$a:local apps/frontend/$$a || exit 1; \
+	done
 
 # ── Terraform (ENV=dev|staging|prod) ──────────────────────────────────
 tf-init: ## Initialize Terraform for $$ENV

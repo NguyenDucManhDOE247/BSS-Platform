@@ -25,7 +25,11 @@ export default function CustomersPage() {
 
   const create = useMutation({
     mutationFn: async () => {
-      const res = await api.post('/tmf-api/customerManagement/v4/customer', { ...form, status: 'Active' });
+      // B-15 fix: customer-service now takes a CreateCustomerRequest DTO instead of the raw
+      // entity, and that DTO has no `status` field — a new customer always starts
+      // `Initialized` server-side (TMF629 lifecycle), it can't be created pre-activated by
+      // whoever calls the API. Move it to Active from here via PATCH if you need that.
+      const res = await api.post('/tmf-api/customerManagement/v4/customer', form);
       return res.data;
     },
     onSuccess: () => {

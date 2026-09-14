@@ -1,0 +1,49 @@
+# Giai đoạn 1 checkpoint allows ".trivyignore có lý do" (a documented reason) as the alternative
+# to "0 HIGH/CRITICAL". Reasoning below — this is NOT "ignore and forget", it's "known, real,
+# tracked, and the actual fix needs more than this stage's scope".
+#
+# Context: bumping spring-boot-starter-parent 3.2.4 -> 3.2.12 (see pom.xml comment) already cut
+# the HIGH/CRITICAL count from 36 to 31 (verified: `trivy image --severity HIGH,CRITICAL
+# bss/customer-service:test`, run twice, before/after). 3.2.12 is the LAST patch release of the
+# 3.2.x line (checked against Maven Central's maven-metadata.xml) — every remaining CVE below
+# needs a Spring Boot 3.3.x or 3.4.x line to get a fix (Tomcat 9.0.121/10.1.58/11.0.25,
+# Spring Framework 6.2.x, Jackson 2.18.8+). That's a minor-version framework migration
+# (deprecations, possible breaking changes across all 5 backend services + api-gateway,
+# re-verifying every *IT test) — real work that deserves its own dedicated pass, not something
+# to rush inside an already-large Giai đoạn 1 change. Tracked as a follow-up (open as its own
+# issue: "Nâng Spring Boot 3.2.x -> 3.3/3.4 LTS để dọn sạch Trivy findings").
+#
+# Re-run `trivy image --severity HIGH,CRITICAL bss/customer-service:test` after that migration
+# and delete this file once it comes back clean (or shrink this list to whatever's left).
+
+CVE-2024-50379
+CVE-2024-56337
+CVE-2025-22235
+CVE-2025-24813
+CVE-2025-41249
+CVE-2025-48988
+CVE-2025-48989
+CVE-2025-52520
+CVE-2025-53506
+CVE-2025-55752
+CVE-2026-24734
+CVE-2026-24880
+CVE-2026-34483
+CVE-2026-34487
+CVE-2026-40984
+CVE-2026-41284
+CVE-2026-41293
+CVE-2026-41842
+CVE-2026-41845
+CVE-2026-41850
+CVE-2026-42198
+CVE-2026-42498
+CVE-2026-43512
+CVE-2026-43513
+CVE-2026-43515
+CVE-2026-54512
+CVE-2026-54513
+CVE-2026-65182
+CVE-2026-65905
+CVE-2026-68525
+GHSA-r7wm-3cxj-wff9

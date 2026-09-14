@@ -22,6 +22,40 @@ aws:
   eventbridge:
     bus-name: ${EVENT_BUS_NAME:bss-dev-events}
 
+# B-13: order-management's own source of truth for price is product-catalog, called over
+# REST. K8s-style default (Service DNS); overridden per environment/profile — see
+# application-local.yml for the laptop-dev override to a plain localhost port.
+bss:
+  clients:
+    product-catalog:
+      base-url: ${PRODUCT_CATALOG_URL:http://product-catalog.bss.svc.cluster.local}
+  # B-14: lets tests turn the @Scheduled outbox drainer off instead of it NPE-ing every 2s
+  # against a @MockBean EventBridgeClient that returns null.
+  outbox:
+    publisher:
+      enabled: true
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      productCatalog:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        ignore-exceptions:
+          - com.bss.order.client.UnknownOfferingException
+  retry:
+    instances:
+      productCatalog:
+        max-attempts: 3
+        wait-duration: 200ms
+        # A 404 (offering genuinely doesn't exist) is a client error, not a transient fault —
+        # retrying/circuit-breaking on it would be pointless and would mask the real 422.
+        ignore-exceptions:
+          - com.bss.order.client.UnknownOfferingException
+
 server:
   port: 8080
   shutdown: graceful
@@ -35,6 +69,15 @@ management:
     health:
       probes:
         enabled: true
+  # B-16: see the identical note in customer-service/application.yml.
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http:
+          server:
+            requests: true
   prometheus:
     metrics:
       export:

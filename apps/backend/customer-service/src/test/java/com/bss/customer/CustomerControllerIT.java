@@ -43,8 +43,7 @@ class CustomerControllerIT {
         // POST
         ObjectNode body = json.createObjectNode()
                 .put("name", "Alice")
-                .put("email", "alice@example.com")
-                .put("status", "Active");
+                .put("email", "alice@example.com");
 
         var created = mvc.perform(post("/tmf-api/customerManagement/v4/customer")
                         .contentType(APPLICATION_JSON)
@@ -52,6 +51,8 @@ class CustomerControllerIT {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id", notNullValue()))
                 .andExpect(jsonPath("$.email", equalTo("alice@example.com")))
+                // B-15: a brand new customer always starts Initialized — never client-chosen.
+                .andExpect(jsonPath("$.status", equalTo("Initialized")))
                 .andReturn();
 
         Customer saved = json.readValue(created.getResponse().getContentAsString(), Customer.class);
@@ -106,5 +107,55 @@ class CustomerControllerIT {
                         .contentType(APPLICATION_JSON)
                         .content(body.toString()))
                 .andExpect(status().isConflict());
+    }
+
+    /**
+     * B-15 (mass assignment) regression test. Before the fix, POST bound straight onto the
+     * {@code Customer} entity, so this exact request body would create a pre-activated
+     * customer (skipping Initialized → Validated → Active) with HTTP 201. Now that POST binds
+     * to {@code CreateCustomerRequest} (which has no {@code status} field), Jackson's default
+     * "fail on unknown property" rejects it outright.
+     */
+    @Test
+    void create_rejects_client_supplied_status_field() throws Exception {
+        ObjectNode body = json.createObjectNode()
+                .put("name", "Mallory")
+                .put("email", "mallory@example.com")
+                .put("status", "Active");
+
+        mvc.perform(post("/tmf-api/customerManagement/v4/customer")
+                        .contentType(APPLICATION_JSON)
+                        .content(body.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    /**
+     * B-15 (pagination) regression test. Before the fix,
+     * {@code PageRequest.of(offset / limit, limit, ...)} truncated any offset that wasn't an
+     * exact multiple of the page size — {@code offset=1&limit=2} computed page
+     * {@code 1/2 = 0} (integer division) and returned records 0–1 again instead of 1–2.
+     */
+    @Test
+    void list_respects_arbitrary_offset() throws Exception {
+        for (int i = 0; i < 4; i++) {
+            ObjectNode body = json.createObjectNode()
+                    .put("name", "Paging" + i)
+                    .put("email", "paging" + i + "@example.com");
+            mvc.perform(post("/tmf-api/customerManagement/v4/customer")
+                            .contentType(APPLICATION_JSON)
+                            .content(body.toString()))
+                    .andExpect(status().isCreated());
+        }
+
+        var firstPage = mvc.perform(get("/tmf-api/customerManagement/v4/customer?offset=0&limit=2"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        var secondPage = mvc.perform(get("/tmf-api/customerManagement/v4/customer?offset=1&limit=2"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        // offset=1 must NOT equal offset=0 — the pre-fix bug returned the same page for both.
+        org.assertj.core.api.Assertions.assertThat(secondPage).isNotEqualTo(firstPage);
     }
 }

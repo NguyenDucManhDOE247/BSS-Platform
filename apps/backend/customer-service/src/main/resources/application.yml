@@ -34,6 +34,14 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+    # B-16: without this, Micrometer never emits http_server_requests_seconds_bucket, so any
+    # Grafana panel or alert built on histogram_quantile(...) (p95/p99 latency) reads empty —
+    # it needs the _bucket series, not just _sum/_count.
+    distribution:
+      percentiles-histogram:
+        http:
+          server:
+            requests: true
   prometheus:
     metrics:
       export:

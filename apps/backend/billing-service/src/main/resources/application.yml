@@ -22,6 +22,13 @@ aws:
   sqs:
     queue-url: ${SQS_QUEUE_URL:http://localhost:4566/000000000000/bss-dev-billing-orders}
 
+# B-14: lets tests disable the @Scheduled SQS poller instead of it NPE-ing every 5s against a
+# @MockBean SqsClient that returns null.
+bss:
+  sqs:
+    consumer:
+      enabled: true
+
 server:
   port: 8080
   shutdown: graceful
@@ -35,6 +42,15 @@ management:
     health:
       probes:
         enabled: true
+  # B-16: see the identical note in customer-service/application.yml.
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http:
+          server:
+            requests: true
   prometheus:
     metrics:
       export:

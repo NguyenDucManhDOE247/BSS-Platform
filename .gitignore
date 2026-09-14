@@ -19,6 +19,9 @@ aws-credentials*
 crash.log
 crash.*.log
 
+# ─── Local e2e run artifacts (scripts/e2e-local.sh) ───────────────
+.e2e-local-logs/
+
 # ─── Java / Maven ─────────────────────────────────────────────────
 target/
 *.class

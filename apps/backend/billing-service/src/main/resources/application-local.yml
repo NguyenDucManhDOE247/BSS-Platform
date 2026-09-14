@@ -1,0 +1,9 @@
+# B-02 fix — see customer-service/application-local.yml for the full explanation.
+# Port map: api-gateway 8080, customer-service 8081, product-catalog 8082,
+# order-management 8083, billing-service 8084 (this service).
+server:
+  port: 8084
+
+logging:
+  level:
+    com.bss: DEBUG

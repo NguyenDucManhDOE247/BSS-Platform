@@ -1,5 +1,6 @@
 package com.bss.customer.controller;
 
+import com.bss.customer.dto.CreateCustomerRequest;
 import com.bss.customer.dto.PatchCustomerRequest;
 import com.bss.customer.model.Customer;
 import com.bss.customer.service.CustomerService;
@@ -41,8 +42,8 @@ public class CustomerController {
     }
 
     @PostMapping
-    public ResponseEntity<Customer> create(@Valid @RequestBody Customer customer) {
-        var saved = service.create(customer);
+    public ResponseEntity<Customer> create(@Valid @RequestBody CreateCustomerRequest req) {
+        var saved = service.create(req);
         return ResponseEntity
                 .created(URI.create("/tmf-api/customerManagement/v4/customer/" + saved.getId()))
                 .body(saved);

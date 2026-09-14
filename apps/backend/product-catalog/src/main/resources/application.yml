@@ -29,6 +29,17 @@ management:
     health:
       probes:
         enabled: true
+  # B-16: customer-service was the only one of the 4 with this tag + histogram — dashboards
+  # that filter/group `by (application)` couldn't distinguish the other 3 services, and no
+  # service exported the _bucket series a p95/p99 latency panel needs.
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http:
+          server:
+            requests: true
   prometheus:
     metrics:
       export:
