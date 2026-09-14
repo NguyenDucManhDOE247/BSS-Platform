@@ -1,0 +1,43 @@
+# Giai đoạn 1 checkpoint allows ".trivyignore có lý do" as the alternative to "0 HIGH/CRITICAL".
+#
+# Unlike the backend services' findings (application libraries, fixable by bumping a pom.xml
+# version), every one of these is an OS package (libcrypto3, libssl3, libxml2, musl, zlib, ...)
+# inside the `nginxinc/nginx-unprivileged:1.27-alpine` base image itself — verified via
+# `trivy image --severity HIGH,CRITICAL bss/web-portal:test`, then confirmed NOT a stale local
+# cache by `docker pull nginxinc/nginx-unprivileged:1.27-alpine` (got a genuinely newer digest)
+# + rebuild + rescan: same 34 findings both times. This is upstream's current Alpine package
+# snapshot for that tag, not something this Dockerfile controls.
+#
+# Follow-up options (not done here — each is its own decision, not a quick fix):
+#   - Watch for nginxinc to rebuild the 1.27-alpine tag against a newer Alpine base.
+#   - Move to a different nginx minor (e.g. 1.29-alpine) once verified compatible.
+#   - Consider a minimal/distroless base (e.g. a Chainguard nginx image) — smaller OS attack
+#     surface generally, but a bigger switch to evaluate (image size, debugging tools available,
+#     compatibility with the existing nginx.conf) than belongs in Giai đoạn 1.
+
+CVE-2025-15467
+CVE-2025-49794
+CVE-2025-49795
+CVE-2025-49796
+CVE-2025-59375
+CVE-2025-64720
+CVE-2025-65018
+CVE-2025-66293
+CVE-2025-69421
+CVE-2026-22184
+CVE-2026-22695
+CVE-2026-22801
+CVE-2026-25210
+CVE-2026-25646
+CVE-2026-27135
+CVE-2026-28387
+CVE-2026-28388
+CVE-2026-28389
+CVE-2026-28390
+CVE-2026-31789
+CVE-2026-33630
+CVE-2026-40200
+CVE-2026-45186
+CVE-2026-6732
+CVE-2026-76956
+CVE-2026-76957

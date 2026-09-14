@@ -1,11 +1,12 @@
 package com.bss.customer.service;
 
+import com.bss.customer.dto.CreateCustomerRequest;
 import com.bss.customer.dto.PatchCustomerRequest;
 import com.bss.customer.exception.NotFoundException;
 import com.bss.customer.model.Customer;
+import com.bss.customer.paging.OffsetPageRequest;
 import com.bss.customer.repository.CustomerRepository;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,8 +25,9 @@ public class CustomerService {
 
     @Transactional(readOnly = true)
     public Page<Customer> list(int offset, int limit) {
-        var pageable = PageRequest.of(offset / Math.max(limit, 1), limit,
-                Sort.by("createdAt").descending());
+        // B-15 fix: see OffsetPageRequest javadoc — PageRequest.of(offset/limit, ...) truncated
+        // non-multiple offsets to the wrong page.
+        var pageable = OffsetPageRequest.of(offset, limit, Sort.by("createdAt").descending());
         return repo.findAll(pageable);
     }
 
@@ -35,7 +37,12 @@ public class CustomerService {
                 .orElseThrow(() -> new NotFoundException("Customer", id.toString()));
     }
 
-    public Customer create(Customer customer) {
+    public Customer create(CreateCustomerRequest req) {
+        var customer = new Customer();
+        customer.setName(req.name());
+        customer.setEmail(req.email());
+        customer.setPhoneNumber(req.phoneNumber());
+        // status is intentionally NOT settable from the request — see CreateCustomerRequest.
         return repo.save(customer);
     }
 

@@ -4,7 +4,11 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.2.4</version>
+        <!-- 3.2.12, not the 3.2.4 this was pinned at originally: Trivy found 36 HIGH/CRITICAL
+             CVEs in that version's bundled Tomcat/Spring Framework/Jackson (e.g. CVE-2025-24813).
+             3.2.12 is the latest patch release of the SAME minor line — lowest-risk way to
+             pick up the fixes without a Boot 3.3/3.4 migration (out of scope for Giai doan 1). -->
+        <version>3.2.12</version>
         <relativePath/>
     </parent>
     <groupId>com.bss</groupId>
@@ -14,7 +18,8 @@
     <description>BSS Order Management (TMF622) — publishes domain events to EventBridge</description>
     <properties>
         <java.version>21</java.version>
-        <aws.sdk.version>2.25.16</aws.sdk.version>
+        <aws.sdk.version>2.54.17</aws.sdk.version>
+        <resilience4j.version>2.4.0</resilience4j.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -32,16 +37,51 @@
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-jpa</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
+        <!-- AOP proxying is what makes @CircuitBreaker/@Retry (below) actually intercept calls. -->
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-aop</artifactId></dependency>
         <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><scope>runtime</scope></dependency>
         <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-core</artifactId></dependency>
         <dependency><groupId>io.micrometer</groupId><artifactId>micrometer-registry-prometheus</artifactId></dependency>
         <!-- AWS SDK: EventBridge publisher -->
         <dependency><groupId>software.amazon.awssdk</groupId><artifactId>eventbridge</artifactId></dependency>
+        <!-- B-19: IRSA on EKS uses WebIdentityTokenFileCredentialsProvider, which requires the
+             `sts` module on the classpath even though we never call STS ourselves. Without it,
+             DefaultCredentialsProvider silently falls through to the node's credentials (or
+             none) instead of assuming the pod's IAM role — LocalStack never catches this
+             because it uses static test/test credentials regardless. -->
+        <dependency><groupId>software.amazon.awssdk</groupId><artifactId>sts</artifactId></dependency>
+        <!-- B-13: order-management calls product-catalog over REST for authoritative price;
+             Resilience4j adds retry + circuit breaker around that call. -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+            <version>${resilience4j.version}</version>
+        </dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-testcontainers</artifactId><scope>test</scope></dependency>
         <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
         <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
         <dependency><groupId>org.testcontainers</groupId><artifactId>localstack</artifactId><scope>test</scope></dependency>
     </dependencies>
-    <build><plugins><plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin></plugins></build>
+    <build>
+        <plugins>
+            <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin>
+            <!-- B-09: surefire (the `test` phase) only runs *Test/*Tests by convention. Our
+                 integration tests are named *IT on purpose (Testcontainers, slower, need
+                 Docker) — failsafe is the plugin that actually picks those up, bound to the
+                 `verify` phase so `mvn verify` (not just `mvn test`) is what proves them green. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>

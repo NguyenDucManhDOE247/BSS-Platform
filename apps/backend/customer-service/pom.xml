@@ -7,7 +7,11 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.2.4</version>
+        <!-- 3.2.12, not the 3.2.4 this was pinned at originally: Trivy found 36 HIGH/CRITICAL
+             CVEs in that version's bundled Tomcat/Spring Framework/Jackson (e.g. CVE-2025-24813).
+             3.2.12 is the latest patch release of the SAME minor line — lowest-risk way to
+             pick up the fixes without a Boot 3.3/3.4 migration (out of scope for Giai doan 1). -->
+        <version>3.2.12</version>
         <relativePath/>
     </parent>
 
@@ -89,6 +93,18 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <!-- B-09: surefire (mvn test) only picks up *Test/*Tests by convention; our
+                 Testcontainers integration tests are named *IT on purpose, and only
+                 failsafe (bound to `mvn verify`) runs those. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals><goal>integration-test</goal><goal>verify</goal></goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

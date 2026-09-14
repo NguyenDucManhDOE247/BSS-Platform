@@ -1,36 +1,40 @@
 package com.bss.billing.listener;
 
-import com.bss.billing.model.ProcessedEvent;
-import com.bss.billing.repository.ProcessedEventRepository;
-import com.bss.billing.service.BillingService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.DeleteMessageRequest;
 import software.amazon.awssdk.services.sqs.model.Message;
 import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest;
 
-import java.math.BigDecimal;
-import java.util.UUID;
-
 /**
  * Consumes OrderCompleted events delivered from EventBridge → SQS.
  *
- * Idempotency: each message carries an EventBridge message ID (or a digest if absent).
- * We INSERT into processed_event before creating the invoice; the unique PK is the dedup key.
- * If a duplicate arrives, the insert throws DataIntegrityViolationException → we skip + ACK.
+ * Idempotency (B-11): each event's dedup key is {@code detail.eventId} — the id
+ * order-management's outbox row was given when it was created (see
+ * {@code EventOutbox} javadoc in order-management), NOT the EventBridge envelope's own
+ * {@code id} field. The envelope id is minted fresh by EventBridge on every PutEvents call,
+ * including retries of the very same outbox row, so it cannot be trusted as a dedup key — two
+ * different envelope ids can (and did) carry the same logical event, producing two invoices
+ * for one order. Falls back to the envelope id only for messages that predate this fix / don't
+ * carry eventId, so old messages already in flight don't crash the consumer.
+ *
+ * Actual dedup insert + invoice creation now happens in {@link OrderCompletedHandler}, a
+ * separate bean, so {@code @Transactional} on {@code handle(...)} actually takes effect
+ * (see B-10 — that method used to be a self-invoked call on this same class, which Spring's
+ * proxy-based transactions never intercept).
  *
  * Failure handling: any other exception leaves the message on the queue. After
  * `maxReceiveCount` (set in the SQS RedrivePolicy) it lands in the DLQ.
  */
 @Component
+@ConditionalOnProperty(name = "bss.sqs.consumer.enabled", havingValue = "true", matchIfMissing = true)
 public class OrderEventListener {
 
     private static final Logger log = LoggerFactory.getLogger(OrderEventListener.class);
@@ -38,17 +42,14 @@ public class OrderEventListener {
 
     private final SqsClient sqs;
     private final String queueUrl;
-    private final ProcessedEventRepository processed;
-    private final BillingService billing;
+    private final OrderCompletedHandler handler;
 
     public OrderEventListener(SqsClient sqs,
                               @Value("${aws.sqs.queue-url}") String queueUrl,
-                              ProcessedEventRepository processed,
-                              BillingService billing) {
+                              OrderCompletedHandler handler) {
         this.sqs = sqs;
         this.queueUrl = queueUrl;
-        this.processed = processed;
-        this.billing = billing;
+        this.handler = handler;
     }
 
     @Scheduled(fixedDelay = 5000)
@@ -61,9 +62,9 @@ public class OrderEventListener {
 
         for (var msg : sqs.receiveMessage(req).messages()) {
             try {
-                handle(msg);
+                dispatch(msg);
                 ack(msg);
-            } catch (DuplicateEventException dup) {
+            } catch (OrderCompletedHandler.DuplicateEventException dup) {
                 log.info("Duplicate event {} — skipping and acking", dup.getMessage());
                 ack(msg);
             } catch (Exception e) {
@@ -73,35 +74,23 @@ public class OrderEventListener {
         }
     }
 
-    @Transactional
-    void handle(Message msg) throws Exception {
+    private void dispatch(Message msg) throws Exception {
         JsonNode envelope = json.readTree(msg.body());
 
         // EventBridge → SQS wraps the payload: { id, source, detail-type, detail: {...} }
-        String eventId = envelope.has("id") ? envelope.get("id").asText() : msg.messageId();
         String type = envelope.path("detail-type").asText("Unknown");
         JsonNode detail = envelope.has("detail") ? envelope.get("detail") : envelope;
 
-        if ("OrderCompleted".equals(type)) {
-            saveDedupKey(eventId, type);
-            UUID orderId = UUID.fromString(detail.get("orderId").asText());
-            UUID customerId = UUID.fromString(detail.get("customerId").asText());
-            BigDecimal amount = new BigDecimal(detail.get("amount").asText());
-            String description = "Order " + orderId;
-            var invoice = billing.invoiceFromOrder(customerId, orderId, description, amount);
-            log.info("Issued invoice {} for order {}", invoice.invoiceNumber(), orderId);
-        } else {
+        if (!"OrderCompleted".equals(type)) {
             log.info("Ignoring event type: {}", type);
+            return;
         }
-    }
 
-    private void saveDedupKey(String eventId, String type) {
-        try {
-            processed.save(new ProcessedEvent(eventId, type));
-            processed.flush();
-        } catch (DataIntegrityViolationException dup) {
-            throw new DuplicateEventException(eventId);
-        }
+        String eventId = detail.hasNonNull("eventId")
+                ? detail.get("eventId").asText()
+                : envelope.has("id") ? envelope.get("id").asText() : msg.messageId();
+
+        handler.handle(eventId, type, detail);
     }
 
     private void ack(Message msg) {
@@ -109,9 +98,5 @@ public class OrderEventListener {
                 .queueUrl(queueUrl)
                 .receiptHandle(msg.receiptHandle())
                 .build());
-    }
-
-    private static class DuplicateEventException extends RuntimeException {
-        DuplicateEventException(String eventId) { super(eventId); }
     }
 }

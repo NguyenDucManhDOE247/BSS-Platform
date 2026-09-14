@@ -1,0 +1,14 @@
+-- Bug found while bumping Spring Boot 3.2.4 -> 3.2.12 for Giai đoạn 1 (Trivy CVE fix):
+-- Hibernate 6.4.10's schema validator (stricter than 6.4.4, the version bundled with 3.2.4)
+-- treats CHAR and VARCHAR as genuinely different SQL types and fails startup instead of
+-- tolerating the mismatch:
+--   "Schema-validation: wrong column type encountered in column [price_currency] in table
+--    [product_offering]; found [bpchar (Types#CHAR)], but expecting [varchar(3) (Types#VARCHAR)]"
+--
+-- V1 declared this column CHAR(3) (fixed-width, Postgres pads with spaces) while the JPA
+-- entity (ProductOffering.priceCurrency, a plain `String` with `@Column(length = 3)`, no
+-- `columnDefinition`) has always mapped to VARCHAR(3) by Hibernate's own default — the two
+-- were never actually in agreement, it just didn't used to be *checked*. VARCHAR(3) is also
+-- the more correct choice for an ISO 4217 currency code: no padding, and no risk of a
+-- trailing-space bug when comparing values in application code.
+ALTER TABLE product_offering ALTER COLUMN price_currency TYPE VARCHAR(3);

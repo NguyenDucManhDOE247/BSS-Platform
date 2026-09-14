@@ -4,8 +4,8 @@ import com.bss.order.model.EventOutbox;
 import com.bss.order.repository.EventOutboxRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,8 +21,15 @@ import java.util.List;
  * Outbox drainer: scans unpublished rows and ships them to EventBridge.
  * If PutEvents reports a failed entry, the corresponding row stays unpublished
  * and we retry on the next tick.
+ *
+ * B-14 fix: {@code @SpringBootTest} boots the full app context including {@code @Scheduled}
+ * methods, but tests {@code @MockBean} the {@code EventBridgeClient} — a bare Mockito mock
+ * returns {@code null} for {@code putEvents(...)}, so this method NPE'd every 2 seconds
+ * during every single test class, drowning real failures in noise. Tests that don't care about
+ * the drainer set {@code bss.outbox.publisher.enabled=false} to switch the whole bean off.
  */
 @Component
+@ConditionalOnProperty(name = "bss.outbox.publisher.enabled", havingValue = "true", matchIfMissing = true)
 public class OrderEventPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(OrderEventPublisher.class);
@@ -43,7 +50,11 @@ public class OrderEventPublisher {
     @Scheduled(fixedDelay = 2000)
     @Transactional
     public void drain() {
-        List<EventOutbox> pending = outbox.findUnpublished(PageRequest.of(0, BATCH_SIZE));
+        // B-12: FOR UPDATE SKIP LOCKED so 2+ replicas polling at once each grab a disjoint
+        // batch instead of racing to publish (and double-count) the same rows. See the
+        // repository method's javadoc for the accepted trade-off (network call stays inside
+        // this transaction, holding the row lock for its duration).
+        List<EventOutbox> pending = outbox.lockUnpublishedBatch(BATCH_SIZE);
         if (pending.isEmpty()) {
             return;
         }
