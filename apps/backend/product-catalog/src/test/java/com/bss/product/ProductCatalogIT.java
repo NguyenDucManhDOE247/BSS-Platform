@@ -10,7 +10,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -30,10 +30,16 @@ class ProductCatalogIT {
 
     @Test
     void seed_data_loaded_via_flyway() throws Exception {
-        mvc.perform(get("/tmf-api/productCatalog/v4/productOffering?limit=10"))
+        // B-14 fix: `header().string("X-Total-Count", greaterThanOrEqualTo("4"))` compared
+        // the header as a STRING — Hamcrest's greaterThanOrEqualTo("4") uses String's own
+        // compareTo, i.e. lexicographic order, where "10" < "4" (because '1' < '4'). The
+        // assertion happened to pass only by accident, while the true count stayed under 10;
+        // it would start silently failing the moment more seed/test data pushed it to 10+.
+        var totalCount = mvc.perform(get("/tmf-api/productCatalog/v4/productOffering?limit=10"))
                 .andExpect(status().isOk())
-                .andExpect(header().string("X-Total-Count", greaterThanOrEqualTo("4")))
-                .andExpect(jsonPath("$[0].id", notNullValue()));
+                .andExpect(jsonPath("$[0].id", notNullValue()))
+                .andReturn().getResponse().getHeader("X-Total-Count");
+        assertThat(Integer.parseInt(totalCount)).isGreaterThanOrEqualTo(4);
     }
 
     @Test
@@ -53,10 +59,11 @@ class ProductCatalogIT {
                         .content(body))
                 .andExpect(status().isCreated());
 
-        mvc.perform(get("/tmf-api/productCatalog/v4/productOffering")
+        var totalCount = mvc.perform(get("/tmf-api/productCatalog/v4/productOffering")
                         .param("categoryId", "11111111-1111-1111-1111-111111111111"))
                 .andExpect(status().isOk())
-                .andExpect(header().string("X-Total-Count", greaterThanOrEqualTo("3")));
+                .andReturn().getResponse().getHeader("X-Total-Count");
+        assertThat(Integer.parseInt(totalCount)).isGreaterThanOrEqualTo(3);
     }
 
     @Test
