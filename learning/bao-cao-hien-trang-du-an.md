@@ -1,0 +1,41 @@
+# BSS Platform — Đánh giá hiện trạng kỹ thuật
+
+> Tài liệu tham khảo phục vụ thiết kế nội dung đào tạo dựa trên dự án BSS Platform.
+> Kiểm chứng ngày 2026-09-10, trên repo `NguyenDucManhDOE247/BSS-Platform`.
+
+## Giới thiệu ngắn về dự án
+
+**BSS Platform** là một monorepo mô phỏng hệ thống Business Support System của nhà mạng viễn thông, theo chuẩn **TM Forum Open API** (TMF629 Customer, TMF620 Product Catalog, TMF622 Order Management, TMF678 Billing). Kiến trúc gồm 4 microservice **Java 21 / Spring Boot 3.2** + 1 API Gateway + 2 frontend **React/Vite**, giao tiếp bất đồng bộ qua **AWS EventBridge → SQS** (mô hình Transactional Outbox + Idempotent Consumer), hạ tầng **AWS EKS** dựng bằng **Terraform** (7 module, 3 môi trường dev/staging/prod), CI/CD bằng **GitHub Actions + OIDC** (không dùng static credential), và bộ observability **Prometheus/Grafana + CloudWatch + X-Ray**.
+
+Đây là một bộ khung (scaffold) được dựng trong khoảng 1 tuần, phạm vi rộng và nhiều quyết định thiết kế đúng chuẩn production, nhưng **chưa từng được chạy/kiểm thử end-to-end**. Bảng dưới đây so sánh những gì tài liệu dự án tuyên bố với thực tế đã kiểm chứng trực tiếp trên mã nguồn và bằng cách chạy thử các công cụ liên quan.
+
+## Bảng "Tuyên bố ↔ Thực tế"
+
+Phương pháp kiểm chứng: đọc toàn bộ mã nguồn + chạy trực tiếp `terraform fmt -check`, `terraform init -backend=false`, `terraform validate` (trên bản sao), `kubectl kustomize` cho cả 3 overlay. Docker chưa được bật trong quá trình kiểm chứng nên `docker build` / `mvn verify` **chưa được xác minh chạy thật** — đây là phần việc đầu tiên trong lộ trình hoàn thiện.
+
+| Thành phần                 | Tài liệu dự án tuyên bố                      | Thực tế kiểm chứng                                                                                                                                                                                                                                                             | Mức sẵn sàng |
+| -------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
+| Code 4 service             | ✅ hoàn chỉnh + integration test             | Code đầy đủ, logic hợp lý, **có 1 lỗi mất dữ liệu** (self-invocation `@Transactional` trong billing-service) và vài lỗi thiết kế nghiệp vụ                                                                                                                                     | 🟡 75%       |
+| api-gateway                | ✅ routes configured                         | Chỉ có routing; chưa auth/rate-limit/timeout; một route bị cấu hình sai trả 404                                                                                                                                                                                                | 🟡 50%       |
+| Frontend                   | ✅ các trang gọi API thật                    | Code trang hoạt động đúng; **CI sẽ báo lỗi** (thiếu lockfile, cấu hình ESLint, test); trang admin dưới path `/admin` load sai asset                                                                                                                                            | 🟡 60%       |
+| Dockerfile                 | ✅ multi-stage, non-root                     | **Cả 5 Dockerfile backend không build được** (thiếu Maven trong base image / thiếu Maven Wrapper); Nginx non-root lỗi khi chạy trực tiếp                                                                                                                                       | 🔴 20%       |
+| Local dev (docker-compose) | ✅ "builds and runs end-to-end"              | Chỉ chạy được **1 service tại một thời điểm** (trùng port, trùng biến DB, gateway trỏ DNS chỉ tồn tại trong Kubernetes)                                                                                                                                                        | 🔴 30%       |
+| Kustomize (K8s manifest)   | ✅ 3 overlay dev/staging/prod                | **Build được** cả 3 overlay hợp lệ. Nhưng: thiếu 4 Kubernetes Secret cần thiết, HPA ghi đè cấu hình replicas, Ingress bật HTTPS nhưng không có certificate                                                                                                                     | 🟡 60%       |
+| Terraform                  | ✅ 7 module + 3 môi trường                   | 🔴 **`terraform init` thất bại** (lỗi cú pháp HCL); sau khi vá thì `validate` tiếp tục lỗi (xung đột kiểu dữ liệu); vá tiếp thì hợp lệ. Thiết kế mạng ở môi trường dev không hoạt động được, tài nguyên dùng chung bị xung đột giữa các môi trường, thiếu IAM cho một số addon | 🔴 35%       |
+| Platform addons (Helm)     | ✅ values file sẵn sàng                      | Values file có sẵn nhưng thiếu IAM tương ứng, một lệnh cài đặt sai cú pháp, thiếu cấu hình để Prometheus thu thập metric                                                                                                                                                       | 🔴 30%       |
+| CI (GitHub Actions)        | ✅ 4 workflow                                | backend: build container lỗi; frontend: lỗi cấu hình; terraform: lỗi format + thiếu biến bắt buộc; k8s: nhiều khả năng chạy được                                                                                                                                               | 🔴 25%       |
+| CD (GitHub Actions)        | ✅ "build once, deploy many"                 | Lỗi thiết kế ở tầng nền tảng: không lưu lại phiên bản đang chạy trong Git (nguồn sự thật), smoke test không bao giờ báo lỗi nên rollback tự động không kích hoạt được, IAM role của pipeline chưa đủ quyền vào cluster                                                         | 🔴 15%       |
+| Observability              | ✅ Prometheus + Grafana + CloudWatch + X-Ray | Có mẫu alert/dashboard chất lượng tốt, nhưng chưa có đường thu thập metric/trace thực sự hoạt động                                                                                                                                                                             | 🔴 25%       |
+| Tài khoản AWS              | ⏳ chưa tạo                                  | Chưa có tài khoản AWS dành riêng cho dự án                                                                                                                                                                                                                                     | —            |
+
+**Kết luận:** theo đúng lộ trình phân kỳ (Phase) mà tài liệu dự án đề ra, hệ thống hiện đang ở **giai đoạn đầu của Phase 1** (chưa chạy được end-to-end ở local), chưa đạt mức "Phase 1 hoàn thành" như được ghi nhận trong tài liệu. Các Phase 2–10 (hạ tầng cloud, CI/CD thật, observability, production hardening) chưa được triển khai.
+
+## Vì sao đây là chất liệu đào tạo phù hợp
+
+Điểm đáng chú ý là dự án **không phải một hệ thống hỏng** — phần lớn quyết định kiến trúc đã đúng chuẩn ngành: Transactional Outbox + Idempotent Consumer cho giao tiếp bất đồng bộ, IRSA (IAM theo từng ServiceAccount) thay vì access key tĩnh, GitHub OIDC cho CI/CD không lưu credential, 3-probe + securityContext non-root đầy đủ trên mọi container, ECR immutable tag, promotion theo git tag có duyệt tay ở production. Đây đều là pattern mà một kỹ sư DevOps cần nắm vững.
+
+Cái thiếu là **bước tích hợp cuối cùng** — đúng loại lỗi mà một team platform thật sự gặp phải khi đưa một thiết kế từ giấy sang production: sai cú pháp IaC, thiếu quyền IAM, race condition khi scale, thiết kế CI/CD chưa tính đủ trường hợp biên. Với một chương trình đào tạo, đây là kịch bản thực tế hơn nhiều so với một hệ thống demo "chạy sẵn, chỉ cần deploy" — sinh viên sẽ được rèn kỹ năng đọc lỗi, kiểm chứng bằng công cụ (`terraform validate`, `kubectl kustomize`, đọc log CI), và tự tay đưa một hệ thống từ trạng thái scaffold lên trạng thái vận hành được.
+
+---
+
+_Danh sách chi tiết 45 vấn đề kỹ thuật (kèm bằng chứng vị trí file:dòng cụ thể) và lộ trình hoàn thiện 9 giai đoạn có thể được cung cấp thêm nếu cần cho việc thiết kế chương trình đào tạo._

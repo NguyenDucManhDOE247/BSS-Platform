@@ -74,5 +74,6 @@ kubeconfig
 dist-*/
 
 # ─── Additions ──────────────────────────────────────────────
+# course/ = đề cương riêng của thầy, giữ nguyên không track (xem CLAUDE.md §13).
+# learning/ KHÔNG ignore — đây là sổ tay học tập của học viên, cần track bình thường.
 course/
-learning/
