@@ -19,6 +19,18 @@
     <properties>
         <java.version>21</java.version>
         <aws.sdk.version>2.54.17</aws.sdk.version>
+        <!-- AWS SDK 2.54.x's default sync HTTP client (apache5-client) needs a recent
+             org.apache.httpcomponents.client5:httpclient5 that has TlsSocketStrategy (added in
+             5.3). spring-boot-starter-parent's own dependencyManagement pins httpclient5 to
+             5.2.3 (for Spring's own RestClient support) and, as the parent POM, wins Maven's
+             dependency mediation over the AWS SDK BOM's own (newer) intent for that artifact —
+             so without this override the app compiles fine but throws
+             ClassNotFoundException: org.apache.hc.client5.http.ssl.TlsSocketStrategy the moment
+             it actually tries to build an SqsClient/EventBridgeClient at startup. Found by
+             actually running `mvn spring-boot:run`, not by `mvn compile`/`docker build`
+             (neither of those constructs the client, so neither caught it before this). -->
+        <httpclient5.version>5.6.4</httpclient5.version>
+        <httpcore5.version>5.4.3</httpcore5.version>
     </properties>
     <dependencyManagement>
         <dependencies>
