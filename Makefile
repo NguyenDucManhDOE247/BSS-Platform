@@ -3,7 +3,7 @@
         tf-init tf-plan tf-apply tf-destroy \
         kube-config platform-install \
         ecr-login build push deploy set-image smoke grafana \
-        kind-up kind-down kind-load deploy-local e2e-kind
+        kind-up kind-down kind-load deploy-local e2e-kind load-test
 
 ENV ?= dev
 AWS_REGION ?= ap-southeast-1
@@ -127,3 +127,6 @@ deploy-local: kind-load ## Apply overlays/local to the kind cluster (context kin
 
 e2e-kind: ## Same business-flow check as e2e-local, but through kind + ingress-nginx
 	./scripts/e2e-kind.sh
+
+load-test: ## k6 load test — see tests/load/README.md (watch `kubectl -n bss get hpa -w` alongside)
+	k6 run tests/load/plans-and-order.js
