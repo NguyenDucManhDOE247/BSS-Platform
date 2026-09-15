@@ -4,3 +4,12 @@
 # See learning/01-hien-trang-va-danh-sach-loi.md#B-07.
 * text=auto
 *.sh text eol=lf
+
+# deploy/.env.example is meant to be `source`d by bash (scripts/e2e-local.sh does exactly
+# that) even though its extension isn't .sh — `* text=auto` alone still lets Windows'
+# core.autocrlf=true re-introduce CRLF on checkout, and a CRLF here breaks `source` the same
+# way it breaks a .sh file: every "KEY=value\r" line fails to export at all, silently leaving
+# the variable unset. Found by actually running the app after DB_PASSWORD came back empty and
+# Postgres's SCRAM auth rejected it with a cryptic "Prohibited character" error, not by reading
+# the file.
+*.env.example text eol=lf
