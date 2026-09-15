@@ -1,0 +1,88 @@
+# Local-only stand-in for RDS (B-20/B-21 are the AWS-side story — Secrets Manager + per-service
+# DB users; that's Giai đoạn 5). Same image/init-script as deploy/docker-compose.yml so the 4
+# databases this StatefulSet creates match exactly what every service's application.yml already
+# defaults to.
+#
+# StatefulSet, not Deployment: Postgres needs a STABLE identity (same PVC re-attached on
+# restart, predictable DNS name `postgres-0.postgres...`) — a Deployment's Pods are
+# interchangeable and get a new random suffix + a fresh PVC every time they're recreated, which
+# would silently wipe the database. (🔁 handout 10 — the same reason a StatefulSet is used for
+# any single-writer stateful workload.)
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: bss
+  labels:
+    app: postgres
+    tier: data
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        tier: data
+    spec:
+      # postgres:15-alpine already runs its entrypoint as the built-in "postgres" user (uid 999)
+      # — runAsNonRoot here is enforcing something the image already does, not fighting it (see
+      # namespace.yaml's Pod Security "restricted" label, B-25).
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - { containerPort: 5432, name: postgres }
+          env:
+            - { name: POSTGRES_USER, value: "bss" }
+            - { name: POSTGRES_PASSWORD, value: "bss" }
+            - { name: PGDATA, value: "/var/lib/postgresql/data/pgdata" }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "bss"] }
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec: { command: ["pg_isready", "-U", "bss"] }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits: { cpu: "500m", memory: "512Mi" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+            seccompProfile: { type: RuntimeDefault }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: init-script, mountPath: /docker-entrypoint-initdb.d, readOnly: true }
+            # readOnlyRootFilesystem needs writable homes for these — postgres writes its unix
+            # socket to /var/run/postgresql and scratch files to /tmp.
+            - { name: run, mountPath: /var/run/postgresql }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: init-script
+          configMap:
+            name: postgres-init
+            defaultMode: 0555
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # kind ships a default StorageClass ("standard", local-path-provisioner) — no
+        # storageClassName needed here, unlike the AWS overlays' `gp3` (see B-41).
+        resources:
+          requests:
+            storage: 1Gi
