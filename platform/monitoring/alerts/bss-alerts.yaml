@@ -21,6 +21,10 @@ spec:
           annotations:
             summary: "Service {{ $labels.job }} is down"
             description: "{{ $labels.job }} in {{ $labels.namespace }} has been unreachable for 2 minutes."
+            # CLAUDE.md §10 bắt buộc mọi alert có runbook_url — dùng chung 1 runbook cho cả 5
+            # alert hiện tại (BSS chỉ có 1 runbook cho tới giờ); tách runbook riêng khi có đủ nội
+            # dung khác nhau đáng viết riêng.
+            runbook_url: "https://github.com/NguyenDucManhDOE247/BSS-Platform/blob/main/docs/runbooks/bss-high-error-rate.md"
 
         # ---- Latency (Spring Boot via Micrometer) ---- #
         - alert: BssHighRequestLatency
@@ -37,6 +41,7 @@ spec:
           annotations:
             summary: "p95 latency above 1s for {{ $labels.application }} {{ $labels.uri }}"
             description: "p95 latency has been > 1s for 10 minutes."
+            runbook_url: "https://github.com/NguyenDucManhDOE247/BSS-Platform/blob/main/docs/runbooks/bss-high-error-rate.md"
 
         # ---- Error rate ---- #
         - alert: BssHighErrorRate
@@ -55,6 +60,7 @@ spec:
             team: platform
           annotations:
             summary: "{{ $labels.application }} 5xx rate above 5%"
+            runbook_url: "https://github.com/NguyenDucManhDOE247/BSS-Platform/blob/main/docs/runbooks/bss-high-error-rate.md"
 
         # ---- Pod restarts (CrashLoopBackoff canary) ---- #
         - alert: BssPodCrashLooping
@@ -66,6 +72,7 @@ spec:
             team: platform
           annotations:
             summary: "Pod {{ $labels.pod }} restarting repeatedly"
+            runbook_url: "https://github.com/NguyenDucManhDOE247/BSS-Platform/blob/main/docs/runbooks/bss-high-error-rate.md"
 
         # ---- JVM heap pressure ---- #
         - alert: BssJvmHeapHigh
@@ -80,3 +87,4 @@ spec:
             team: platform
           annotations:
             summary: "JVM heap > 85% on {{ $labels.pod }}"
+            runbook_url: "https://github.com/NguyenDucManhDOE247/BSS-Platform/blob/main/docs/runbooks/bss-high-error-rate.md"

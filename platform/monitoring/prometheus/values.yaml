@@ -81,6 +81,11 @@ alertmanager:
       repeat_interval: 4h
       receiver: "default"
     receivers:
+      # B-42: kube-prometheus-stack luôn thêm 1 route mặc định cho alert "Watchdog" trỏ tới
+      # receiver tên "null" (xem giải thích đầy đủ trong values-local.yaml, phát hiện được khi
+      # cài thật lần đầu trên kind ở Giai đoạn 2) — thiếu receiver này, Alertmanager Operator báo
+      # lỗi 'undefined receiver "null" used in route' và không bao giờ tạo StatefulSet.
+      - name: "null"
       - name: "default"
         # Wire to Slack / Discord / PagerDuty:
         # slack_configs:
