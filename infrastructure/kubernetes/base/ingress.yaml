@@ -6,7 +6,10 @@ metadata:
   name: bss-ingress
   namespace: bss
   annotations:
-    kubernetes.io/ingress.class: alb
+    # B-24: `kubernetes.io/ingress.class` is the deprecated way to pick a controller — the
+    # modern field is `spec.ingressClassName` below. Kept both controllers usable from the same
+    # base: AWS overlays patch `ingressClassName` to `alb` (unchanged behavior), the `local`
+    # overlay patches it to `nginx`.
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
@@ -15,6 +18,7 @@ metadata:
     # Cert ARN injected per env via overlay (acm.aws/listener-arn or certificate-arn).
     # external-dns annotation creates a Route 53 record automatically.
 spec:
+  ingressClassName: alb # overridden to "nginx" by overlays/local
   rules:
     - host: REPLACE_ME_HOST
       http:

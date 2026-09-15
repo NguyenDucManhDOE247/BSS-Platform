@@ -3,7 +3,7 @@ kind: Service
 metadata:
   name: web-portal
   namespace: bss
-  labels: { app: web-portal }
+  labels: { app: web-portal, tier: frontend } # B-24
 spec:
   type: ClusterIP
   selector: { app: web-portal }
