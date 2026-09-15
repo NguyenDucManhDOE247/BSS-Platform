@@ -20,12 +20,6 @@
         <java.version>21</java.version>
         <aws.sdk.version>2.54.17</aws.sdk.version>
         <resilience4j.version>2.4.0</resilience4j.version>
-        <!-- Same fix as billing-service/pom.xml: AWS SDK 2.54.x's default sync HTTP client
-             needs a recent httpclient5 (TlsSocketStrategy, added in 5.3) that
-             spring-boot-starter-parent's own BOM would otherwise pin down to 5.2.3, since the
-             parent POM wins Maven's dependency mediation over the imported AWS SDK BOM. -->
-        <httpclient5.version>5.6.4</httpclient5.version>
-        <httpcore5.version>5.4.3</httpcore5.version>
     </properties>
     <dependencyManagement>
         <dependencies>
