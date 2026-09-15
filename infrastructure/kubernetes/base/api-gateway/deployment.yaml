@@ -35,8 +35,12 @@ spec:
           image: api-gateway:latest
           ports:
             - { containerPort: 8080, name: http }
-          env:
-            - { name: SPRING_PROFILES_ACTIVE, value: "aws" }
+          # B-24: previously the only env var was a hardcoded SPRING_PROFILES_ACTIVE=aws, so
+          # there was no way to give the gateway per-env config (e.g. LOGGING_LEVEL_ROOT) without
+          # editing this file. api-gateway-config is added to every overlay's configMapGenerator.
+          envFrom:
+            - configMapRef:
+                name: api-gateway-config
           startupProbe:
             httpGet: { path: /actuator/health/liveness, port: 8080 }
             failureThreshold: 30
