@@ -16,10 +16,26 @@
 # Usage:
 #   ./scripts/e2e-local.sh              # fresh run: docker compose down -v, then up + test
 #   ./scripts/e2e-local.sh --keep-stack # skip the down -v / up — reuse whatever is running
+#   ./scripts/e2e-local.sh --stay-up    # after the checks pass, leave everything running so
+#                                       # you can point a browser (npm run dev) at a real,
+#                                       # already-populated backend instead of tearing it all
+#                                       # down immediately. Press Ctrl+C here when you're done —
+#                                       # that still runs the same cleanup as a normal exit.
+#   (flags can be combined, e.g. --keep-stack --stay-up)
 #
 # Requires (see learning/00 + docs/adr/ADR-000-local-dev.md): docker, mvn, curl, jq, and the 5
 # backend services buildable with `mvn -B package -DskipTests` (already verified once by
 # `mvn -B verify`, per Giai đoạn 1 step 1).
+#
+# A note on *why* this script starts every service with `(cd "$dir" && cmd &)` instead of a
+# plain `cd "$dir" && cmd &` typed one-per-line into an interactive shell: backgrounding a
+# `&&` chain with a trailing `&` still runs the WHOLE chain (including the `cd`) as one job,
+# but that job gets its own subshell for job control — the `cd` inside it does NOT change the
+# directory of the shell you're typing into. Paste several `cd ../next-service && ... &` lines
+# in a row expecting them to chain off each other's `cd` and every one after the first fails
+# with "No such file or directory", because the interactive shell's own cwd never moved. The
+# parentheses `(...)` here make the subshell explicit and self-contained (an absolute path in,
+# nothing leaks out) instead of relying on relative `cd`s across commands.
 
 set -euo pipefail
 
@@ -27,7 +43,15 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEPLOY_DIR="$ROOT_DIR/deploy"
 LOG_DIR="$ROOT_DIR/.e2e-local-logs"
 GATEWAY_URL="http://localhost:8080"
-KEEP_STACK="${1:-}"
+KEEP_STACK=0
+STAY_UP=0
+for arg in "$@"; do
+  case "$arg" in
+    --keep-stack) KEEP_STACK=1 ;;
+    --stay-up) STAY_UP=1 ;;
+    *) echo "Unknown flag: $arg (expected --keep-stack and/or --stay-up)" >&2; exit 2 ;;
+  esac
+done
 
 PIDS=()
 
@@ -57,7 +81,7 @@ mkdir -p "$LOG_DIR"
 rm -f "$LOG_DIR"/*.log
 
 # ── 1. Local infrastructure ────────────────────────────────────────────────
-if [ "$KEEP_STACK" != "--keep-stack" ]; then
+if [ "$KEEP_STACK" -eq 0 ]; then
   log "docker compose down -v (clean slate — this is the checkpoint's starting state)"
   (cd "$DEPLOY_DIR" && docker compose down -v)
   log "docker compose up -d (postgres + redis + localstack)"
@@ -188,3 +212,16 @@ ok "invoice found with correct VAT: amount=$INVOICE_AMOUNT tax=$INVOICE_TAX (exp
 
 echo ""
 ok "ALL CHECKS PASSED — customer → plans → order → invoice works end-to-end through the gateway."
+
+if [ "$STAY_UP" -eq 1 ]; then
+  echo ""
+  log "--stay-up: leaving everything running so you can point a browser at a real backend."
+  echo "   web-portal:    cd apps/frontend/web-portal   && npm install && npm run dev   → http://localhost:3000"
+  echo "   admin-console: cd apps/frontend/admin-console && npm install && npm run dev   → http://localhost:3001"
+  echo "   (run those in a SEPARATE terminal — this one needs to keep running)"
+  echo "   Press Ctrl+C here when you're done: kills the 5 backend processes (verified — sends"
+  echo "   SIGINT, cleanup() below runs). Postgres/LocalStack/Redis containers are left running"
+  echo "   either way (same as every other run) — 'make local-down' or the next"
+  echo "   ./scripts/e2e-local.sh (which starts with docker compose down -v) will stop those."
+  sleep infinity
+fi
