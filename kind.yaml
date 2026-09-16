@@ -1,0 +1,27 @@
+# kind cluster config for Giai đoạn 2 (local Kubernetes, $0 chi phí).
+#
+# Vì sao cần file này thay vì `kind create cluster` trơn: ingress-nginx trên kind không có
+# LoadBalancer thật (kind không chạy trên cloud nào) — cách chuẩn để vẫn gõ được
+# `http://bss.localtest.me` mà không phải `kubectl port-forward` là gán nhãn `ingress-ready=true`
+# cho 1 node rồi map thẳng cổng 80/443 của HOST vào node đó (`extraPortMappings`), sau đó cài
+# ingress-nginx bản "kind cloud provider" (dùng `nodeSelector` khớp đúng nhãn này + chạy Deployment
+# dạng hostNetwork/hostPort). Xem infrastructure/kubernetes/overlays/local/README.md để biết bước
+# cài ingress-nginx đi kèm.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: bss
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP

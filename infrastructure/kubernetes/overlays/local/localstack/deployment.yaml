@@ -1,0 +1,55 @@
+# Local-only stand-in for EventBridge + SQS + Secrets Manager (order-management publishes
+# OrderCompleted here, billing-service consumes it — see docs/adr/ADR-000-local-dev.md).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: localstack
+  namespace: bss
+  labels:
+    app: localstack
+    tier: data
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: localstack
+  template:
+    metadata:
+      labels:
+        app: localstack
+        tier: data
+    spec:
+      containers:
+        - name: localstack
+          image: localstack/localstack:3.4
+          ports:
+            - { containerPort: 4566, name: edge }
+          env:
+            - { name: SERVICES, value: "s3,sqs,events,secretsmanager,iam,sts" }
+            - { name: DEBUG, value: "0" }
+            - { name: DEFAULT_REGION, value: "ap-southeast-1" }
+            - { name: EAGER_SERVICE_LOADING, value: "1" }
+          readinessProbe:
+            httpGet: { path: /_localstack/health, port: 4566 }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /_localstack/health, port: 4566 }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            requests: { cpu: "100m", memory: "512Mi" }
+            limits: { cpu: "1000m", memory: "1Gi" }
+          volumeMounts:
+            - { name: init-script, mountPath: /etc/localstack/init/ready.d, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+            - { name: var-lib-localstack, mountPath: /var/lib/localstack }
+      volumes:
+        - name: init-script
+          configMap:
+            name: localstack-init
+            defaultMode: 0555
+        - name: tmp
+          emptyDir: {}
+        - name: var-lib-localstack
+          emptyDir: {}

@@ -1,0 +1,22 @@
+# Identical to deploy/postgres-init/01-create-databases.sh — kept byte-for-byte the same on
+# purpose (see overlays/local/README.md) so "works in docker-compose" and "works on kind" don't
+# silently drift into two different init scripts that happen to agree today.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: bss
+data:
+  01-create-databases.sh: |
+    #!/bin/bash
+    # Creates per-service databases on first start.
+    # Postgres image runs everything in /docker-entrypoint-initdb.d/ once.
+    set -e
+
+    for db in customer product orders billing; do
+      echo "Creating database: $db"
+      psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-EOSQL
+        CREATE DATABASE $db;
+        GRANT ALL PRIVILEGES ON DATABASE $db TO $POSTGRES_USER;
+    EOSQL
+    done

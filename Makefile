@@ -2,7 +2,8 @@
         verify verify-all e2e-local lint-frontend test-frontend build-images \
         tf-init tf-plan tf-apply tf-destroy \
         kube-config platform-install \
-        ecr-login build push deploy set-image smoke grafana
+        ecr-login build push deploy set-image smoke grafana \
+        kind-up kind-down kind-load deploy-local e2e-kind
 
 ENV ?= dev
 AWS_REGION ?= ap-southeast-1
@@ -107,3 +108,22 @@ smoke: ## Hit the $$ENV ALB and check basic responses
 
 grafana: ## Port-forward Grafana to localhost:3000
 	kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
+
+# ── Giai đoạn 2: kind (local Kubernetes, $0) ────────────────────────────
+kind-up: ## Create the "bss" kind cluster + ingress-nginx + metrics-server
+	./scripts/kind-up.sh
+
+kind-down: ## Delete the "bss" kind cluster (wipes all data, incl. Postgres PVC)
+	./scripts/kind-down.sh
+
+kind-load: build-images ## Build the 7 :local images and load them into the kind cluster
+	@for s in customer-service product-catalog order-management billing-service api-gateway web-portal admin-console; do \
+		kind load docker-image bss/$$s:local --name bss || exit 1; \
+	done
+
+deploy-local: kind-load ## Apply overlays/local to the kind cluster (context kind-bss)
+	kubectl --context kind-bss apply -k infrastructure/kubernetes/overlays/local
+	kubectl --context kind-bss -n bss wait --for=condition=Ready pod --all --timeout=180s
+
+e2e-kind: ## Same business-flow check as e2e-local, but through kind + ingress-nginx
+	./scripts/e2e-kind.sh

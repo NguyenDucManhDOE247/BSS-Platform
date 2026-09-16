@@ -1,0 +1,132 @@
+# Giai đoạn 2 — chạy toàn bộ hệ thống trên kind, $0 chi phí. Xem overlays/local/README.md cho
+# quy trình đầy đủ (kind create cluster → build images → kind load → apply -k → e2e-kind.sh).
+#
+# Khác AWS overlay (dev/staging/prod) ở 4 điểm, đúng theo learning/13 mục 6 + learning/20 GĐ2:
+#   1. Có thêm Postgres (StatefulSet) + LocalStack (Deployment) — dev/staging/prod dùng RDS/
+#      EventBridge/SQS thật, không cần 2 resource này.
+#   2. secretGenerator tạo Secret local (B-20 bản local) — dev/staging/prod dùng Secrets Store
+#      CSI (chưa hoàn thiện, B-20 bản AWS vẫn còn treo, xem learning/16 mục 4).
+#   3. Không có patch IRSA (`eks.amazonaws.com/role-arn`) — kind không phải EKS, không có IAM.
+#   4. Ingress dùng ingressClassName "nginx" + host *.localtest.me (không cần domain thật, không
+#      cần ACM) thay vì "alb" + domain CHANGE_ME (B-23 chỉ áp dụng cho AWS).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: bss
+
+resources:
+  - ../../base
+  - postgres
+  - localstack
+
+images:
+  # Tag "local" khớp đúng `make build-images` (build context không đổi — xem
+  # docs/adr/ADR-000-local-dev.md) — chỉ cần thêm `kind load docker-image bss/<svc>:local
+  # --name bss` để nạp vào containerd bên trong node trước khi apply.
+  - { name: customer-service,  newName: bss/customer-service,  newTag: local }
+  - { name: product-catalog,   newName: bss/product-catalog,   newTag: local }
+  - { name: order-management,  newName: bss/order-management,  newTag: local }
+  - { name: billing-service,   newName: bss/billing-service,   newTag: local }
+  - { name: api-gateway,       newName: bss/api-gateway,       newTag: local }
+  - { name: web-portal,        newName: bss/web-portal,        newTag: local }
+  - { name: admin-console,     newName: bss/admin-console,     newTag: local }
+
+configMapGenerator:
+  - name: customer-service-config
+    literals:
+      - SPRING_PROFILES_ACTIVE=aws
+      - LOGGING_LEVEL_ROOT=DEBUG
+      - DB_URL=jdbc:postgresql://postgres.bss.svc.cluster.local:5432/customer
+  - name: product-catalog-config
+    literals:
+      - SPRING_PROFILES_ACTIVE=aws
+      - LOGGING_LEVEL_ROOT=DEBUG
+      - DB_URL=jdbc:postgresql://postgres.bss.svc.cluster.local:5432/product
+  - name: order-management-config
+    literals:
+      - SPRING_PROFILES_ACTIVE=aws
+      - LOGGING_LEVEL_ROOT=DEBUG
+      - AWS_REGION=ap-southeast-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_ENDPOINT_URL=http://localstack.bss.svc.cluster.local:4566
+      - EVENT_BUS_NAME=bss-dev-events
+      - DB_URL=jdbc:postgresql://postgres.bss.svc.cluster.local:5432/orders
+  - name: billing-service-config
+    literals:
+      - SPRING_PROFILES_ACTIVE=aws
+      - LOGGING_LEVEL_ROOT=DEBUG
+      - AWS_REGION=ap-southeast-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_ENDPOINT_URL=http://localstack.bss.svc.cluster.local:4566
+      - SQS_QUEUE_URL=http://localstack.bss.svc.cluster.local:4566/000000000000/bss-dev-billing-orders
+      - DB_URL=jdbc:postgresql://postgres.bss.svc.cluster.local:5432/billing
+  - name: api-gateway-config
+    literals:
+      - SPRING_PROFILES_ACTIVE=aws
+      - LOGGING_LEVEL_ROOT=DEBUG
+
+# B-20 (bản local): dùng Kustomize secretGenerator thay Secrets Store CSI (AWS-only, chưa xong —
+# B-20 bản AWS vẫn treo, xem learning/16 mục 4). Cùng 1 tài khoản Postgres master cho cả 4 —
+# tách user riêng theo service (B-21) là việc của Giai đoạn 5 (RDS thật), không phải trọng tâm
+# ở đây. Giá trị "bss/bss" đã public sẵn trong deploy/docker-compose.yml — không phải secret
+# thật, an toàn để để literal thẳng trong file thay vì đọc từ .env ngoài (không có gì để giấu).
+secretGenerator:
+  - name: customer-db-credentials
+    literals: [username=bss, password=bss]
+  - name: product-db-credentials
+    literals: [username=bss, password=bss]
+  - name: order-db-credentials
+    literals: [username=bss, password=bss]
+  - name: billing-db-credentials
+    literals: [username=bss, password=bss]
+
+# kind chỉ có 1 node "ảo" — chạy 2 pod thắt cổ chai không có nghĩa gì (khác hẳn dev thật, nơi 1
+# vẫn có ≥2 node). B-22 gốc là base HPA minReplicas:2 > overlay replicas:1 làm Pod Pending ở AWS
+# dev — ở local, replicas + HPA minReplicas phải khớp NHAU (đều 1), nếu không HPA sẽ ngay lập
+# tức scale ngược từ 1 lên 2 (patch bên dưới).
+replicas:
+  - { name: customer-service,  count: 1 }
+  - { name: product-catalog,   count: 1 }
+  - { name: order-management,  count: 1 }
+  - { name: billing-service,   count: 1 }
+  - { name: api-gateway,       count: 1 }
+  - { name: web-portal,        count: 1 }
+  - { name: admin-console,     count: 1 }
+
+patches:
+  # B-22 (bản local): base hpa.yaml đặt minReplicas: 2 cho mọi service (api-gateway: xem patch
+  # riêng bên dưới, base của nó là 2 chung với các service khác) — hạ về 1 để khớp `replicas:`
+  # ở trên, tránh HPA tự ý scale-up ngay khi apply xong (đúng lab 13.3 của learning/13).
+  - target: { kind: HorizontalPodAutoscaler, name: customer-service }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+  - target: { kind: HorizontalPodAutoscaler, name: product-catalog }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+  - target: { kind: HorizontalPodAutoscaler, name: order-management }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+  - target: { kind: HorizontalPodAutoscaler, name: billing-service }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+  - target: { kind: HorizontalPodAutoscaler, name: api-gateway }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+  - target: { kind: HorizontalPodAutoscaler, name: web-portal }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+  - target: { kind: HorizontalPodAutoscaler, name: admin-console }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+
+  # Ingress: kind không phải EKS — không có ALB Controller, không có ACM, không có Route 53.
+  # ingress-nginx (cài bằng scripts/kind-up.sh) đăng ký IngressClass "nginx"; xoá sạch annotation
+  # alb.ingress.kubernetes.io/* (vô nghĩa với nginx, để lại chỉ gây nhiễu log) thay vì thêm chồng
+  # annotation nginx lên trên.
+  - target: { kind: Ingress, name: bss-ingress }
+    patch: |-
+      - { op: replace, path: /spec/ingressClassName, value: nginx }
+      - { op: replace, path: /metadata/annotations, value: {} }
+      - { op: replace, path: /spec/rules/0/host, value: bss.localtest.me }
