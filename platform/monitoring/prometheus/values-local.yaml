@@ -1,0 +1,158 @@
+# kube-prometheus-stack values, tuned for kind (Giai đoạn 2 — local, $0). Diff so với
+# values.yaml (AWS) theo đúng learning/16 mục 5.3 + lab 16.1:
+#   - storageClassName "gp3" bỏ hẳn (không tồn tại trên kind) — dùng StorageClass mặc định của
+#     kind ("standard", local-path-provisioner) bằng cách không set storageClassName.
+#   - retention/kích thước hạ xuống nhiều (cluster chạy tạm trên laptop, không cần giữ lâu).
+#   - etcd/kubeScheduler/kubeControllerManager/kubeProxy: định bật lại (giả thuyết ban đầu —
+#     "kind chạy static Pod thật, phải scrape được, khác EKS managed") nhưng kiểm chứng thật cho
+#     kết quả NGƯỢC LẠI — giữ tắt như AWS, lý do đầy đủ ở comment cạnh `kubeControllerManager:`
+#     bên dưới (kubeadm bind các cổng này vào 127.0.0.1, không phải node IP).
+#   - grafana.adminPassword: KHÔNG hardcode ở đây (khác values.yaml AWS đang có CHANGE_ME) — mật
+#     khẩu Grafana dù chỉ chạy local vẫn không nên nằm trong git; truyền lúc cài:
+#       helm upgrade --install monitoring ... --set grafana.adminPassword=<mật khẩu bạn chọn>
+#     Không set gì thì Helm tự sinh 1 chuỗi ngẫu nhiên, lấy lại bằng:
+#       kubectl -n monitoring get secret monitoring-grafana -o jsonpath='{.data.admin-password}' | base64 -d
+#
+# Install: xem platform/README.md mục "Local (kind)".
+
+prometheus:
+  prometheusSpec:
+    retention: 24h
+    retentionSize: 1GB
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        memory: 1Gi
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 2Gi
+  ingress:
+    enabled: false
+
+grafana:
+  persistence:
+    enabled: true
+    size: 1Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      # Kiểm chứng thật: 256Mi (mức tôi định hạ so với values.yaml AWS để "tiết kiệm" cho local)
+      # làm Grafana bị OOMKilled thật ngay sau khi Ready lần đầu — Grafana 13.2 (bản mới hơn
+      # nhiều so với lúc values.yaml AWS được viết) cần nhiều hơn. Giữ nguyên 512Mi như bản AWS
+      # thay vì đoán một con số "có vẻ đủ cho local".
+      memory: 512Mi
+  service:
+    type: ClusterIP
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: bss
+          folder: BSS
+          type: file
+          options:
+            path: /var/lib/grafana/dashboards/bss
+  dashboardsConfigMaps:
+    bss: bss-dashboards
+
+alertmanager:
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 512Mi
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+  config:
+    route:
+      group_by: ["alertname", "service"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: "default"
+    receivers:
+      # B-42 (phát hiện thêm khi kiểm chứng thật trên cluster kind — không có trong bản B-42 gốc
+      # của learning/01): kube-prometheus-stack chart luôn tự thêm 1 route mặc định cho alert
+      # "Watchdog" (alert giả, luôn Firing, chỉ để xác nhận toàn bộ chuỗi Prometheus→Alertmanager
+      # còn sống) trỏ tới receiver tên "null" — route đó được thêm dù bạn override toàn bộ
+      # `alertmanager.config`. Thiếu receiver "null" này, Alertmanager Operator log lỗi thật:
+      # 'provision alertmanager configuration: failed to initialize from secret: undefined
+      # receiver "null" used in route' và KHÔNG BAO GIỜ tạo StatefulSet — Alertmanager Pod không
+      # tồn tại (không phải Pending/CrashLoop, mà là "chưa từng được tạo"). Đây cũng là lỗi có
+      # sẵn trong values.yaml (bản AWS) — chưa lộ ra vì chưa từng cài thật (đúng nhận định gốc
+      # của B-42: "chưa có đường thu metric/trace thực sự", nay biết thêm nguyên nhân cụ thể).
+      - name: "null"
+      - name: "default"
+        # B-42: chưa có webhook thật (xem docs/adr/ADR-001-alerting-channel.md) — bỏ comment
+        # ĐÚNG 1 trong 2 khối dưới đây và điền URL thật khi bạn đã tạo webhook (hướng dẫn từng
+        # bước trong docs/runbooks/bss-high-error-rate.md). Không commit URL thật lên git — sửa
+        # trực tiếp values-local.yaml cục bộ (không track) hoặc truyền qua:
+        #   helm upgrade --install monitoring ... --set-string 'alertmanager.config.receivers[0].discord_configs[0].webhook_url=...'
+        #
+        # --- Discord ---
+        # discord_configs:
+        #   - webhook_url: "https://discord.com/api/webhooks/XXXXXXXX/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+        #
+        # --- Slack ---
+        # slack_configs:
+        #   - api_url: "https://hooks.slack.com/services/XXXXXXX/XXXXXXX/XXXXXXXXXXXXXXXXXXXXXXXX"
+        #     channel: "#bss-alerts"
+        #     send_resolved: true
+
+# Tắt hẳn ServiceMonitor của 4 thành phần control-plane này (không chỉ tắt RULE cảnh báo bên
+# dưới) — đây mới là cấu hình thật sự dừng việc scrape (defaultRules.rules chỉ tắt các alert
+# RIÊNG cho từng thành phần, KHÔNG tắt ServiceMonitor tương ứng; generic "TargetDown" vẫn bắn vì
+# nó theo dõi MỌI target, không quan tâm component nào). Xem giải thích đầy đủ (connection
+# refused thật, do kubeadm bind các cổng này vào 127.0.0.1) ở comment defaultRules.rules bên dưới.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeEtcd:
+  enabled: false
+
+defaultRules:
+  rules:
+    # Ban đầu định bật lại cả 4 rule này với lý do "kind chạy static Pod thật, scrape được"
+    # (đúng với learning/16 mục 5.3) — nhưng kiểm chứng thật trên cluster kind cho kết quả khác:
+    # cả 4 target đều "down", lỗi `connection refused`. Nguyên nhân: kubeadm (kind dùng kubeadm
+    # bên trong) mặc định bind cổng metrics của kube-controller-manager/kube-scheduler (secure
+    # port) và kube-proxy/etcd vào chỉ `127.0.0.1` của chính container control-plane — không
+    # nghe trên IP của node (172.19.0.2) mà Prometheus Pod gọi tới. Trên EKS các thành phần này
+    # AWS quản lý và ẩn hoàn toàn (không scrape được vì lý do khác — "managed", xem values.yaml)
+    # nên bài học gốc không phát hiện ra khác biệt này. Fix thật (nâng cao, ngoài phạm vi Giai
+    # đoạn 2): patch `kind.yaml` với `kubeadmConfigPatches` thêm `--bind-address=0.0.0.0` cho
+    # từng thành phần — để dành, giữ tắt như AWS cho tới lúc đó (tránh 4 alert TargetDown giả gây
+    # nhiễu không liên quan gì tới BSS).
+    etcd: false
+    kubeControllerManager: false
+    kubeScheduler: false
+    kubeProxy: false
+
+kube-state-metrics:
+  enabled: true
+
+nodeExporter:
+  enabled: true

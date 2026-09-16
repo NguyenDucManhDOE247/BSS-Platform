@@ -1,0 +1,33 @@
+# B-40: kube-prometheus-stack's Prometheus Operator does NOT read the `prometheus.io/scrape`
+# annotations already on every Deployment in infrastructure/kubernetes/base/*/deployment.yaml —
+# that convention only means something if you hand-write a Prometheus `scrape_configs` job with
+# matching `relabel_configs` (the "plain Prometheus" style). The Operator instead generates its
+# own scrape config entirely from ServiceMonitor/PodMonitor CRDs. See learning/16 mục 5.2.
+#
+# Not part of infrastructure/kubernetes/base/kustomization.yaml on purpose: this object's CRD
+# (servicemonitors.monitoring.coreos.com) is installed BY the kube-prometheus-stack Helm chart —
+# applying it before that chart is installed fails with "no matches for kind ServiceMonitor".
+# Same reasoning as monitoring/alerts/bss-alerts.yaml already being a separate `kubectl apply -f`
+# step in platform/README.md instead of living in the app Kustomize tree.
+#
+# One ServiceMonitor covers all 5 backends + the gateway: they share the `tier: backend`/`edge`
+# label added to every Service in infrastructure/kubernetes/base/*/service.yaml (B-24), and all
+# of them expose the same Micrometer path. web-portal/admin-console are plain Nginx — nothing to
+# scrape there.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: bss-services
+  namespace: bss
+  labels:
+    release: monitoring # matches the Helm release name so it's easy to find with kubectl -l
+spec:
+  namespaceSelector:
+    matchNames: [bss]
+  selector:
+    matchExpressions:
+      - { key: tier, operator: In, values: [backend, edge] }
+  endpoints:
+    - port: http # must match the named port in service.yaml, not the container port number
+      path: /actuator/prometheus
+      interval: 30s
