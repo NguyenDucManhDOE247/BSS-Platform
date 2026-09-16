@@ -19,29 +19,34 @@ configMapGenerator:
   - name: customer-service-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
-      - LOG_LEVEL=INFO
+      - LOGGING_LEVEL_ROOT=INFO
       - AWS_REGION=ap-southeast-1
       - DB_URL=jdbc:postgresql://bss-staging-rds.CHANGE_ME.rds.amazonaws.com:5432/customer
   - name: product-catalog-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
-      - LOG_LEVEL=INFO
+      - LOGGING_LEVEL_ROOT=INFO
       - AWS_REGION=ap-southeast-1
       - DB_URL=jdbc:postgresql://bss-staging-rds.CHANGE_ME.rds.amazonaws.com:5432/product
   - name: order-management-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
-      - LOG_LEVEL=INFO
+      - LOGGING_LEVEL_ROOT=INFO
       - AWS_REGION=ap-southeast-1
       - EVENT_BUS_NAME=bss-staging-events
       - DB_URL=jdbc:postgresql://bss-staging-rds.CHANGE_ME.rds.amazonaws.com:5432/orders
   - name: billing-service-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
-      - LOG_LEVEL=INFO
+      - LOGGING_LEVEL_ROOT=INFO
       - AWS_REGION=ap-southeast-1
       - SQS_QUEUE_URL=https://sqs.ap-southeast-1.amazonaws.com/CHANGE_ME_ACCOUNT_ID/bss-staging-billing-orders
       - DB_URL=jdbc:postgresql://bss-staging-rds.CHANGE_ME.rds.amazonaws.com:5432/billing
+  # B-24: see the identical comment in overlays/dev/kustomization.yaml.
+  - name: api-gateway-config
+    literals:
+      - SPRING_PROFILES_ACTIVE=aws
+      - LOGGING_LEVEL_ROOT=INFO
 
 replicas:
   - { name: customer-service,  count: 2 }

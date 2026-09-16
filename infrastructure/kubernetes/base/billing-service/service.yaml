@@ -3,7 +3,7 @@ kind: Service
 metadata:
   name: billing-service
   namespace: bss
-  labels: { app: billing-service }
+  labels: { app: billing-service, tier: backend } # B-24
 spec:
   type: ClusterIP
   selector: { app: billing-service }

@@ -10,6 +10,9 @@ resources:
   - hpa.yaml
   - pdb.yaml
 
-commonLabels:
-  app.kubernetes.io/part-of: bss-platform
-  app.kubernetes.io/name: order-management
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: bss-platform
+      app.kubernetes.io/name: order-management
+    includeSelectors: false
+    includeTemplates: true

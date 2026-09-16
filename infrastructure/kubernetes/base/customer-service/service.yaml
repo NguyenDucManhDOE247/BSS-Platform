@@ -5,6 +5,7 @@ metadata:
   namespace: bss
   labels:
     app: customer-service
+    tier: backend # B-24: lets a single ServiceMonitor select every backend Service by label
 spec:
   type: ClusterIP
   selector:
