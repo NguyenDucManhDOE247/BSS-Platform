@@ -43,14 +43,17 @@ spec:
           ports:
             - containerPort: 8080
               name: http
+          # B-24: was a hand-picked `env:` list that only ever wired DB_URL out of the
+          # ConfigMap — every other literal in customer-service-config (LOG_LEVEL, AWS_REGION)
+          # silently reached no one. envFrom loads EVERY key of the ConfigMap as an env var, so
+          # adding a new literal to configMapGenerator (any overlay) actually takes effect
+          # without also touching this file. Secrets stay as individual env: entries because
+          # their key names (username/password) don't match the Spring property names
+          # (DB_USER/DB_PASSWORD) the way the ConfigMap's keys already do.
+          envFrom:
+            - configMapRef:
+                name: customer-service-config
           env:
-            - name: SPRING_PROFILES_ACTIVE
-              value: "aws"
-            - name: DB_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: customer-service-config
-                  key: DB_URL
             - name: DB_USER
               valueFrom:
                 secretKeyRef:

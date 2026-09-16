@@ -38,24 +38,19 @@ spec:
           image: order-management:latest
           ports:
             - { containerPort: 8080, name: http }
+          # B-24: see the identical comment in customer-service/deployment.yaml — envFrom now
+          # picks up every key of order-management-config (DB_URL, AWS_REGION, EVENT_BUS_NAME,
+          # LOGGING_LEVEL_ROOT, ...) instead of only the 3 keys someone remembered to wire here.
+          envFrom:
+            - configMapRef:
+                name: order-management-config
           env:
-            - name: SPRING_PROFILES_ACTIVE
-              value: "aws"
-            - name: DB_URL
-              valueFrom:
-                configMapKeyRef: { name: order-management-config, key: DB_URL }
             - name: DB_USER
               valueFrom:
                 secretKeyRef: { name: order-db-credentials, key: username }
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef: { name: order-db-credentials, key: password }
-            - name: AWS_REGION
-              valueFrom:
-                configMapKeyRef: { name: order-management-config, key: AWS_REGION }
-            - name: EVENT_BUS_NAME
-              valueFrom:
-                configMapKeyRef: { name: order-management-config, key: EVENT_BUS_NAME }
           startupProbe:
             httpGet: { path: /actuator/health/liveness, port: 8080 }
             failureThreshold: 30

@@ -41,14 +41,11 @@ spec:
           ports:
             - containerPort: 8080
               name: http
+          # B-24: see the identical comment in customer-service/deployment.yaml.
+          envFrom:
+            - configMapRef:
+                name: product-catalog-config
           env:
-            - name: SPRING_PROFILES_ACTIVE
-              value: "aws"
-            - name: DB_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: product-catalog-config
-                  key: DB_URL
             - name: DB_USER
               valueFrom:
                 secretKeyRef:

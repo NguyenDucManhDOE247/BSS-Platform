@@ -34,29 +34,35 @@ configMapGenerator:
   - name: customer-service-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
-      - LOG_LEVEL=DEBUG
+      - LOGGING_LEVEL_ROOT=DEBUG
       - AWS_REGION=ap-southeast-1
       - DB_URL=jdbc:postgresql://bss-dev-rds.CHANGE_ME.rds.amazonaws.com:5432/customer
   - name: product-catalog-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
-      - LOG_LEVEL=DEBUG
+      - LOGGING_LEVEL_ROOT=DEBUG
       - AWS_REGION=ap-southeast-1
       - DB_URL=jdbc:postgresql://bss-dev-rds.CHANGE_ME.rds.amazonaws.com:5432/product
   - name: order-management-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
-      - LOG_LEVEL=DEBUG
+      - LOGGING_LEVEL_ROOT=DEBUG
       - AWS_REGION=ap-southeast-1
       - EVENT_BUS_NAME=bss-dev-events
       - DB_URL=jdbc:postgresql://bss-dev-rds.CHANGE_ME.rds.amazonaws.com:5432/orders
   - name: billing-service-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
-      - LOG_LEVEL=DEBUG
+      - LOGGING_LEVEL_ROOT=DEBUG
       - AWS_REGION=ap-southeast-1
       - SQS_QUEUE_URL=https://sqs.ap-southeast-1.amazonaws.com/CHANGE_ME_ACCOUNT_ID/bss-dev-billing-orders
       - DB_URL=jdbc:postgresql://bss-dev-rds.CHANGE_ME.rds.amazonaws.com:5432/billing
+  # B-24: api-gateway used to hardcode SPRING_PROFILES_ACTIVE in the base Deployment with no
+  # ConfigMap at all — now envFrom reads this like every other backend.
+  - name: api-gateway-config
+    literals:
+      - SPRING_PROFILES_ACTIVE=aws
+      - LOGGING_LEVEL_ROOT=DEBUG
 
 # Dev runs 1 replica each to save cost.
 replicas:

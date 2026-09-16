@@ -36,24 +36,17 @@ spec:
           image: billing-service:latest
           ports:
             - { containerPort: 8080, name: http }
+          # B-24: see the identical comment in customer-service/deployment.yaml.
+          envFrom:
+            - configMapRef:
+                name: billing-service-config
           env:
-            - name: SPRING_PROFILES_ACTIVE
-              value: "aws"
-            - name: DB_URL
-              valueFrom:
-                configMapKeyRef: { name: billing-service-config, key: DB_URL }
             - name: DB_USER
               valueFrom:
                 secretKeyRef: { name: billing-db-credentials, key: username }
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef: { name: billing-db-credentials, key: password }
-            - name: AWS_REGION
-              valueFrom:
-                configMapKeyRef: { name: billing-service-config, key: AWS_REGION }
-            - name: SQS_QUEUE_URL
-              valueFrom:
-                configMapKeyRef: { name: billing-service-config, key: SQS_QUEUE_URL }
           startupProbe:
             httpGet: { path: /actuator/health/liveness, port: 8080 }
             failureThreshold: 30
