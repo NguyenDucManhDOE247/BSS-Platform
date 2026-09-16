@@ -5,3 +5,14 @@ metadata:
   labels:
     name: bss
     purpose: business-support-system
+    # B-25: Pod Security Standards, enforced by the API server itself (no extra controller to
+    # install — this is a built-in admission plugin since K8s 1.25). "restricted" is the
+    # strictest of the 3 built-in levels (privileged < baseline < restricted) — it requires
+    # every container to run as non-root, drop all Linux capabilities, forbid privilege
+    # escalation, and use the default seccomp profile. Every container in this repo already sets
+    # all of that (see any base/*/deployment.yaml securityContext) so this should reject nothing
+    # that's actually meant to run here — only a Pod someone writes later that forgets one of
+    # those fields.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

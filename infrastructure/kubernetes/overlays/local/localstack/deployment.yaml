@@ -19,6 +19,16 @@ spec:
         app: localstack
         tier: data
     spec:
+      # B-25: the localstack/localstack image has no USER directive (runs as root, uid 0, by
+      # default — confirmed with `docker inspect localstack/localstack:3.4`), which the
+      # namespace's new Pod Security "restricted" label (namespace.yaml) rejects outright. Pin a
+      # non-root UID instead, and fsGroup so the emptyDir volumes below are actually writable by
+      # that UID (a fresh emptyDir is root:root 0755 otherwise — a non-root container can't write
+      # to it without this).
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       containers:
         - name: localstack
           image: localstack/localstack:3.4
@@ -40,6 +50,14 @@ spec:
           resources:
             requests: { cpu: "100m", memory: "512Mi" }
             limits: { cpu: "1000m", memory: "1Gi" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+            seccompProfile: { type: RuntimeDefault }
+            # NOT readOnlyRootFilesystem — LocalStack writes internal scratch state to several
+            # paths under its image root beyond the 2 volumes mounted below; unlike postgres this
+            # wasn't worth chasing down path-by-path for a dev-only dependency (see
+            # overlays/local/README.md for the trade-off this documents).
           volumeMounts:
             - { name: init-script, mountPath: /etc/localstack/init/ready.d, readOnly: true }
             - { name: tmp, mountPath: /tmp }

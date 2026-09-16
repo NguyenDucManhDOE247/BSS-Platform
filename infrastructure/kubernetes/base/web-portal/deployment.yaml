@@ -50,6 +50,7 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
+            seccompProfile: { type: RuntimeDefault }
           volumeMounts:
             - { name: cache,   mountPath: /var/cache/nginx }
             - { name: pid,     mountPath: /var/run }
