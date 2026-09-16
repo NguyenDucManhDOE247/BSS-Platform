@@ -38,6 +38,15 @@ spec:
       containers:
         - name: postgres
           image: postgres:15-alpine
+          # Phát hiện thật khi chạy tests/load/plans-and-order.js (k6): HPA scale order-management
+          # + product-catalog lên 8 pod mỗi loại giữa lúc tải cao — mỗi Pod mở 1 HikariCP pool
+          # (mặc định 10 connection); tổng nhu cầu vượt xa mặc định `max_connections: 100` của
+          # Postgres → Pod mới nhất bị Flyway "FATAL: sorry, too many clients already" và
+          # CrashLoopBackOff (không liên quan gì tới code ứng dụng — thuần capacity planning, xem
+          # `learning/13` mục 4 "ngân sách pod", áp dụng y hệt cho connection DB thay vì CPU/pod).
+          # Nâng max_connections làm phao cứu sinh cho local; sizing HikariCP theo số replica là
+          # việc đúng hơn cho production (để dành, ghi trong docs/labs/04-kubernetes-foundations.md).
+          args: ["-c", "max_connections=200"]
           ports:
             - { containerPort: 5432, name: postgres }
           env:
