@@ -68,7 +68,8 @@ jobs:
         run: docker build -t ${{ matrix.app }}:ci .
 
       - name: Trivy scan
-        uses: aquasecurity/trivy-action@0.20.0
+        # B-54: see the identical comment in ci-backend.yml — tag "0.20.0" no longer resolves.
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           image-ref: ${{ matrix.app }}:ci
           severity: HIGH,CRITICAL
