@@ -1,0 +1,17 @@
+# Headless (clusterIP: None) — the StatefulSet convention, gives each Pod its own stable DNS
+# name (postgres-0.postgres.bss.svc.cluster.local) instead of load-balancing across replicas
+# (which would be meaningless for a single-writer database anyway).
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: bss
+  labels:
+    app: postgres
+    tier: data
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+    - { name: postgres, port: 5432, targetPort: 5432 }
