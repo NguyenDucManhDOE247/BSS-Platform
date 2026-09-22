@@ -64,78 +64,11 @@ resource "aws_iam_role_policy_attachment" "service_managed" {
   policy_arn = each.value.policy_arn
 }
 
-# ── GitHub OIDC provider (for CI/CD) ───────────────────────────────────
-resource "aws_iam_openid_connect_provider" "github" {
-  count = var.enable_github_oidc ? 1 : 0
-
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
-
-  tags = var.tags
-}
-
-resource "aws_iam_role" "github_actions_deployer" {
-  count = var.enable_github_oidc ? 1 : 0
-
-  name = "${var.name_prefix}-github-deployer"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = {
-        Federated = aws_iam_openid_connect_provider.github[0].arn
-      }
-      Action = "sts:AssumeRoleWithWebIdentity"
-      Condition = {
-        StringEquals = {
-          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-        }
-        StringLike = {
-          "token.actions.githubusercontent.com:sub" = [
-            for repo in var.github_repos : "repo:${repo}:*"
-          ]
-        }
-      }
-    }]
-  })
-
-  tags = var.tags
-}
-
-resource "aws_iam_role_policy" "github_actions_deployer" {
-  count = var.enable_github_oidc ? 1 : 0
-
-  name = "deployer"
-  role = aws_iam_role.github_actions_deployer[0].id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "ECRPushPull"
-        Effect = "Allow"
-        Action = [
-          "ecr:GetAuthorizationToken",
-          "ecr:BatchCheckLayerAvailability",
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:BatchGetImage",
-          "ecr:PutImage",
-          "ecr:InitiateLayerUpload",
-          "ecr:UploadLayerPart",
-          "ecr:CompleteLayerUpload",
-          "ecr:DescribeRepositories",
-          "ecr:DescribeImages",
-        ]
-        Resource = "*"
-      },
-      {
-        Sid      = "EKSDescribe"
-        Effect   = "Allow"
-        Action   = ["eks:DescribeCluster", "eks:ListClusters"]
-        Resource = "*"
-      },
-    ]
-  })
-}
+# B-33: the GitHub OIDC provider + CI/CD deployer role USED to live here, created once per
+# environment with `enable_github_oidc = true` in dev only. That's an account-level resource
+# (there's only ever ONE "token.actions.githubusercontent.com" OIDC provider per AWS account —
+# creating it a second time errors) masquerading as a per-environment one; it also meant "destroy
+# dev nightly" would destroy the ONLY role every environment's CD depends on. Moved to
+# environments/shared/main.tf (see B-34 there too — access entries into each cluster) — this
+# module is now purely "per-service IRSA roles", matching its own docstring at the top of the
+# file.

@@ -1,7 +1,8 @@
 # Copy to terraform.tfvars and edit.
+# github_repos lives in environments/shared/terraform.tfvars.example now (B-33) — it's an
+# account-level resource, not per-environment.
 
-owner_email  = "you@example.com"
-github_repos = ["YOUR_GH_USERNAME/bss-platform"]
+owner_email = "you@example.com"
 
 # For better security, find your public IP and put it here:
 #   curl -s https://checkip.amazonaws.com

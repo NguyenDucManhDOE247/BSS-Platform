@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
-          terraform_version: 1.7.5
+          terraform_version: 1.14.8
       - run: terraform fmt -check -recursive infrastructure/terraform
 
   validate:
@@ -26,12 +26,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        env: [dev, staging, prod]
+        env: [shared, dev, staging, prod]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
-          terraform_version: 1.7.5
+          terraform_version: 1.14.8
 
       # B-30/B-31: `terraform init`/`validate` never ran in CI before this — the workflow only
       # checked formatting, then jumped straight to `plan-dev` (which needs real AWS OIDC
@@ -88,7 +88,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
-          terraform_version: 1.7.5
+          terraform_version: 1.14.8
 
       - name: Init + plan (dev)
         working-directory: infrastructure/terraform/environments/dev
