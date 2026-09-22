@@ -8,7 +8,7 @@ RUN --mount=type=cache,target=/root/.m2 mvn -B dependency:go-offline
 COPY src/ src/
 RUN --mount=type=cache,target=/root/.m2 mvn -B clean package -DskipTests
 
-FROM eclipse-temurin:21-jre-jammy
+FROM eclipse-temurin:25-jre-jammy
 RUN groupadd --system bss && useradd --system --gid bss bss
 USER bss
 WORKDIR /app
