@@ -6,6 +6,7 @@ import com.bss.billing.repository.ProcessedEventRepository;
 import com.bss.billing.service.BillingService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -48,6 +49,19 @@ class OrderCompletedHandlerIT {
     @Autowired ProcessedEventRepository processedEvents;
     @Autowired InvoiceRepository invoices;
     @Autowired ObjectMapper json;
+
+    // The Testcontainers Postgres above is `static` — one container, hence one database, shared
+    // across every @Test in this class (starting a fresh container per test would be much
+    // slower). Without this cleanup, whichever test runs first leaves rows behind that the next
+    // test's `invoices.count()`/`processedEvents` assertions silently count too — JUnit 5 does
+    // NOT guarantee method execution order, so this bug goes from "always fails" (order A) to
+    // "always passes" (order B) depending on nothing this test file controls. Found by actually
+    // running these in real CI for the first time (Giai đoạn 3), not by reading the code.
+    @BeforeEach
+    void cleanDatabase() {
+        invoices.deleteAll();
+        processedEvents.deleteAll();
+    }
 
     private ObjectNode detailFor(UUID orderId, UUID customerId) {
         return json.createObjectNode()
