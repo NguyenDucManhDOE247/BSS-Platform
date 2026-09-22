@@ -1,0 +1,43 @@
+name: Publish — bss-common-java
+
+# Giai đoạn 3, mục 6 (tùy chọn): packages/bss-common-java từng tồn tại nhưng KHÔNG service nào
+# dùng — mỗi service tự chép NotFoundException/GlobalExceptionHandler của riêng mình (B-15).
+# Publish lên GitHub Packages là bước để service THẬT SỰ khai báo nó như 1 dependency Maven
+# bình thường (`<dependency>` + `<repository>`), thay vì "copy code qua lại giữa thư mục".
+#
+# Chỉ chạy khi merge vào main (không chạy trên PR — PR không có quyền `packages: write`, và
+# GitHub Packages không cho ghi đè 1 version đã tồn tại nên publish thử trên mỗi PR sẽ hỏng
+# ngay từ lần merge thứ 2 nếu quên bump version).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/bss-common-java/**'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # `server-id: github` makes setup-java write ~/.m2/settings.xml with a <server> block for
+      # id "github", credentials taken from the GITHUB_TOKEN/GITHUB_ACTOR env vars below — this
+      # is what lets `mvn deploy` authenticate to GitHub Packages without a hand-written
+      # settings.xml (and without ever putting a token in a committed file).
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          server-id: github
+
+      - name: Deploy to GitHub Packages
+        working-directory: packages/bss-common-java
+        run: mvn -B deploy -DskipTests
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

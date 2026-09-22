@@ -2,7 +2,7 @@ package com.bss.customer.service;
 
 import com.bss.customer.dto.CreateCustomerRequest;
 import com.bss.customer.dto.PatchCustomerRequest;
-import com.bss.customer.exception.NotFoundException;
+import com.bss.common.exception.NotFoundException;
 import com.bss.customer.model.Customer;
 import com.bss.customer.paging.OffsetPageRequest;
 import com.bss.customer.repository.CustomerRepository;

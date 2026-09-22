@@ -24,6 +24,26 @@
             <version>6.1.5</version>
             <scope>provided</scope>
         </dependency>
+        <!--
+          Real bug found by actually running `mvn install` here for the first time (this module
+          was never built on its own before — no service depended on it yet, see B-15): spring-web
+          alone is NOT enough. MethodArgumentNotValidException (spring-web) exposes
+          getBindingResult(): BindingResult, but BindingResult/Errors themselves live in
+          spring-context, not spring-web — compiling this class needs both.
+        -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+            <version>6.1.5</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- DataIntegrityViolationException (org.springframework.dao) lives in spring-tx -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
+            <version>6.1.5</version>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>jakarta.validation</groupId>
             <artifactId>jakarta.validation-api</artifactId>
@@ -31,4 +51,21 @@
             <scope>provided</scope>
         </dependency>
     </dependencies>
+
+    <!--
+      Giai đoạn 3, mục 6 (tùy chọn): publish lên GitHub Packages thay vì mỗi service tự chép
+      (bss-common-java trước đây KHÔNG được service nào dùng — xem B-15). `distributionManagement`
+      trỏ đúng registry Maven của GitHub Packages cho repo này; `.github/workflows/
+      publish-bss-common-java.yml` là nơi thực sự chạy `mvn deploy` (cần packages: write + auth
+      GITHUB_TOKEN, chỉ có trong Actions — không chạy `mvn deploy` tay từ máy local).
+      ⚠️ GitHub Packages KHÔNG cho ghi đè 1 version đã publish — mỗi lần đổi code ở đây phải bump
+      <version> ở trên trước khi merge vào main, nếu không workflow publish sẽ báo lỗi 409.
+    -->
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub Packages — bss-platform</name>
+            <url>https://maven.pkg.github.com/NguyenDucManhDOE247/BSS-Platform</url>
+        </repository>
+    </distributionManagement>
 </project>
