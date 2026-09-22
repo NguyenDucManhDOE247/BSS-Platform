@@ -1,6 +1,13 @@
 spring:
   application:
     name: customer-service
+  jackson:
+    deserialization:
+      # B-15: Spring Boot's own default is `false` (silently drop unrecognized JSON fields).
+      # A caller sending a field not in the target DTO — e.g. trying to set the server-owned
+      # `status` on customer creation — got a 201 with no signal that the field was dropped.
+      # No other DTO in this service currently depends on lenient parsing (checked every test).
+      fail-on-unknown-properties: true
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/customer}
     username: ${DB_USER:bss}

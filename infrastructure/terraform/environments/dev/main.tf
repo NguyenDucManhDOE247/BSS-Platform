@@ -1,13 +1,13 @@
 # BSS Platform — DEV environment
 #
 # Optimised for low cost and fast iteration:
-#   - No NAT Gateway (use VPC endpoints)
+#   - 1 NAT Gateway (not "VPC endpoints only" — see docs/adr/ADR-002-mang-dev.md, B-32)
 #   - Single-AZ RDS, db.t3.micro
 #   - System node group min=2 (cheapest stable size)
 #   - Deletion protection OFF (so we can `terraform destroy` nightly)
 
 terraform {
-  required_version = ">= 1.7"
+  required_version = ">= 1.10" # use_lockfile (S3 native state lock, B-38) needs 1.10+
 
   required_providers {
     aws = {
@@ -24,14 +24,19 @@ terraform {
     }
   }
 
-  # Remote state (uncomment once the bucket exists — see scripts/bootstrap-aws.sh)
-  # backend "s3" {
-  #   bucket         = "bss-platform-tfstate"
-  #   key            = "dev/terraform.tfstate"
-  #   region         = "ap-southeast-1"
-  #   dynamodb_table = "bss-platform-tflocks"
-  #   encrypt        = true
-  # }
+  # Remote state — bucket deliberately NOT hardcoded here (B-38: S3 bucket names are global, so
+  # the bucket name embeds your AWS account id, e.g. "bss-tfstate-123456789012", which this file
+  # can't know statically). Run `scripts/bootstrap-aws.sh` first, then either:
+  #   terraform init -backend-config="bucket=bss-tfstate-<your-account-id>"
+  # or simply `make ENV=dev tf-init` (the Makefile fills in -backend-config from
+  # `aws sts get-caller-identity` for you). `use_lockfile` needs Terraform >= 1.10 — no DynamoDB
+  # table to create/pay for separately anymore.
+  backend "s3" {
+    key          = "dev/terraform.tfstate"
+    region       = "ap-southeast-1"
+    encrypt      = true
+    use_lockfile = true
+  }
 }
 
 provider "aws" {
@@ -39,6 +44,20 @@ provider "aws" {
 
   default_tags {
     tags = local.common_tags
+  }
+}
+
+data "aws_caller_identity" "current" {}
+
+# B-33: ECR + GitHub OIDC + deployer roles live in environments/shared now (account-level,
+# outlive any single environment) — read their outputs instead of re-creating them here.
+# Requires `environments/shared` to have been applied FIRST.
+data "terraform_remote_state" "shared" {
+  backend = "s3"
+  config = {
+    bucket = "bss-tfstate-${data.aws_caller_identity.current.account_id}"
+    key    = "shared/terraform.tfstate"
+    region = var.region
   }
 }
 
@@ -59,13 +78,13 @@ locals {
 module "vpc" {
   source = "../../modules/vpc"
 
-  name_prefix          = local.name_prefix
-  region               = var.region
-  cluster_name         = local.cluster_name
-  vpc_cidr             = "10.10.0.0/16"
-  az_count             = 2
-  enable_nat_gateway   = false # cost optimization
-  enable_vpc_endpoints = true
+  name_prefix                = local.name_prefix
+  region                     = var.region
+  cluster_name               = local.cluster_name
+  vpc_cidr                   = "10.10.0.0/16"
+  az_count                   = 2
+  enable_nat_gateway         = true  # B-32/ADR-002: "no NAT" didn't work — see the ADR
+  enable_interface_endpoints = false # S3 gateway endpoint is still always on (free)
 
   tags = local.common_tags
 }
@@ -76,7 +95,7 @@ module "eks" {
 
   name_prefix                = local.name_prefix
   cluster_name               = local.cluster_name
-  k8s_version                = "1.30"
+  k8s_version                = "1.34" # B-36: verify current STANDARD_SUPPORT versions before apply
   private_subnet_ids         = module.vpc.private_subnet_ids
   public_subnet_ids          = module.vpc.public_subnet_ids
   public_access_cidrs        = var.public_access_cidrs
@@ -84,14 +103,6 @@ module "eks" {
   system_node_desired_size   = 2
   system_node_min_size       = 2
   system_node_max_size       = 3
-
-  tags = local.common_tags
-}
-
-# ── ECR ────────────────────────────────────────────────────────────────
-module "ecr" {
-  source      = "../../modules/ecr"
-  name_prefix = "bss" # shared across envs (same image, multiple deploys)
 
   tags = local.common_tags
 }
@@ -111,6 +122,7 @@ module "rds" {
   backup_retention_days        = 1
   performance_insights_enabled = false
   deletion_protection          = false
+  secret_recovery_window_days  = 0 # B-37: dev gets destroyed/re-applied daily — see module comment
 
   tags = local.common_tags
 }
@@ -121,6 +133,23 @@ module "eventbridge" {
   name_prefix = local.name_prefix
 
   tags = local.common_tags
+}
+
+# ── Platform addon IAM (B-35) ────────────────────────────────────────────
+module "platform_iam" {
+  source = "../../modules/platform-iam"
+
+  name_prefix               = local.name_prefix
+  cluster_oidc_provider_arn = module.eks.cluster_oidc_provider_arn
+  cluster_oidc_provider_url = module.eks.cluster_oidc_provider_url
+
+  tags = local.common_tags
+}
+
+resource "aws_eks_addon" "ebs_csi" {
+  cluster_name             = module.eks.cluster_name
+  addon_name               = "aws-ebs-csi-driver"
+  service_account_role_arn = module.platform_iam.ebs_csi_role_arn
 }
 
 # ── Observability ──────────────────────────────────────────────────────
@@ -135,7 +164,7 @@ module "observability" {
   tags = local.common_tags
 }
 
-# ── IAM (IRSA roles + GitHub OIDC) ─────────────────────────────────────
+# ── IAM (per-service IRSA roles — GitHub OIDC lives in environments/shared) ─
 module "iam" {
   source = "../../modules/iam"
 
@@ -224,8 +253,27 @@ module "iam" {
     }
   }
 
-  enable_github_oidc = true
-  github_repos       = var.github_repos
-
   tags = local.common_tags
+}
+
+# ── B-34: EKS access entry for the CI/CD deployer role ──────────────────
+# `eks:DescribeCluster` (granted in environments/shared) only lets GitHub Actions fetch
+# connection details — it does NOT authorize anything once `kubectl` actually talks to the
+# cluster's API server. That's a SEPARATE authorization layer (EKS access entries, replacing
+# the old aws-auth ConfigMap) which this resource grants, scoped to just the `bss` namespace
+# (not cluster-admin).
+resource "aws_eks_access_entry" "deployer_nonprod" {
+  cluster_name  = module.eks.cluster_name
+  principal_arn = data.terraform_remote_state.shared.outputs.deployer_nonprod_role_arn
+}
+
+resource "aws_eks_access_policy_association" "deployer_nonprod_bss" {
+  cluster_name  = module.eks.cluster_name
+  principal_arn = data.terraform_remote_state.shared.outputs.deployer_nonprod_role_arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
+
+  access_scope {
+    type       = "namespace"
+    namespaces = ["bss"]
+  }
 }

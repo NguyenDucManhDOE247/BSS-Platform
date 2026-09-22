@@ -6,7 +6,7 @@
 #   - Deletion protection ON
 
 terraform {
-  required_version = ">= 1.7"
+  required_version = ">= 1.10" # use_lockfile (S3 native state lock, B-38) needs 1.10+
 
   required_providers {
     aws    = { source = "hashicorp/aws", version = "~> 5.0" }
@@ -14,18 +14,32 @@ terraform {
     random = { source = "hashicorp/random", version = "~> 3.0" }
   }
 
-  # backend "s3" {
-  #   bucket         = "bss-platform-tfstate"
-  #   key            = "staging/terraform.tfstate"
-  #   region         = "ap-southeast-1"
-  #   dynamodb_table = "bss-platform-tflocks"
-  #   encrypt        = true
-  # }
+  # Remote state — see the long comment in environments/dev/main.tf (B-38): bucket name comes
+  # from `-backend-config` (or `make ENV=staging tf-init`), not hardcoded here.
+  backend "s3" {
+    key          = "staging/terraform.tfstate"
+    region       = "ap-southeast-1"
+    encrypt      = true
+    use_lockfile = true
+  }
 }
 
 provider "aws" {
   region = var.region
   default_tags { tags = local.common_tags }
+}
+
+data "aws_caller_identity" "current" {}
+
+# B-33: ECR + GitHub OIDC + deployer roles live in environments/shared (account-level) — see
+# the matching, longer comment in environments/dev/main.tf.
+data "terraform_remote_state" "shared" {
+  backend = "s3"
+  config = {
+    bucket = "bss-tfstate-${data.aws_caller_identity.current.account_id}"
+    key    = "shared/terraform.tfstate"
+    region = var.region
+  }
 }
 
 locals {
@@ -44,13 +58,13 @@ locals {
 module "vpc" {
   source = "../../modules/vpc"
 
-  name_prefix          = local.name_prefix
-  region               = var.region
-  cluster_name         = local.cluster_name
-  vpc_cidr             = "10.20.0.0/16"
-  az_count             = 3
-  enable_nat_gateway   = true # needed for E2E test traffic out
-  enable_vpc_endpoints = true
+  name_prefix                = local.name_prefix
+  region                     = var.region
+  cluster_name               = local.cluster_name
+  vpc_cidr                   = "10.20.0.0/16"
+  az_count                   = 3
+  enable_nat_gateway         = true  # needed for E2E test traffic out
+  enable_interface_endpoints = false # NAT already covers this — see ADR-002 (B-32)
 
   tags = local.common_tags
 }
@@ -60,7 +74,7 @@ module "eks" {
 
   name_prefix                = local.name_prefix
   cluster_name               = local.cluster_name
-  k8s_version                = "1.30"
+  k8s_version                = "1.34" # B-36: verify current STANDARD_SUPPORT versions before apply
   private_subnet_ids         = module.vpc.private_subnet_ids
   public_subnet_ids          = module.vpc.public_subnet_ids
   public_access_cidrs        = var.public_access_cidrs
@@ -70,12 +84,6 @@ module "eks" {
   system_node_max_size       = 5
 
   tags = local.common_tags
-}
-
-module "ecr" {
-  source      = "../../modules/ecr"
-  name_prefix = "bss"
-  tags        = local.common_tags
 }
 
 module "rds" {
@@ -111,6 +119,23 @@ module "observability" {
   xray_sampling_rate = 0.2
 
   tags = local.common_tags
+}
+
+# ── Platform addon IAM (B-35) ────────────────────────────────────────────
+module "platform_iam" {
+  source = "../../modules/platform-iam"
+
+  name_prefix               = local.name_prefix
+  cluster_oidc_provider_arn = module.eks.cluster_oidc_provider_arn
+  cluster_oidc_provider_url = module.eks.cluster_oidc_provider_url
+
+  tags = local.common_tags
+}
+
+resource "aws_eks_addon" "ebs_csi" {
+  cluster_name             = module.eks.cluster_name
+  addon_name               = "aws-ebs-csi-driver"
+  service_account_role_arn = module.platform_iam.ebs_csi_role_arn
 }
 
 module "iam" {
@@ -149,8 +174,22 @@ module "iam" {
     }
   }
 
-  # GitHub OIDC provider is created in dev only (account-level resource).
-  enable_github_oidc = false
-
   tags = local.common_tags
+}
+
+# ── B-34: EKS access entry for the CI/CD deployer role (nonprod — same role as dev) ─────
+resource "aws_eks_access_entry" "deployer_nonprod" {
+  cluster_name  = module.eks.cluster_name
+  principal_arn = data.terraform_remote_state.shared.outputs.deployer_nonprod_role_arn
+}
+
+resource "aws_eks_access_policy_association" "deployer_nonprod_bss" {
+  cluster_name  = module.eks.cluster_name
+  principal_arn = data.terraform_remote_state.shared.outputs.deployer_nonprod_role_arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
+
+  access_scope {
+    type       = "namespace"
+    namespaces = ["bss"]
+  }
 }

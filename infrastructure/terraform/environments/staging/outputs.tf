@@ -11,7 +11,7 @@ output "kubeconfig_command" {
 }
 
 output "ecr_registry" {
-  value = "${module.ecr.registry_id}.dkr.ecr.${var.region}.amazonaws.com"
+  value = "${data.terraform_remote_state.shared.outputs.ecr_registry_id}.dkr.ecr.${var.region}.amazonaws.com"
 }
 
 output "rds_endpoint" {
@@ -25,4 +25,12 @@ output "event_bus_name" {
 
 output "service_role_arns" {
   value = module.iam.service_role_arns
+}
+
+output "aws_lb_controller_role_arn" {
+  value = module.platform_iam.alb_controller_role_arn
+}
+
+output "ebs_csi_role_arn" {
+  value = module.platform_iam.ebs_csi_role_arn
 }

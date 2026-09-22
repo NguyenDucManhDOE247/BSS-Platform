@@ -13,6 +13,13 @@ resource "random_password" "master" {
 
 resource "aws_secretsmanager_secret" "db_master" {
   name = "${var.name_prefix}/rds/master"
+  # B-37: default (omitted) is a 30-day recovery window — a *deleted* secret's NAME stays
+  # reserved for those 30 days, so the next `terraform apply` under the same name_prefix fails
+  # with "You can't create this secret because a secret with this name is already scheduled for
+  # deletion". That's exactly what happens on dev's "apply every morning, destroy every night"
+  # cycle (CLAUDE.md §10) unless recovery is disabled. staging/prod keep real protection since
+  # they're NOT destroyed nightly.
+  recovery_window_in_days = var.secret_recovery_window_days
 
   tags = var.tags
 }
@@ -97,28 +104,30 @@ resource "aws_security_group" "rds" {
     security_groups = [var.eks_node_security_group_id]
   }
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  # AWS-0104 fixed for real (not ignored): unlike the VPC-endpoints SG, RDS never initiates
+  # outbound connections of its own — Postgres only replies on the connection a client already
+  # opened, which security groups (stateful) already allow without any egress rule. No egress
+  # block at all = deny all outbound, with zero effect on how Postgres actually works.
 
   tags = var.tags
 }
 
 resource "aws_db_parameter_group" "this" {
-  name   = "${var.name_prefix}-pg15"
-  family = "postgres15"
+  name   = "${var.name_prefix}-pg${split(".", var.engine_version)[0]}"
+  family = "postgres${split(".", var.engine_version)[0]}"
 
   parameter {
-    name  = "log_statement"
-    value = "all"
+    name = "log_statement"
+    # B-39: "all" logs the full text of EVERY SQL statement — including literal values, which
+    # for this project means customer names/emails/order details end up in CloudWatch Logs
+    # (PII in logs is explicitly banned by CLAUDE.md §10). "ddl" logs schema changes only
+    # (CREATE/ALTER/DROP) — the audit trail you actually want without the data.
+    value = var.log_statement
   }
 
   parameter {
     name  = "log_min_duration_statement"
-    value = "1000"
+    value = "1000" # still log any query slower than 1s, regardless of log_statement above
   }
 
   tags = var.tags

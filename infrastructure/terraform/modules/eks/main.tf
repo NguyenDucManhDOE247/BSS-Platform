@@ -1,8 +1,10 @@
 # EKS cluster with managed node groups (1 group: "system") and IRSA prep.
 #
 # Karpenter is installed via Helm in a separate step (see platform/karpenter/).
-# This module sets up the IAM role Karpenter needs, plus the node IAM role
-# Karpenter-provisioned nodes will assume.
+# This module sets up the node IAM role Karpenter-provisioned nodes will assume (they reuse
+# the "node" role below, tagged for Karpenter's subnet/SG discovery). It does NOT set up
+# Karpenter's own controller IAM role — B-35: that (and the AWS Load Balancer Controller's,
+# and the EBS CSI Driver's) lives in modules/platform-iam, added when each addon's phase comes.
 
 data "aws_caller_identity" "current" {}
 data "aws_partition" "current" {}
@@ -28,6 +30,22 @@ resource "aws_iam_role_policy_attachment" "cluster_AmazonEKSClusterPolicy" {
   policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
+# AWS-0039: envelope-encrypt Kubernetes Secrets (etcd) with a customer-managed key, on top of the
+# encryption-at-rest AWS already provides by default. Cheap (a few cents/month) and has no
+# behavioral impact on the cluster — safe to turn on unconditionally rather than deferring it.
+resource "aws_kms_key" "eks_secrets" {
+  description             = "${var.name_prefix} EKS Kubernetes Secrets envelope encryption"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+
+  tags = var.tags
+}
+
+resource "aws_kms_alias" "eks_secrets" {
+  name          = "alias/${var.name_prefix}-eks-secrets"
+  target_key_id = aws_kms_key.eks_secrets.key_id
+}
+
 resource "aws_eks_cluster" "this" {
   name     = var.cluster_name
   role_arn = aws_iam_role.cluster.arn
@@ -36,11 +54,26 @@ resource "aws_eks_cluster" "this" {
   vpc_config {
     subnet_ids              = concat(var.private_subnet_ids, var.public_subnet_ids)
     endpoint_private_access = true
-    endpoint_public_access  = true
-    public_access_cidrs     = var.public_access_cidrs
+    # AWS-0040/AWS-0041 (dev): a static scanner can't see the tfvars value applied at `plan`
+    # time, so it always assumes the worst case for a CIDR-typed variable. `public_access_cidrs`
+    # defaults to 0.0.0.0/0 ONLY in dev on purpose (CLAUDE.md §4: dev is a $0, nightly-destroyed
+    # learning cluster with no fixed office/home IP to pin to yet) — staging and prod require an
+    # explicit value with no permissive default (see their own variables.tf), so this is a
+    # documented, reviewed trade-off for dev specifically, not an oversight.
+    #trivy:ignore:AVD-AWS-0040
+    endpoint_public_access = true
+    #trivy:ignore:AVD-AWS-0041
+    public_access_cidrs = var.public_access_cidrs
   }
 
-  enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+  encryption_config {
+    provider {
+      key_arn = aws_kms_key.eks_secrets.arn
+    }
+    resources = ["secrets"]
+  }
+
+  enabled_cluster_log_types = var.cluster_log_types
 
   access_config {
     authentication_mode                         = "API_AND_CONFIG_MAP"
@@ -160,8 +193,8 @@ resource "aws_eks_addon" "kube_proxy" {
   addon_name   = "kube-proxy"
 }
 
-resource "aws_eks_addon" "ebs_csi" {
-  cluster_name = aws_eks_cluster.this.name
-  addon_name   = "aws-ebs-csi-driver"
-  depends_on   = [aws_eks_node_group.system]
-}
+# B-35/B-39/B-41: "aws-ebs-csi-driver" addon moved to each environment's own main.tf, NOT here.
+# It needs `service_account_role_arn` from modules/platform-iam, which itself needs THIS
+# module's `cluster_oidc_provider_arn`/`_url` outputs — wiring the addon in here too would make
+# module "eks" and module "platform_iam" depend on each other (a cycle Terraform refuses to
+# plan). The environment's main.tf is the one place that already sees both modules' outputs.

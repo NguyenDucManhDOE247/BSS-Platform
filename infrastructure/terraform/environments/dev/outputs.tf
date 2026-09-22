@@ -11,11 +11,11 @@ output "kubeconfig_command" {
 }
 
 output "ecr_registry" {
-  value = "${module.ecr.registry_id}.dkr.ecr.${var.region}.amazonaws.com"
+  value = "${data.terraform_remote_state.shared.outputs.ecr_registry_id}.dkr.ecr.${var.region}.amazonaws.com"
 }
 
 output "ecr_repository_urls" {
-  value = module.ecr.repository_urls
+  value = data.terraform_remote_state.shared.outputs.ecr_repository_urls
 }
 
 output "rds_endpoint" {
@@ -41,5 +41,15 @@ output "service_role_arns" {
 }
 
 output "github_deployer_role_arn" {
-  value = module.iam.github_deployer_role_arn
+  description = "Convenience mirror of environments/shared's output — dev+staging use this one."
+  value       = data.terraform_remote_state.shared.outputs.deployer_nonprod_role_arn
+}
+
+output "aws_lb_controller_role_arn" {
+  description = "B-35: matches the output name platform/README.md's helm install command already expects"
+  value       = module.platform_iam.alb_controller_role_arn
+}
+
+output "ebs_csi_role_arn" {
+  value = module.platform_iam.ebs_csi_role_arn
 }

@@ -4,9 +4,13 @@
 #   - 1 public subnet  (for ALB)
 #   - 1 private subnet (for EKS nodes + RDS)
 #
-# Cost-conscious defaults for dev:
-#   - No NAT Gateway by default (we use VPC Endpoints instead).
-#   - Set enable_nat_gateway = true only in staging/prod.
+# Cost-conscious defaults:
+#   - enable_nat_gateway defaults to false but every environment (incl. dev) sets it to true —
+#     see docs/adr/ADR-002-mang-dev.md for why "no NAT, VPC endpoints only" doesn't actually work
+#     for a private-subnet EKS cluster (Helm charts pull from quay.io/registry.k8s.io/docker.io,
+#     which no VPC endpoint can reach).
+#   - enable_interface_endpoints stays off everywhere; only the free S3 gateway endpoint is
+#     always on.
 #
 # Cluster discovery tags are required so the AWS Load Balancer Controller
 # can find subnets when creating ALBs/NLBs.
@@ -43,10 +47,12 @@ resource "aws_internet_gateway" "this" {
 resource "aws_subnet" "public" {
   count = var.az_count
 
-  vpc_id                  = aws_vpc.this.id
-  cidr_block              = local.public_subnet_cidrs[count.index]
-  availability_zone       = local.azs[count.index]
-  map_public_ip_on_launch = true
+  vpc_id            = aws_vpc.this.id
+  cidr_block        = local.public_subnet_cidrs[count.index]
+  availability_zone = local.azs[count.index]
+  # Public subnet by design (ALB/NAT Gateway live here — see CLAUDE.md §2); every other
+  # workload sits in the private subnets below, which don't set this.
+  map_public_ip_on_launch = true # trivy:ignore:AVD-AWS-0164
 
   tags = merge(var.tags, {
     Name                                        = "${var.name_prefix}-public-${local.azs[count.index]}"
@@ -128,9 +134,23 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private.id
 }
 
-# ── VPC Endpoints (cheap alternative to NAT for AWS service calls) ────
+# ── S3 Gateway endpoint — ALWAYS on, it's free and has no AZ multiplier ──
+# ECR stores image layers on S3, so this helps even when a NAT Gateway is also
+# in place (fewer bytes billed through the NAT's per-GB data charge).
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.this.id
+  service_name      = "com.amazonaws.${var.region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_route_table.private.id]
+
+  tags = merge(var.tags, { Name = "${var.name_prefix}-vpce-s3" })
+}
+
+# ── Interface (PrivateLink) endpoints — opt-in, see ADR-002 ───────────
+# Costed per-endpoint PER-AZ (~$0.013/h each) — NOT a substitute for a NAT
+# Gateway on their own (see var.enable_interface_endpoints doc).
 resource "aws_security_group" "vpc_endpoints" {
-  count       = var.enable_vpc_endpoints ? 1 : 0
+  count       = var.enable_interface_endpoints ? 1 : 0
   name        = "${var.name_prefix}-vpce-sg"
   description = "Allow HTTPS from VPC to interface endpoints"
   vpc_id      = aws_vpc.this.id
@@ -142,6 +162,11 @@ resource "aws_security_group" "vpc_endpoints" {
     cidr_blocks = [aws_vpc.this.cidr_block]
   }
 
+  # AWS-0104: egress-all is intentionally broad here — interface endpoints are the thing PODS
+  # reach to talk to AWS APIs (ECR, Secrets Manager, CloudWatch Logs, STS), so locking this down
+  # to specific ports/destinations belongs with the NetworkPolicy default-deny work already
+  # planned for Phase 9 (CLAUDE.md §8), not a one-off SG tweak here.
+  #trivy:ignore:AVD-AWS-0104
   egress {
     from_port   = 0
     to_port     = 0
@@ -152,18 +177,8 @@ resource "aws_security_group" "vpc_endpoints" {
   tags = var.tags
 }
 
-resource "aws_vpc_endpoint" "s3" {
-  count             = var.enable_vpc_endpoints ? 1 : 0
-  vpc_id            = aws_vpc.this.id
-  service_name      = "com.amazonaws.${var.region}.s3"
-  vpc_endpoint_type = "Gateway"
-  route_table_ids   = [aws_route_table.private.id]
-
-  tags = merge(var.tags, { Name = "${var.name_prefix}-vpce-s3" })
-}
-
 resource "aws_vpc_endpoint" "interface" {
-  for_each            = var.enable_vpc_endpoints ? toset(["ecr.api", "ecr.dkr", "secretsmanager", "logs", "sts"]) : []
+  for_each            = var.enable_interface_endpoints ? toset(["ecr.api", "ecr.dkr", "secretsmanager", "logs", "sts"]) : []
   vpc_id              = aws_vpc.this.id
   service_name        = "com.amazonaws.${var.region}.${each.key}"
   vpc_endpoint_type   = "Interface"

@@ -5,7 +5,10 @@ variable "eks_node_security_group_id" { type = string }
 
 variable "engine_version" {
   type    = string
-  default = "15.5"
+  default = "16" # B-36: major-only — AWS picks the latest supported minor for you at create
+  # time, instead of a hardcoded minor (e.g. the old "15.5") that quietly goes stale and can't
+  # be used for NEW instances once AWS deprecates it. Verify what's currently offered with:
+  #   aws rds describe-db-engine-versions --engine postgres --query "DBEngineVersions[].EngineVersion"
 }
 
 variable "instance_class" {
