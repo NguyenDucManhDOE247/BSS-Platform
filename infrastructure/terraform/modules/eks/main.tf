@@ -162,20 +162,12 @@ resource "aws_eks_node_group" "system" {
   depends_on = [aws_iam_role_policy_attachment.node_policies]
 }
 
-# ── Subnet & SG tags Karpenter requires for node discovery ────────────
-# `count`, not `for_each` — on a first-ever apply of a brand-new VPC, the subnet IDs themselves
-# are NOT YET KNOWN (the subnets don't exist), only their COUNT is (it comes from var.az_count,
-# a static number you control, via modules/vpc's own `count = var.az_count`). `for_each` requires
-# every KEY to be known at plan time — using unknown strings as map/set keys fails with "Invalid
-# for_each argument" the very first time you plan a new environment. `count` only needs a number,
-# which IS known here regardless of whether the subnet IDs are.
-resource "aws_ec2_tag" "subnet_karpenter" {
-  count       = length(var.private_subnet_ids)
-  resource_id = var.private_subnet_ids[count.index]
-  key         = "karpenter.sh/discovery"
-  value       = var.cluster_name
-}
-
+# ── SG tag Karpenter requires for node discovery ───────────────────────
+# Subnet tagging for Karpenter lives in modules/vpc (on aws_subnet.private's own `tags` block)
+# instead of a separate aws_ec2_tag resource here — see the comment there for why: found by
+# actually applying to real AWS, a separate `aws_ec2_tag` resource fights with the subnet
+# resource's own authoritative `tags` on every apply. The cluster security group below doesn't
+# have that problem — nothing else in this config manages ITS tags, so no tug-of-war.
 resource "aws_ec2_tag" "cluster_sg_karpenter" {
   resource_id = aws_eks_cluster.this.vpc_config[0].cluster_security_group_id
   key         = "karpenter.sh/discovery"
