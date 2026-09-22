@@ -43,10 +43,12 @@ resource "aws_internet_gateway" "this" {
 resource "aws_subnet" "public" {
   count = var.az_count
 
-  vpc_id                  = aws_vpc.this.id
-  cidr_block              = local.public_subnet_cidrs[count.index]
-  availability_zone       = local.azs[count.index]
-  map_public_ip_on_launch = true
+  vpc_id            = aws_vpc.this.id
+  cidr_block        = local.public_subnet_cidrs[count.index]
+  availability_zone = local.azs[count.index]
+  # Public subnet by design (ALB/NAT Gateway live here — see CLAUDE.md §2); every other
+  # workload sits in the private subnets below, which don't set this.
+  map_public_ip_on_launch = true # trivy:ignore:AVD-AWS-0164
 
   tags = merge(var.tags, {
     Name                                        = "${var.name_prefix}-public-${local.azs[count.index]}"
@@ -142,6 +144,11 @@ resource "aws_security_group" "vpc_endpoints" {
     cidr_blocks = [aws_vpc.this.cidr_block]
   }
 
+  # AWS-0104: egress-all is intentionally broad here — interface endpoints are the thing PODS
+  # reach to talk to AWS APIs (ECR, Secrets Manager, CloudWatch Logs, STS), so locking this down
+  # to specific ports/destinations belongs with the NetworkPolicy default-deny work already
+  # planned for Phase 9 (CLAUDE.md §8), not a one-off SG tweak here.
+  #trivy:ignore:AVD-AWS-0104
   egress {
     from_port   = 0
     to_port     = 0
