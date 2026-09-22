@@ -1,5 +1,6 @@
 package com.bss.common.exception;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -26,5 +27,10 @@ public class GlobalExceptionHandler {
                 .map(e -> e.getField() + ": " + e.getDefaultMessage())
                 .orElse("Validation failed");
         return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, detail);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ProblemDetail handleConflict(DataIntegrityViolationException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Resource constraint violation");
     }
 }
