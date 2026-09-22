@@ -14,6 +14,11 @@ import jakarta.validation.constraints.NotBlank;
  * <p>A request DTO only lists the fields a caller is actually allowed to set on creation.
  * {@code status} always starts at {@code Initialized} (the entity's default); it can only be
  * moved forward afterwards via {@code PATCH} ({@link PatchCustomerRequest}).
+ *
+ * <p>Rejecting an unrecognized field like {@code status} with 400 (see
+ * {@code spring.jackson.deserialization.fail-on-unknown-properties} in {@code application.yml})
+ * makes an attempted mass-assignment visible instead of the client silently succeeding with 201
+ * while wondering why {@code status} never took effect.
  */
 public record CreateCustomerRequest(
         @NotBlank String name,
