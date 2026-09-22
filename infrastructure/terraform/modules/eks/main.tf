@@ -163,9 +163,15 @@ resource "aws_eks_node_group" "system" {
 }
 
 # ── Subnet & SG tags Karpenter requires for node discovery ────────────
+# `count`, not `for_each` — on a first-ever apply of a brand-new VPC, the subnet IDs themselves
+# are NOT YET KNOWN (the subnets don't exist), only their COUNT is (it comes from var.az_count,
+# a static number you control, via modules/vpc's own `count = var.az_count`). `for_each` requires
+# every KEY to be known at plan time — using unknown strings as map/set keys fails with "Invalid
+# for_each argument" the very first time you plan a new environment. `count` only needs a number,
+# which IS known here regardless of whether the subnet IDs are.
 resource "aws_ec2_tag" "subnet_karpenter" {
-  for_each    = toset(var.private_subnet_ids)
-  resource_id = each.value
+  count       = length(var.private_subnet_ids)
+  resource_id = var.private_subnet_ids[count.index]
   key         = "karpenter.sh/discovery"
   value       = var.cluster_name
 }

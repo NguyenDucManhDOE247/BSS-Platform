@@ -200,4 +200,9 @@ resource "aws_eks_access_policy_association" "deployer_prod_bss" {
     type       = "namespace"
     namespaces = ["bss"]
   }
+
+  # See the long comment on the equivalent resource in environments/dev/main.tf — AWS requires
+  # the access entry to exist before a policy can be associated with that principal; without
+  # this, Terraform may create both in parallel and race.
+  depends_on = [aws_eks_access_entry.deployer_prod]
 }
