@@ -11,7 +11,7 @@
 #   - Restricted EKS public endpoint
 
 terraform {
-  required_version = ">= 1.7"
+  required_version = ">= 1.10" # use_lockfile (S3 native state lock, B-38) needs 1.10+
 
   required_providers {
     aws    = { source = "hashicorp/aws", version = "~> 5.0" }
@@ -19,13 +19,14 @@ terraform {
     random = { source = "hashicorp/random", version = "~> 3.0" }
   }
 
-  # backend "s3" {
-  #   bucket         = "bss-platform-tfstate"
-  #   key            = "prod/terraform.tfstate"
-  #   region         = "ap-southeast-1"
-  #   dynamodb_table = "bss-platform-tflocks"
-  #   encrypt        = true
-  # }
+  # Remote state — see the long comment in environments/dev/main.tf (B-38): bucket name comes
+  # from `-backend-config` (or `make ENV=prod tf-init`), not hardcoded here.
+  backend "s3" {
+    key          = "prod/terraform.tfstate"
+    region       = "ap-southeast-1"
+    encrypt      = true
+    use_lockfile = true
+  }
 }
 
 provider "aws" {

@@ -7,7 +7,7 @@
 #   - Deletion protection OFF (so we can `terraform destroy` nightly)
 
 terraform {
-  required_version = ">= 1.7"
+  required_version = ">= 1.10" # use_lockfile (S3 native state lock, B-38) needs 1.10+
 
   required_providers {
     aws = {
@@ -24,14 +24,19 @@ terraform {
     }
   }
 
-  # Remote state (uncomment once the bucket exists — see scripts/bootstrap-aws.sh)
-  # backend "s3" {
-  #   bucket         = "bss-platform-tfstate"
-  #   key            = "dev/terraform.tfstate"
-  #   region         = "ap-southeast-1"
-  #   dynamodb_table = "bss-platform-tflocks"
-  #   encrypt        = true
-  # }
+  # Remote state — bucket deliberately NOT hardcoded here (B-38: S3 bucket names are global, so
+  # the bucket name embeds your AWS account id, e.g. "bss-tfstate-123456789012", which this file
+  # can't know statically). Run `scripts/bootstrap-aws.sh` first, then either:
+  #   terraform init -backend-config="bucket=bss-tfstate-<your-account-id>"
+  # or simply `make ENV=dev tf-init` (the Makefile fills in -backend-config from
+  # `aws sts get-caller-identity` for you). `use_lockfile` needs Terraform >= 1.10 — no DynamoDB
+  # table to create/pay for separately anymore.
+  backend "s3" {
+    key          = "dev/terraform.tfstate"
+    region       = "ap-southeast-1"
+    encrypt      = true
+    use_lockfile = true
+  }
 }
 
 provider "aws" {

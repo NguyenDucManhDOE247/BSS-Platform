@@ -64,9 +64,10 @@ build-images: ## docker build for all 7 services (tag=local) — see docs/adr/AD
 		docker build -t bss/$$a:local apps/frontend/$$a || exit 1; \
 	done
 
-# ── Terraform (ENV=dev|staging|prod) ──────────────────────────────────
-tf-init: ## Initialize Terraform for $$ENV
-	cd infrastructure/terraform/environments/$(ENV) && terraform init
+# ── Terraform (ENV=dev|staging|prod|shared) ────────────────────────────
+tf-init: ## Initialize Terraform for $$ENV (fills in the account-scoped state bucket — B-38)
+	cd infrastructure/terraform/environments/$(ENV) && \
+		terraform init -backend-config="bucket=bss-tfstate-$(ACCOUNT_ID)"
 
 tf-plan: ## Plan changes for $$ENV
 	cd infrastructure/terraform/environments/$(ENV) && terraform plan
