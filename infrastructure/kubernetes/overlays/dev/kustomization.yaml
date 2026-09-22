@@ -5,58 +5,68 @@ namespace: bss
 
 resources:
   - ../../base
+  # Giai đoạn 5 / B-20: 4 SecretProviderClass, one per service's own least-privilege RDS user —
+  # see infrastructure/kubernetes/overlays/dev/secrets/ and ADR-004.
+  - secrets
 
 # Image tags: CD pipeline runs `kustomize edit set image NAME=registry/bss/NAME:SHA`.
+# AWS account id below (132249065347) is this project's real, already-created AWS account — see
+# learning/nhat-ky-hoc-tap.md "Giai đoạn 4" and memory `bss-platform-phase0-decisions`. It's a
+# stable value (the account itself doesn't get destroyed/recreated by `terraform destroy` — only
+# the resources inside it do), unlike the RDS hostname or SQS queue URL used to be here (B-20/
+# ADR-004 moved those to flow from Secrets Manager instead of being hand-copied into this file).
 images:
   - name: customer-service
-    newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/customer-service
+    newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/customer-service
     newTag: dev
   - name: product-catalog
-    newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/product-catalog
+    newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/product-catalog
     newTag: dev
   - name: order-management
-    newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/order-management
+    newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/order-management
     newTag: dev
   - name: billing-service
-    newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/billing-service
+    newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/billing-service
     newTag: dev
   - name: api-gateway
-    newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/api-gateway
+    newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/api-gateway
     newTag: dev
   - name: web-portal
-    newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/web-portal
+    newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/web-portal
     newTag: dev
   - name: admin-console
-    newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/admin-console
+    newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/admin-console
     newTag: dev
 
 configMapGenerator:
+  # Giai đoạn 5 / B-20: DB_URL literal removed from all 4 — DB_HOST/DB_PORT/DB_NAME now come from
+  # each service's own SecretProviderClass (overlays/dev/secrets/), same as DB_USER/DB_PASSWORD
+  # already did. See ADR-004 for why (no more hand-copying the RDS endpoint into this file).
   - name: customer-service-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=DEBUG
       - AWS_REGION=ap-southeast-1
-      - DB_URL=jdbc:postgresql://bss-dev-rds.CHANGE_ME.rds.amazonaws.com:5432/customer
   - name: product-catalog-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=DEBUG
       - AWS_REGION=ap-southeast-1
-      - DB_URL=jdbc:postgresql://bss-dev-rds.CHANGE_ME.rds.amazonaws.com:5432/product
   - name: order-management-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=DEBUG
       - AWS_REGION=ap-southeast-1
       - EVENT_BUS_NAME=bss-dev-events
-      - DB_URL=jdbc:postgresql://bss-dev-rds.CHANGE_ME.rds.amazonaws.com:5432/orders
   - name: billing-service-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=DEBUG
       - AWS_REGION=ap-southeast-1
-      - SQS_QUEUE_URL=https://sqs.ap-southeast-1.amazonaws.com/CHANGE_ME_ACCOUNT_ID/bss-dev-billing-orders
-      - DB_URL=jdbc:postgresql://bss-dev-rds.CHANGE_ME.rds.amazonaws.com:5432/billing
+      # Giai đoạn 5: real queue URL — account id is stable (see note on `images:` above), queue
+      # name is "${name_prefix}-billing-orders" = "bss-dev-billing-orders" (modules/eventbridge's
+      # `consumers` map key, see infrastructure/terraform/modules/eventbridge/variables.tf).
+      - SQS_QUEUE_URL=https://sqs.ap-southeast-1.amazonaws.com/132249065347/bss-dev-billing-orders
   # B-24: api-gateway used to hardcode SPRING_PROFILES_ACTIVE in the base Deployment with no
   # ConfigMap at all — now envFrom reads this like every other backend.
   - name: api-gateway-config
@@ -75,34 +85,134 @@ replicas:
   - { name: admin-console,     count: 1 }
 
 patches:
-  # IRSA bindings — one IAM role per service, scoped to the resources it needs.
+  # IRSA bindings — one IAM role per service, scoped to the resources it needs (see `module
+  # "iam"` in infrastructure/terraform/environments/dev/main.tf; role name is always
+  # "${name_prefix}-${service_key}" = "bss-dev-<service>").
   - target: { kind: ServiceAccount, name: customer-service }
     patch: |-
       - op: add
         path: /metadata/annotations
-        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-dev-customer-service }
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::132249065347:role/bss-dev-customer-service }
   - target: { kind: ServiceAccount, name: product-catalog }
     patch: |-
       - op: add
         path: /metadata/annotations
-        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-dev-product-catalog }
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::132249065347:role/bss-dev-product-catalog }
   - target: { kind: ServiceAccount, name: order-management }
     patch: |-
       - op: add
         path: /metadata/annotations
-        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-dev-order-management }
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::132249065347:role/bss-dev-order-management }
   - target: { kind: ServiceAccount, name: billing-service }
     patch: |-
       - op: add
         path: /metadata/annotations
-        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-dev-billing-service }
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::132249065347:role/bss-dev-billing-service }
 
-  # Ingress hostname for dev.
+  # Giai đoạn 5 / B-20: mount each service's own SecretProviderClass — without a Pod actually
+  # mounting it, the Secrets Store CSI driver never syncs anything into a real K8s Secret, and
+  # the env vars added to base Deployment (DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD via
+  # secretKeyRef) would reference a Secret that doesn't exist → CreateContainerConfigError. Only
+  # added here (not base/) because overlays/local has no CSI driver installed — its equivalent
+  # Secret comes from Kustomize's secretGenerator instead (see overlays/local/kustomization.yaml).
+  - target: { kind: Deployment, name: customer-service }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: customer-db-credentials
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value: { name: secrets-store, mountPath: /mnt/secrets-store, readOnly: true }
+  - target: { kind: Deployment, name: product-catalog }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: product-db-credentials
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value: { name: secrets-store, mountPath: /mnt/secrets-store, readOnly: true }
+  - target: { kind: Deployment, name: order-management }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: order-db-credentials
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value: { name: secrets-store, mountPath: /mnt/secrets-store, readOnly: true }
+  - target: { kind: Deployment, name: billing-service }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: billing-db-credentials
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value: { name: secrets-store, mountPath: /mnt/secrets-store, readOnly: true }
+
+  # B-22: base hpa.yaml hardcodes minReplicas: 2 for every service. Dev's system node group is
+  # only 2× t3.medium (~3.3 GiB allocatable each) — 2 HPA-mandated pods per backend + gateway +
+  # both frontends adds up to 14 app pods before touching CoreDNS/kube-proxy/ALB Controller/CSI
+  # driver pods already on those same 2 nodes, and the ENI-based pod limit on t3.medium is even
+  # tighter than the memory budget. Match `replicas:` above (1) so HPA doesn't immediately try to
+  # scale back up the moment `kubectl apply` finishes.
+  - target: { kind: HorizontalPodAutoscaler, name: customer-service }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+  - target: { kind: HorizontalPodAutoscaler, name: product-catalog }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+  - target: { kind: HorizontalPodAutoscaler, name: order-management }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+  - target: { kind: HorizontalPodAutoscaler, name: billing-service }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+  - target: { kind: HorizontalPodAutoscaler, name: api-gateway }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+  - target: { kind: HorizontalPodAutoscaler, name: web-portal }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+  - target: { kind: HorizontalPodAutoscaler, name: admin-console }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+
+  # B-23: base ingress.yaml turns on the HTTPS listener + ssl-redirect and expects a real
+  # hostname + ACM certificate ARN. Dev has neither yet (no domain registered, ExternalDNS isn't
+  # even installed for dev — see platform/README.md's phase labels) — asking the ALB Controller
+  # for a cert it can't find means it silently never creates the ALB at all (no error anywhere
+  # obvious to a first-time reader; `kubectl describe ingress` is the only place it shows up).
+  # HTTP-only + no host restriction (path-based routing against the ALB's own generated DNS name)
+  # until there's a real domain — see learning/20 Giai đoạn 5 checklist item 3.
   - target: { kind: Ingress, name: bss-ingress }
     patch: |-
-      - op: replace
+      - op: remove
         path: /spec/rules/0/host
-        value: dev.bss.example.com
-      - op: add
-        path: /metadata/annotations/external-dns.alpha.kubernetes.io~1hostname
-        value: dev.bss.example.com
+      - op: replace
+        path: /metadata/annotations/alb.ingress.kubernetes.io~1listen-ports
+        value: '[{"HTTP":80}]'
+      - op: remove
+        path: /metadata/annotations/alb.ingress.kubernetes.io~1ssl-redirect

@@ -36,12 +36,10 @@ configMapGenerator:
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=DEBUG
-      - DB_URL=jdbc:postgresql://postgres.bss.svc.cluster.local:5432/customer
   - name: product-catalog-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=DEBUG
-      - DB_URL=jdbc:postgresql://postgres.bss.svc.cluster.local:5432/product
   - name: order-management-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
@@ -51,7 +49,6 @@ configMapGenerator:
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_ENDPOINT_URL=http://localstack.bss.svc.cluster.local:4566
       - EVENT_BUS_NAME=bss-dev-events
-      - DB_URL=jdbc:postgresql://postgres.bss.svc.cluster.local:5432/orders
   - name: billing-service-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
@@ -61,26 +58,30 @@ configMapGenerator:
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_ENDPOINT_URL=http://localstack.bss.svc.cluster.local:4566
       - SQS_QUEUE_URL=http://localstack.bss.svc.cluster.local:4566/000000000000/bss-dev-billing-orders
-      - DB_URL=jdbc:postgresql://postgres.bss.svc.cluster.local:5432/billing
   - name: api-gateway-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=DEBUG
 
-# B-20 (bản local): dùng Kustomize secretGenerator thay Secrets Store CSI (AWS-only, chưa xong —
-# B-20 bản AWS vẫn treo, xem learning/16 mục 4). Cùng 1 tài khoản Postgres master cho cả 4 —
-# tách user riêng theo service (B-21) là việc của Giai đoạn 5 (RDS thật), không phải trọng tâm
-# ở đây. Giá trị "bss/bss" đã public sẵn trong deploy/docker-compose.yml — không phải secret
-# thật, an toàn để để literal thẳng trong file thay vì đọc từ .env ngoài (không có gì để giấu).
+# B-20 (bản local): dùng Kustomize secretGenerator thay Secrets Store CSI (AWS-only — bản AWS
+# giờ đã xong ở Giai đoạn 5, xem overlays/dev/secrets/ + ADR-004). Cùng 1 tài khoản Postgres
+# master cho cả 4 — tách user riêng theo service (B-21) là việc trên RDS thật, không áp dụng ở
+# kind (StatefulSet Postgres không có khái niệm "user riêng do Terraform sinh"). Giá trị "bss/bss"
+# đã public sẵn trong deploy/docker-compose.yml — không phải secret thật, an toàn để để literal
+# thẳng trong file thay vì đọc từ .env ngoài (không có gì để giấu).
+# host/port/dbname (Giai đoạn 5/B-20) đi cùng secret này thay vì ConfigMap DB_URL riêng — mọi
+# overlay giờ đọc DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD từ đúng 1 Secret cùng tên
+# ("<svc>-db-credentials"), chỉ khác NGUỒN tạo ra Secret đó (secretGenerator ở đây, Secrets Store
+# CSI sync ở overlays/dev) — base Deployment không cần biết sự khác biệt này (ADR-004).
 secretGenerator:
   - name: customer-db-credentials
-    literals: [username=bss, password=bss]
+    literals: [username=bss, password=bss, host=postgres.bss.svc.cluster.local, port=5432, dbname=customer]
   - name: product-db-credentials
-    literals: [username=bss, password=bss]
+    literals: [username=bss, password=bss, host=postgres.bss.svc.cluster.local, port=5432, dbname=product]
   - name: order-db-credentials
-    literals: [username=bss, password=bss]
+    literals: [username=bss, password=bss, host=postgres.bss.svc.cluster.local, port=5432, dbname=orders]
   - name: billing-db-credentials
-    literals: [username=bss, password=bss]
+    literals: [username=bss, password=bss, host=postgres.bss.svc.cluster.local, port=5432, dbname=billing]
 
 # kind chỉ có 1 node "ảo" — chạy 2 pod thắt cổ chai không có nghĩa gì (khác hẳn dev thật, nơi 1
 # vẫn có ≥2 node). B-22 gốc là base HPA minReplicas:2 > overlay replicas:1 làm Pod Pending ở AWS

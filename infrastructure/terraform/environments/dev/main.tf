@@ -173,6 +173,12 @@ module "iam" {
   cluster_oidc_provider_url = module.eks.cluster_oidc_provider_url
 
   services = {
+    # Giai đoạn 5 / B-20: mỗi service giờ chỉ được đọc secret DB CỦA RIÊNG NÓ
+    # (module.rds.service_secret_arns[<key>], user "<db>_svc" từ B-21) — không còn quyền đọc
+    # master_secret_arn nữa. Trước đây cả 3 service này dùng chung master_secret_arn: technically
+    # "chạy được" (mọi service share 1 user Postgres, đủ quyền đọc/ghi mọi database trên instance)
+    # nhưng vi phạm least privilege — 1 service bị chiếm quyền (RCE, SSRF...) sẽ đọc/ghi được
+    # database của MỌI service khác, không chỉ của chính nó. Xem ADR-004.
     customer-service = {
       namespace           = "bss"
       service_account     = "customer-service"
@@ -181,7 +187,23 @@ module "iam" {
         {
           Effect   = "Allow"
           Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
-          Resource = [module.rds.master_secret_arn]
+          Resource = [module.rds.service_secret_arns["customer-service"]]
+        }
+      ]
+    }
+    # B-20 tiếp: product-catalog trước đây KHÔNG có role nào trong map này — SecretProviderClass
+    # + Deployment của nó (overlays/dev) tham chiếu một role "bss-dev-product-catalog" mà
+    # Terraform chưa từng tạo. Thêm entry này là phần còn thiếu để B-20 chạy được thật cho cả 4
+    # service, không phải 3.
+    product-catalog = {
+      namespace           = "bss"
+      service_account     = "product-catalog"
+      managed_policy_arns = []
+      inline_policy_statements = [
+        {
+          Effect   = "Allow"
+          Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+          Resource = [module.rds.service_secret_arns["product-catalog"]]
         }
       ]
     }
@@ -203,7 +225,7 @@ module "iam" {
         {
           Effect   = "Allow"
           Action   = ["secretsmanager:GetSecretValue"]
-          Resource = [module.rds.master_secret_arn]
+          Resource = [module.rds.service_secret_arns["order-management"]]
         }
       ]
     }
@@ -220,7 +242,7 @@ module "iam" {
         {
           Effect   = "Allow"
           Action   = ["secretsmanager:GetSecretValue"]
-          Resource = [module.rds.master_secret_arn]
+          Resource = [module.rds.service_secret_arns["billing-service"]]
         }
       ]
     }

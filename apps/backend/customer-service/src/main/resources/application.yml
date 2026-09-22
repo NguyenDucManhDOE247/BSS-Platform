@@ -9,7 +9,11 @@ spring:
       # No other DTO in this service currently depends on lenient parsing (checked every test).
       fail-on-unknown-properties: true
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/customer}
+    # Giai đoạn 5 / B-20: composed from 3 vars instead of 1 literal DB_URL, so the RDS hostname
+    # never has to be hand-copied into a K8s manifest — on AWS, DB_HOST/DB_PORT come straight out
+    # of the per-service Secrets Manager entry (via SecretProviderClass, same secretKeyRef as
+    # DB_USER/DB_PASSWORD below); locally, defaults already point at localhost:5432/customer.
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:customer}
     username: ${DB_USER:bss}
     password: ${DB_PASSWORD:bss}
   jpa:

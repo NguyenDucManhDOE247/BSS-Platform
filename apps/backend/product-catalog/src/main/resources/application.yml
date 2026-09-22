@@ -2,7 +2,8 @@ spring:
   application:
     name: product-catalog
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/product}
+    # Giai đoạn 5 / B-20 — see the identical comment in customer-service/application.yml.
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:product}
     username: ${DB_USER:bss}
     password: ${DB_PASSWORD:bss}
   jpa:

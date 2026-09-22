@@ -46,6 +46,16 @@ spec:
             - configMapRef:
                 name: product-catalog-config
           env:
+            # Giai đoạn 5 / B-20 — see the identical comment in customer-service/deployment.yaml.
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef: { name: product-db-credentials, key: host }
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef: { name: product-db-credentials, key: port }
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef: { name: product-db-credentials, key: dbname }
             - name: DB_USER
               valueFrom:
                 secretKeyRef:
