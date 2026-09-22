@@ -67,35 +67,32 @@ echo "→ Setting up monthly budget alert at \$$BUDGET_USD..."
 NOTIFICATION_EMAIL="${OWNER_EMAIL:-}"
 if [ -z "$NOTIFICATION_EMAIL" ]; then
   echo "⚠ OWNER_EMAIL not set, skipping budget. Re-run with OWNER_EMAIL=you@x.com to enable."
+elif aws budgets describe-budget --account-id "$ACCOUNT_ID" --budget-name bss-platform-monthly >/dev/null 2>&1; then
+  echo "✓ Budget bss-platform-monthly already exists"
 else
-  cat > /tmp/budget.json <<EOF
-{
-  "BudgetName": "bss-platform-monthly",
-  "BudgetLimit": {"Amount": "$BUDGET_USD", "Unit": "USD"},
-  "TimeUnit": "MONTHLY",
-  "BudgetType": "COST"
-}
+  # Passed as INLINE JSON strings, not `file:///tmp/...` — on Windows, the native aws.exe run
+  # through Git Bash does NOT resolve Git Bash's own /tmp (it lives under the Git install dir,
+  # not a real Windows path) against a `file://` URI, so `--budget file:///tmp/budget.json`
+  # fails with "Unable to load paramfile ... No such file or directory" even though the file is
+  # right there. Inline JSON sidesteps path translation entirely — works the same on
+  # Linux/WSL/macOS too. (Also: the old `2>/dev/null || echo "(budget already exists)"` here
+  # masked this exact error for two real runs before anyone noticed — see
+  # learning/nhat-ky-hoc-tap.md 2026-09-22. An error you can't see isn't a handled error.)
+  BUDGET_JSON=$(cat <<EOF
+{"BudgetName":"bss-platform-monthly","BudgetLimit":{"Amount":"$BUDGET_USD","Unit":"USD"},"TimeUnit":"MONTHLY","BudgetType":"COST"}
 EOF
+)
   # 4 thresholds: 50/80/100% of what's ACTUALLY been spent this month, plus a FORECASTED 100%
   # warning that fires *before* you actually overspend (AWS Cost Explorer's forecast, based on
   # this month's spend trend so far) — the ACTUAL ones alone only ever tell you after the fact.
-  cat > /tmp/notifications.json <<EOF
-[
-  {"Notification": {"ComparisonOperator": "GREATER_THAN", "NotificationType": "ACTUAL", "Threshold": 50},
-   "Subscribers": [{"Address": "$NOTIFICATION_EMAIL", "SubscriptionType": "EMAIL"}]},
-  {"Notification": {"ComparisonOperator": "GREATER_THAN", "NotificationType": "ACTUAL", "Threshold": 80},
-   "Subscribers": [{"Address": "$NOTIFICATION_EMAIL", "SubscriptionType": "EMAIL"}]},
-  {"Notification": {"ComparisonOperator": "GREATER_THAN", "NotificationType": "ACTUAL", "Threshold": 100},
-   "Subscribers": [{"Address": "$NOTIFICATION_EMAIL", "SubscriptionType": "EMAIL"}]},
-  {"Notification": {"ComparisonOperator": "GREATER_THAN", "NotificationType": "FORECASTED", "Threshold": 100},
-   "Subscribers": [{"Address": "$NOTIFICATION_EMAIL", "SubscriptionType": "EMAIL"}]}
-]
+  NOTIFICATIONS_JSON=$(cat <<EOF
+[{"Notification":{"ComparisonOperator":"GREATER_THAN","NotificationType":"ACTUAL","Threshold":50},"Subscribers":[{"Address":"$NOTIFICATION_EMAIL","SubscriptionType":"EMAIL"}]},{"Notification":{"ComparisonOperator":"GREATER_THAN","NotificationType":"ACTUAL","Threshold":80},"Subscribers":[{"Address":"$NOTIFICATION_EMAIL","SubscriptionType":"EMAIL"}]},{"Notification":{"ComparisonOperator":"GREATER_THAN","NotificationType":"ACTUAL","Threshold":100},"Subscribers":[{"Address":"$NOTIFICATION_EMAIL","SubscriptionType":"EMAIL"}]},{"Notification":{"ComparisonOperator":"GREATER_THAN","NotificationType":"FORECASTED","Threshold":100},"Subscribers":[{"Address":"$NOTIFICATION_EMAIL","SubscriptionType":"EMAIL"}]}]
 EOF
+)
   aws budgets create-budget \
     --account-id "$ACCOUNT_ID" \
-    --budget file:///tmp/budget.json \
-    --notifications-with-subscribers file:///tmp/notifications.json \
-    2>/dev/null || echo "  (budget already exists)"
+    --budget "$BUDGET_JSON" \
+    --notifications-with-subscribers "$NOTIFICATIONS_JSON"
   echo "✓ Budget alert at 50%/80%/100% (actual) + 100% (forecasted) of \$$BUDGET_USD"
 fi
 
