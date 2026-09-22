@@ -16,7 +16,7 @@
 # look into jlink (custom minimal JRE) or GraalVM native-image — both are reasonable next steps
 # once the app itself is stable; premature at Giai đoạn 1.
 
-FROM maven:3.9.16-eclipse-temurin-21 AS build
+FROM maven:3-eclipse-temurin-26 AS build
 WORKDIR /workspace
 
 # Cache dependencies layer separately from source code.
