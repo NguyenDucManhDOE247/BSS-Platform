@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/root/.m2 \
 
 # ---------- runtime ---------- #
 
-FROM eclipse-temurin:21-jre-jammy
+FROM eclipse-temurin:25-jre-jammy
 
 # Run as non-root.
 RUN groupadd --system bss && useradd --system --gid bss bss
