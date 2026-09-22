@@ -4,7 +4,7 @@
 #   • build:  Node 24 (Active LTS) builds the static bundle
 #   • runtime: Nginx serves the bundle on port 8080, running as a non-root user
 
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
