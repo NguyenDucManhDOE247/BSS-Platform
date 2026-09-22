@@ -224,6 +224,33 @@ module "iam" {
         }
       ]
     }
+    # B-21: read-only access to the master secret + all 4 per-service secrets, for the one-off
+    # db-bootstrap Job — see infrastructure/kubernetes/overlays/dev/db-bootstrap/README.md.
+    # Nothing else should ever assume this role; it's the only SA in the cluster that can read
+    # the master password.
+    db-bootstrap = {
+      namespace           = "bss"
+      service_account     = "db-bootstrap"
+      managed_policy_arns = []
+      inline_policy_statements = [
+        {
+          Effect = "Allow"
+          Action = ["secretsmanager:GetSecretValue"]
+          # A literal list, like every other Resource in this map — NOT concat()/values() on a
+          # module output. Those return an actual `list(string)`, whereas every literal `[...]`
+          # here is a `tuple(...)`; mixing the two breaks type unification across this whole
+          # `services` map the same way B-31 did (a bare string vs. a list) — just one level
+          # deeper. `terraform validate` catches it either way; don't "simplify" this back.
+          Resource = [
+            module.rds.master_secret_arn,
+            module.rds.service_secret_arns["customer-service"],
+            module.rds.service_secret_arns["product-catalog"],
+            module.rds.service_secret_arns["order-management"],
+            module.rds.service_secret_arns["billing-service"],
+          ]
+        }
+      ]
+    }
   }
 
   tags = local.common_tags
