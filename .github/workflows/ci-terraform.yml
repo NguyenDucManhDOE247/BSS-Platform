@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
-          terraform_version: 1.7.5
+          terraform_version: 1.14.8
       - run: terraform fmt -check -recursive infrastructure/terraform
 
   validate:
@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
-          terraform_version: 1.7.5
+          terraform_version: 1.14.8
 
       # B-30/B-31: `terraform init`/`validate` never ran in CI before this — the workflow only
       # checked formatting, then jumped straight to `plan-dev` (which needs real AWS OIDC
@@ -88,12 +88,15 @@ jobs:
 
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
-          terraform_version: 1.7.5
+          terraform_version: 1.14.8
 
       - name: Init + plan (dev)
         working-directory: infrastructure/terraform/environments/dev
         run: |
-          terraform init -input=false
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          # B-38: bucket name is account-scoped, not hardcoded in main.tf — see that file's
+          # backend "s3" comment.
+          terraform init -input=false -backend-config="bucket=bss-tfstate-${ACCOUNT_ID}"
           terraform plan -input=false -no-color -out=plan.bin
           terraform show -no-color plan.bin > plan.txt
 
