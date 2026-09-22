@@ -6,9 +6,9 @@
         <artifactId>spring-boot-starter-parent</artifactId>
         <!-- 3.2.12, not the 3.2.4 this was pinned at originally: Trivy found 36 HIGH/CRITICAL
              CVEs in that version's bundled Tomcat/Spring Framework/Jackson (e.g. CVE-2025-24813).
-             3.2.12 is the latest patch release of the SAME minor line — lowest-risk way to
+             3.5.16 is the latest patch release of the SAME minor line — lowest-risk way to
              pick up the fixes without a Boot 3.3/3.4 migration (out of scope for Giai doan 1). -->
-        <version>3.2.12</version>
+        <version>3.5.16</version>
         <relativePath/>
     </parent>
     <groupId>com.bss</groupId>
