@@ -25,7 +25,28 @@
         <java.version>21</java.version>
     </properties>
 
+    <!--
+      Giai đoạn 3, mục 6: đọc bss-common-java từ GitHub Packages thay vì mỗi service tự chép
+      NotFoundException/GlobalExceptionHandler (B-15). GitHub Packages KHÔNG cho tải xuống ẩn
+      danh dù repo là public — mọi request (kể cả `mvn verify` trong CI) đều cần header auth, nên
+      `.github/workflows/ci-backend.yml` phải cấu hình `server-id: github` giống hệt workflow
+      publish; chạy `mvn verify` trên máy cá nhân cần tự thêm 1 <server id="github"> vào
+      ~/.m2/settings.xml với 1 Personal Access Token có quyền `read:packages`.
+    -->
+    <repositories>
+        <repository>
+            <id>github</id>
+            <url>https://maven.pkg.github.com/NguyenDucManhDOE247/BSS-Platform</url>
+        </repository>
+    </repositories>
+
     <dependencies>
+        <dependency>
+            <groupId>com.bss</groupId>
+            <artifactId>bss-common-java</artifactId>
+            <version>0.1.0</version>
+        </dependency>
+
         <!-- Web -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
