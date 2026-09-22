@@ -36,8 +36,11 @@ api-gateway/order-management) địa chỉđích của service khác.
 
 **Không** dùng profile cho phần này — dùng biến môi trường (`deploy/.env.example`), vì cùng một
 giá trị áp dụng cho *cả* local lẫn (một phần) K8s:
-- `DB_URL`/`DB_USER`/`DB_PASSWORD` — mỗi service đã có default riêng đúng theo tên DB của nó
-  (`customer`, `product`, `orders`, `billing`) ngay trong `application.yml`, không cần profile.
+- `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USER`/`DB_PASSWORD` — mỗi service đã có default riêng đúng
+  theo tên DB của nó (`customer`, `product`, `orders`, `billing`) ngay trong `application.yml`,
+  không cần profile. (Giai đoạn 5/B-20: trước đây gộp hết vào 1 biến `DB_URL`; tách thành 3 biến
+  để AWS có thể lấy `DB_HOST`/`DB_PORT` thẳng từ Secrets Manager thay vì phải sửa tay CHANGE_ME —
+  xem ADR-004.)
 - `AWS_ENDPOINT_URL=http://localhost:4566` — trỏ AWS SDK sang LocalStack; để trống (mặc định)
   khi chạy thật trên AWS thì `DefaultCredentialsProvider` tự dùng IRSA (xem `AwsConfig` của
   order-management/billing-service).
