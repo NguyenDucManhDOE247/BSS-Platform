@@ -29,6 +29,17 @@ else
   kind create cluster --name "$CLUSTER" --config "$ROOT_DIR/kind.yaml"
 fi
 
+# Bug thật (phát hiện khi người dùng tự chạy script trên WSL Ubuntu — Docker Desktop's WSL2
+# integration dùng CHUNG 1 Docker daemon cho cả Windows host lẫn mọi WSL distro, nên `kind get
+# clusters` (chỉ đọc container Docker theo nhãn) thấy đúng cluster dù nó được TẠO từ một hệ điều
+# hành/kubeconfig khác — nhưng `~/.kube/config` là 1 file THEO TỪNG filesystem, không dùng chung.
+# Nhánh "reusing it" ở trên chỉ bỏ qua bước tạo cluster, KHÔNG tự đảm bảo context tồn tại trong
+# kubeconfig hiện tại → bước tiếp theo `kubectl --context kind-bss` báo "context does not exist"
+# dù cluster rõ ràng đang chạy. `kind export kubeconfig` ghi (hoặc ghi đè) đúng context này —
+# chạy vô điều kiện ở cả 2 nhánh, không chỉ khi tạo mới, để luôn tự sửa được tình huống này.
+log "Ensuring the '$CLUSTER' kubeconfig context exists (kind export kubeconfig)…"
+kind export kubeconfig --name "$CLUSTER"
+
 log "Switching kubectl context to kind-$CLUSTER for the rest of this script…"
 KCTX="kind-$CLUSTER"
 
