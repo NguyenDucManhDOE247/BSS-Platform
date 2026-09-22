@@ -11,15 +11,15 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: azure/setup-kubectl@v4
+      - uses: azure/setup-kubectl@c0c8b32d33a5244f1e5947304550403b63930415 # v4.0.1
         with:
           version: v1.30.0
 
       - name: Install kustomize
         run: |
-          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/kustomize/v5.8.1/hack/install_kustomize.sh" | bash
           sudo mv kustomize /usr/local/bin/
 
       - name: Install kubeconform
@@ -27,10 +27,31 @@ jobs:
           curl -sL https://github.com/yannh/kubeconform/releases/download/v0.6.6/kubeconform-linux-amd64.tar.gz | tar xz
           sudo mv kubeconform /usr/local/bin/
 
-      - name: Build and validate each overlay
+      - name: Install kube-linter
         run: |
-          for env in dev staging prod; do
+          curl -sL https://github.com/stackrox/kube-linter/releases/download/v0.8.3/kube-linter-linux.tar.gz | tar xz
+          sudo mv kube-linter /usr/local/bin/
+
+      - name: Build and validate each overlay
+        # `local` added alongside dev/staging/prod: it's a real 4th Kustomize overlay (Giai đoạn
+        # 2, PR #51 — Postgres/LocalStack/secretGenerator for the kind cluster), and nothing
+        # here had been checking it — a break in `overlays/local` would only ever surface the
+        # next time someone tried to actually run kind locally, not in CI.
+        run: |
+          for env in dev staging prod local; do
             echo "── overlay: $env ──"
             kustomize build infrastructure/kubernetes/overlays/$env | \
               kubeconform -strict -ignore-missing-schemas -summary -
+          done
+
+      - name: kube-linter (advisory — does not fail the build yet)
+        # Kept non-blocking on purpose: kube-linter's default checks (e.g. "no anti-affinity",
+        # "no read-only root filesystem" on sidecars it doesn't recognize) haven't been triaged
+        # against this repo's manifests yet. Flip to a real failure once a `.kube-linter.yaml`
+        # exists with the checks this project actually wants enforced.
+        run: |
+          for env in dev staging prod local; do
+            echo "── kube-linter: $env ──"
+            kustomize build infrastructure/kubernetes/overlays/$env > /tmp/manifests-$env.yaml
+            kube-linter lint /tmp/manifests-$env.yaml || true
           done
