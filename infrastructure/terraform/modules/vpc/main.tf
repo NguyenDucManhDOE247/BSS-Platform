@@ -72,6 +72,14 @@ resource "aws_subnet" "private" {
     Name                                        = "${var.name_prefix}-private-${local.azs[count.index]}"
     "kubernetes.io/role/internal-elb"           = "1"
     "kubernetes.io/cluster/${var.cluster_name}" = "shared"
+    # Karpenter node-discovery tag lives HERE, not as a separate `aws_ec2_tag` resource in
+    # modules/eks. Found by actually applying to real AWS: `aws_subnet`'s own `tags` argument is
+    # authoritative for this resource — every apply re-syncs the subnet's tags to exactly this
+    # map, which would silently STRIP any tag added out-of-band by a separate `aws_ec2_tag`
+    # resource. That set up a permanent tug-of-war: subnet apply removes the tag, ec2_tag apply
+    # re-adds it, next subnet apply removes it again — every `terraform plan` shows drift
+    # forever, alternating between the two resources depending on which applied last.
+    "karpenter.sh/discovery" = var.cluster_name
   })
 }
 

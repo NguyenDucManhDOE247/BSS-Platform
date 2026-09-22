@@ -276,4 +276,13 @@ resource "aws_eks_access_policy_association" "deployer_nonprod_bss" {
     type       = "namespace"
     namespaces = ["bss"]
   }
+
+  # Real bug found running `terraform apply` against actual AWS (not caught by validate/plan):
+  # both this resource and aws_eks_access_entry.deployer_nonprod reference the same external
+  # values (cluster_name, principal_arn) but never reference EACH OTHER, so Terraform has no
+  # inferred ordering between them and can create them in either order/in parallel. AWS requires
+  # the access ENTRY to exist before you can associate a policy with that principal — without
+  # this depends_on, the association's API call can race ahead of the entry and fail with
+  # "AssociateAccessPolicy ... 404 ResourceNotFoundException".
+  depends_on = [aws_eks_access_entry.deployer_nonprod]
 }
