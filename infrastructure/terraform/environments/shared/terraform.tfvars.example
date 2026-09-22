@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars and edit.
+
+owner_email  = "you@example.com"
+github_repos = ["YOUR_GH_USERNAME/bss-platform"]

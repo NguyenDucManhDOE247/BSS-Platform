@@ -8,9 +8,8 @@ variable "owner_email" {
   description = "Tag added to every resource for billing accountability"
 }
 
-variable "public_access_cidrs" {
+variable "github_repos" {
   type        = list(string)
-  description = "CIDR blocks allowed to reach the EKS public endpoint. Use your home/office IP."
-  default     = ["0.0.0.0/0"]
+  description = "e.g. ['NguyenDucManhDOE247/BSS-Platform'] — repos allowed to assume the deployer roles"
+  default     = []
 }
-
