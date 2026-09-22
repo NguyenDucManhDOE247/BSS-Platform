@@ -95,7 +95,7 @@ module "eks" {
 
   name_prefix                = local.name_prefix
   cluster_name               = local.cluster_name
-  k8s_version                = "1.30"
+  k8s_version                = "1.34" # B-36: verify current STANDARD_SUPPORT versions before apply
   private_subnet_ids         = module.vpc.private_subnet_ids
   public_subnet_ids          = module.vpc.public_subnet_ids
   public_access_cidrs        = var.public_access_cidrs
@@ -122,6 +122,7 @@ module "rds" {
   backup_retention_days        = 1
   performance_insights_enabled = false
   deletion_protection          = false
+  secret_recovery_window_days  = 0 # B-37: dev gets destroyed/re-applied daily — see module comment
 
   tags = local.common_tags
 }

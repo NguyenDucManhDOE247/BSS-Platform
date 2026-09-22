@@ -74,7 +74,7 @@ module "eks" {
 
   name_prefix                = local.name_prefix
   cluster_name               = local.cluster_name
-  k8s_version                = "1.30"
+  k8s_version                = "1.34" # B-36: verify current STANDARD_SUPPORT versions before apply
   private_subnet_ids         = module.vpc.private_subnet_ids
   public_subnet_ids          = module.vpc.public_subnet_ids
   public_access_cidrs        = var.public_access_cidrs
