@@ -22,9 +22,9 @@ jobs:
     outputs:
       apps: ${{ steps.filter.outputs.changes }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - id: filter
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@15192bc058cc28a13dbf6cde61f19e18988b7af6 # v3.0.4
         with:
           filters: |
             web-portal:    'apps/frontend/web-portal/**'
@@ -39,9 +39,9 @@ jobs:
       matrix:
         app: ${{ fromJson(needs.detect.outputs.apps) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
           cache: 'npm'
@@ -49,7 +49,11 @@ jobs:
 
       - name: Install
         working-directory: apps/frontend/${{ matrix.app }}
-        run: npm ci || npm install
+        # B-04 fix: `npm ci || npm install` silently fell back to a non-reproducible install
+        # whenever `npm ci` failed for any reason (including a real lockfile drift bug) — the
+        # step always exited 0 either way. Both apps now commit `package-lock.json`, so `npm ci`
+        # (exact, reproducible, and fails loudly on drift) is the only install this needs.
+        run: npm ci --no-audit --no-fund
 
       - name: Lint
         working-directory: apps/frontend/${{ matrix.app }}
