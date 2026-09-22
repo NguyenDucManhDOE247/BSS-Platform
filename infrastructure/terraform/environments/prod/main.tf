@@ -2,7 +2,10 @@
 #
 # Production-grade defaults:
 #   - 3 AZs
-#   - NAT Gateway (HA)
+#   - NAT Gateway — ⚠️ B-39: currently 1 NAT for the whole VPC, NOT one per AZ. True HA needs a
+#     NAT + route table per AZ in modules/vpc (an AZ outage would currently take routing with it
+#     for the other AZs' private subnets). Left as single-NAT for now to match the module's
+#     current shape; revisit before a real prod cutover.
 #   - Multi-AZ RDS, db.t3.medium+
 #   - Deletion protection ON for everything
 #   - Restricted EKS public endpoint
@@ -46,13 +49,13 @@ locals {
 module "vpc" {
   source = "../../modules/vpc"
 
-  name_prefix          = local.name_prefix
-  region               = var.region
-  cluster_name         = local.cluster_name
-  vpc_cidr             = "10.30.0.0/16"
-  az_count             = 3
-  enable_nat_gateway   = true
-  enable_vpc_endpoints = true
+  name_prefix                = local.name_prefix
+  region                     = var.region
+  cluster_name               = local.cluster_name
+  vpc_cidr                   = "10.30.0.0/16"
+  az_count                   = 3
+  enable_nat_gateway         = true
+  enable_interface_endpoints = false # NAT already covers this — see ADR-002 (B-32)
 
   tags = local.common_tags
 }

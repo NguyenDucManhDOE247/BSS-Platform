@@ -44,13 +44,13 @@ locals {
 module "vpc" {
   source = "../../modules/vpc"
 
-  name_prefix          = local.name_prefix
-  region               = var.region
-  cluster_name         = local.cluster_name
-  vpc_cidr             = "10.20.0.0/16"
-  az_count             = 3
-  enable_nat_gateway   = true # needed for E2E test traffic out
-  enable_vpc_endpoints = true
+  name_prefix                = local.name_prefix
+  region                     = var.region
+  cluster_name               = local.cluster_name
+  vpc_cidr                   = "10.20.0.0/16"
+  az_count                   = 3
+  enable_nat_gateway         = true  # needed for E2E test traffic out
+  enable_interface_endpoints = false # NAT already covers this — see ADR-002 (B-32)
 
   tags = local.common_tags
 }

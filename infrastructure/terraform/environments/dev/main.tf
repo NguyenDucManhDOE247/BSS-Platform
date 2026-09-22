@@ -1,7 +1,7 @@
 # BSS Platform — DEV environment
 #
 # Optimised for low cost and fast iteration:
-#   - No NAT Gateway (use VPC endpoints)
+#   - 1 NAT Gateway (not "VPC endpoints only" — see docs/adr/ADR-002-mang-dev.md, B-32)
 #   - Single-AZ RDS, db.t3.micro
 #   - System node group min=2 (cheapest stable size)
 #   - Deletion protection OFF (so we can `terraform destroy` nightly)
@@ -59,13 +59,13 @@ locals {
 module "vpc" {
   source = "../../modules/vpc"
 
-  name_prefix          = local.name_prefix
-  region               = var.region
-  cluster_name         = local.cluster_name
-  vpc_cidr             = "10.10.0.0/16"
-  az_count             = 2
-  enable_nat_gateway   = false # cost optimization
-  enable_vpc_endpoints = true
+  name_prefix                = local.name_prefix
+  region                     = var.region
+  cluster_name               = local.cluster_name
+  vpc_cidr                   = "10.10.0.0/16"
+  az_count                   = 2
+  enable_nat_gateway         = true  # B-32/ADR-002: "no NAT" didn't work — see the ADR
+  enable_interface_endpoints = false # S3 gateway endpoint is still always on (free)
 
   tags = local.common_tags
 }
