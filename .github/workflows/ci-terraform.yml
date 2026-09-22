@@ -8,43 +8,85 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write # post the plan as a PR comment
+  pull-requests: write # post the plan as a PR comment (plan-dev, currently disabled — see below)
 
 jobs:
   fmt-validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: 1.7.5
       - run: terraform fmt -check -recursive infrastructure/terraform
 
-  security-scan:
+  validate:
+    name: Validate (${{ matrix.env }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [dev, staging, prod]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: 1.7.5
+
+      # B-30/B-31: `terraform init`/`validate` never ran in CI before this — the workflow only
+      # checked formatting, then jumped straight to `plan-dev` (which needs real AWS OIDC
+      # credentials this repo doesn't have yet). `-backend=false` skips configuring the S3
+      # backend (not created until Giai đoạn 4) while still downloading providers/modules, which
+      # is enough for `validate` to catch real config errors like B-30 (function call in a
+      # variable default) and B-31 (inconsistent types across a `for_each` map) — both were only
+      # ever found by actually running this, never by reading the HCL.
+      - name: Init (no backend — providers/modules only)
+        working-directory: infrastructure/terraform/environments/${{ matrix.env }}
+        run: terraform init -backend=false -input=false
+
+      - name: Validate
+        working-directory: infrastructure/terraform/environments/${{ matrix.env }}
+        run: terraform validate
+
+  trivy-config:
+    name: Trivy IaC scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: aquasecurity/tfsec-action@v1.0.3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # B-39/B-54: tfsec (aquasecurity/tfsec-action) is in maintenance mode — its checks were
+      # folded into Trivy's `config` scan type, and this repo already depends on
+      # aquasecurity/trivy-action elsewhere (ci-backend.yml, ci-frontend.yml) for image
+      # scanning, so this reuses the same action/pin instead of a second security tool.
+      - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
-          working_directory: infrastructure/terraform
+          scan-type: config
+          scan-ref: infrastructure/terraform
+          severity: HIGH,CRITICAL
+          exit-code: '1'
 
+  # B-38/CLAUDE.md §9: `plan-dev` needs `secrets.AWS_DEPLOYER_ROLE_ARN` (an IAM role created by
+  # `environments/shared` — Giai đoạn 4, not created yet) and a real S3 backend (also Giai đoạn
+  # 4). Left in place rather than deleted so the Giai đoạn 4 diff is small — re-enable by
+  # deleting the `if: false` line once both exist. See learning/20 Giai đoạn 3 mục 3 and
+  # Giai đoạn 4 mục 2/4.
   plan-dev:
+    if: false
     runs-on: ubuntu-latest
-    needs: [fmt-validate, security-scan]
+    needs: [fmt-validate, validate, trivy-config]
     permissions:
       id-token: write
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Configure AWS via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4.3.1
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOYER_ROLE_ARN }}
           aws-region: ap-southeast-1
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: 1.7.5
 
@@ -56,7 +98,7 @@ jobs:
           terraform show -no-color plan.bin > plan.txt
 
       - name: Post plan to PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
             const fs = require('fs');
