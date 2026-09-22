@@ -1,8 +1,10 @@
 # EKS cluster with managed node groups (1 group: "system") and IRSA prep.
 #
 # Karpenter is installed via Helm in a separate step (see platform/karpenter/).
-# This module sets up the IAM role Karpenter needs, plus the node IAM role
-# Karpenter-provisioned nodes will assume.
+# This module sets up the node IAM role Karpenter-provisioned nodes will assume (they reuse
+# the "node" role below, tagged for Karpenter's subnet/SG discovery). It does NOT set up
+# Karpenter's own controller IAM role — B-35: that (and the AWS Load Balancer Controller's,
+# and the EBS CSI Driver's) lives in modules/platform-iam, added when each addon's phase comes.
 
 data "aws_caller_identity" "current" {}
 data "aws_partition" "current" {}
@@ -191,8 +193,8 @@ resource "aws_eks_addon" "kube_proxy" {
   addon_name   = "kube-proxy"
 }
 
-resource "aws_eks_addon" "ebs_csi" {
-  cluster_name = aws_eks_cluster.this.name
-  addon_name   = "aws-ebs-csi-driver"
-  depends_on   = [aws_eks_node_group.system]
-}
+# B-35/B-39/B-41: "aws-ebs-csi-driver" addon moved to each environment's own main.tf, NOT here.
+# It needs `service_account_role_arn` from modules/platform-iam, which itself needs THIS
+# module's `cluster_oidc_provider_arn`/`_url` outputs — wiring the addon in here too would make
+# module "eks" and module "platform_iam" depend on each other (a cycle Terraform refuses to
+# plan). The environment's main.tf is the one place that already sees both modules' outputs.

@@ -26,3 +26,11 @@ output "event_bus_name" {
 output "service_role_arns" {
   value = module.iam.service_role_arns
 }
+
+output "aws_lb_controller_role_arn" {
+  value = module.platform_iam.alb_controller_role_arn
+}
+
+output "ebs_csi_role_arn" {
+  value = module.platform_iam.ebs_csi_role_arn
+}
