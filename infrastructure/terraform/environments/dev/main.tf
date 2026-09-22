@@ -47,6 +47,20 @@ provider "aws" {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
+# B-33: ECR + GitHub OIDC + deployer roles live in environments/shared now (account-level,
+# outlive any single environment) — read their outputs instead of re-creating them here.
+# Requires `environments/shared` to have been applied FIRST.
+data "terraform_remote_state" "shared" {
+  backend = "s3"
+  config = {
+    bucket = "bss-tfstate-${data.aws_caller_identity.current.account_id}"
+    key    = "shared/terraform.tfstate"
+    region = var.region
+  }
+}
+
 locals {
   env          = "dev"
   name_prefix  = "bss-${local.env}"
@@ -93,14 +107,6 @@ module "eks" {
   tags = local.common_tags
 }
 
-# ── ECR ────────────────────────────────────────────────────────────────
-module "ecr" {
-  source      = "../../modules/ecr"
-  name_prefix = "bss" # shared across envs (same image, multiple deploys)
-
-  tags = local.common_tags
-}
-
 # ── RDS ────────────────────────────────────────────────────────────────
 module "rds" {
   source = "../../modules/rds"
@@ -140,7 +146,7 @@ module "observability" {
   tags = local.common_tags
 }
 
-# ── IAM (IRSA roles + GitHub OIDC) ─────────────────────────────────────
+# ── IAM (per-service IRSA roles — GitHub OIDC lives in environments/shared) ─
 module "iam" {
   source = "../../modules/iam"
 
@@ -202,8 +208,27 @@ module "iam" {
     }
   }
 
-  enable_github_oidc = true
-  github_repos       = var.github_repos
-
   tags = local.common_tags
+}
+
+# ── B-34: EKS access entry for the CI/CD deployer role ──────────────────
+# `eks:DescribeCluster` (granted in environments/shared) only lets GitHub Actions fetch
+# connection details — it does NOT authorize anything once `kubectl` actually talks to the
+# cluster's API server. That's a SEPARATE authorization layer (EKS access entries, replacing
+# the old aws-auth ConfigMap) which this resource grants, scoped to just the `bss` namespace
+# (not cluster-admin).
+resource "aws_eks_access_entry" "deployer_nonprod" {
+  cluster_name  = module.eks.cluster_name
+  principal_arn = data.terraform_remote_state.shared.outputs.deployer_nonprod_role_arn
+}
+
+resource "aws_eks_access_policy_association" "deployer_nonprod_bss" {
+  cluster_name  = module.eks.cluster_name
+  principal_arn = data.terraform_remote_state.shared.outputs.deployer_nonprod_role_arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
+
+  access_scope {
+    type       = "namespace"
+    namespaces = ["bss"]
+  }
 }

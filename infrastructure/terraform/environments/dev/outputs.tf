@@ -11,11 +11,11 @@ output "kubeconfig_command" {
 }
 
 output "ecr_registry" {
-  value = "${module.ecr.registry_id}.dkr.ecr.${var.region}.amazonaws.com"
+  value = "${data.terraform_remote_state.shared.outputs.ecr_registry_id}.dkr.ecr.${var.region}.amazonaws.com"
 }
 
 output "ecr_repository_urls" {
-  value = module.ecr.repository_urls
+  value = data.terraform_remote_state.shared.outputs.ecr_repository_urls
 }
 
 output "rds_endpoint" {
@@ -36,5 +36,6 @@ output "service_role_arns" {
 }
 
 output "github_deployer_role_arn" {
-  value = module.iam.github_deployer_role_arn
+  description = "Convenience mirror of environments/shared's output — dev+staging use this one."
+  value       = data.terraform_remote_state.shared.outputs.deployer_nonprod_role_arn
 }

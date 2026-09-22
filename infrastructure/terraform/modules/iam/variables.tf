@@ -21,17 +21,6 @@ variable "services" {
   default = {}
 }
 
-variable "enable_github_oidc" {
-  type    = bool
-  default = false
-}
-
-variable "github_repos" {
-  type        = list(string)
-  default     = []
-  description = "e.g. ['ngocta/bss-platform']"
-}
-
 variable "tags" {
   type    = map(string)
   default = {}

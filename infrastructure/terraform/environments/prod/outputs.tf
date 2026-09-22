@@ -11,7 +11,7 @@ output "kubeconfig_command" {
 }
 
 output "ecr_registry" {
-  value = "${module.ecr.registry_id}.dkr.ecr.${var.region}.amazonaws.com"
+  value = "${data.terraform_remote_state.shared.outputs.ecr_registry_id}.dkr.ecr.${var.region}.amazonaws.com"
 }
 
 output "rds_endpoint" {
