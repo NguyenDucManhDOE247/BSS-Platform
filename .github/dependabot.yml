@@ -1,0 +1,85 @@
+version: 2
+
+updates:
+  # B-54: every action across the 4 ci-*.yml workflows is now pinned to a commit SHA (not a
+  # tag) for supply-chain safety — the tj-actions/changed-files incident (March 2025) showed a
+  # compromised tag can be re-pointed at malicious code without the pin in a workflow file ever
+  # changing. The cost of that safety is that Dependabot's tag-based Renovate-style auto-update
+  # no longer applies automatically; this `github-actions` ecosystem entry is what keeps SHA pins
+  # from silently going stale — Dependabot resolves the new SHA for each release itself and opens
+  # a PR with both the new SHA and an updated version comment.
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ['*']
+
+  - package-ecosystem: 'terraform'
+    directory: '/infrastructure/terraform'
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: 'maven'
+    directory: '/apps/backend/customer-service'
+    schedule:
+      interval: weekly
+  - package-ecosystem: 'maven'
+    directory: '/apps/backend/product-catalog'
+    schedule:
+      interval: weekly
+  - package-ecosystem: 'maven'
+    directory: '/apps/backend/order-management'
+    schedule:
+      interval: weekly
+  - package-ecosystem: 'maven'
+    directory: '/apps/backend/billing-service'
+    schedule:
+      interval: weekly
+  - package-ecosystem: 'maven'
+    directory: '/apps/backend/api-gateway'
+    schedule:
+      interval: weekly
+  - package-ecosystem: 'maven'
+    directory: '/packages/bss-common-java'
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: 'npm'
+    directory: '/apps/frontend/web-portal'
+    schedule:
+      interval: weekly
+  - package-ecosystem: 'npm'
+    directory: '/apps/frontend/admin-console'
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: 'docker'
+    directory: '/apps/backend/customer-service'
+    schedule:
+      interval: weekly
+  - package-ecosystem: 'docker'
+    directory: '/apps/backend/product-catalog'
+    schedule:
+      interval: weekly
+  - package-ecosystem: 'docker'
+    directory: '/apps/backend/order-management'
+    schedule:
+      interval: weekly
+  - package-ecosystem: 'docker'
+    directory: '/apps/backend/billing-service'
+    schedule:
+      interval: weekly
+  - package-ecosystem: 'docker'
+    directory: '/apps/backend/api-gateway'
+    schedule:
+      interval: weekly
+  - package-ecosystem: 'docker'
+    directory: '/apps/frontend/web-portal'
+    schedule:
+      interval: weekly
+  - package-ecosystem: 'docker'
+    directory: '/apps/frontend/admin-console'
+    schedule:
+      interval: weekly
