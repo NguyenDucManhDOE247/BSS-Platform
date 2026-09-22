@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.6
 # B-05 fix — see web-portal/Dockerfile for the full explanation of why
 # nginxinc/nginx-unprivileged replaces plain nginx + manual chown/USER here.
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
