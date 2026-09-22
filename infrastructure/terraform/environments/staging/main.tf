@@ -122,26 +122,26 @@ module "iam" {
 
   services = {
     customer-service = {
-      namespace                = "bss"
-      service_account          = "customer-service"
-      managed_policy_arns      = []
+      namespace           = "bss"
+      service_account     = "customer-service"
+      managed_policy_arns = []
       inline_policy_statements = [
         { Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = [module.rds.master_secret_arn] }
       ]
     }
     order-management = {
-      namespace                = "bss"
-      service_account          = "order-management"
-      managed_policy_arns      = []
+      namespace           = "bss"
+      service_account     = "order-management"
+      managed_policy_arns = []
       inline_policy_statements = [
-        { Effect = "Allow", Action = ["events:PutEvents"], Resource = module.eventbridge.event_bus_arn },
+        { Effect = "Allow", Action = ["events:PutEvents"], Resource = [module.eventbridge.event_bus_arn] }, # B-31: list, not bare string
         { Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = [module.rds.master_secret_arn] }
       ]
     }
     billing-service = {
-      namespace                = "bss"
-      service_account          = "billing-service"
-      managed_policy_arns      = []
+      namespace           = "bss"
+      service_account     = "billing-service"
+      managed_policy_arns = []
       inline_policy_statements = [
         { Effect = "Allow", Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"], Resource = [module.eventbridge.queue_arns["billing-orders"]] },
         { Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = [module.rds.master_secret_arn] }

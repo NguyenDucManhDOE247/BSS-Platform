@@ -145,26 +145,31 @@ module "iam" {
 
   services = {
     customer-service = {
-      namespace       = "bss"
-      service_account = "customer-service"
+      namespace           = "bss"
+      service_account     = "customer-service"
       managed_policy_arns = []
       inline_policy_statements = [
         {
-          Effect = "Allow"
-          Action = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+          Effect   = "Allow"
+          Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
           Resource = [module.rds.master_secret_arn]
         }
       ]
     }
     order-management = {
-      namespace       = "bss"
-      service_account = "order-management"
+      namespace           = "bss"
+      service_account     = "order-management"
       managed_policy_arns = []
       inline_policy_statements = [
         {
-          Effect   = "Allow"
-          Action   = ["events:PutEvents"]
-          Resource = module.eventbridge.event_bus_arn
+          Effect = "Allow"
+          Action = ["events:PutEvents"]
+          # B-31: must be a list, not a bare string — `inline_policy_statements` is typed
+          # `list(any)`, and every OTHER statement in this map already uses a list `Resource`
+          # (see the secretsmanager statement right below). Terraform has to convert every
+          # object in the map to one unified type; a lone bare-string Resource here breaks that
+          # unification with "element types must all match for conversion to list".
+          Resource = [module.eventbridge.event_bus_arn]
         },
         {
           Effect   = "Allow"
@@ -174,8 +179,8 @@ module "iam" {
       ]
     }
     billing-service = {
-      namespace       = "bss"
-      service_account = "billing-service"
+      namespace           = "bss"
+      service_account     = "billing-service"
       managed_policy_arns = []
       inline_policy_statements = [
         {
