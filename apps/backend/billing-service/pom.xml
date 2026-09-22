@@ -18,7 +18,7 @@
     <description>BSS Billing &amp; Invoicing (TMF678) — consumes order events from SQS</description>
     <properties>
         <java.version>21</java.version>
-        <aws.sdk.version>2.54.17</aws.sdk.version>
+        <aws.sdk.version>2.55.1</aws.sdk.version>
         <!-- AWS SDK 2.54.x's default sync HTTP client (apache5-client) needs a recent
              org.apache.httpcomponents.client5:httpclient5 that has TlsSocketStrategy (added in
              5.3). spring-boot-starter-parent's own dependencyManagement pins httpclient5 to
