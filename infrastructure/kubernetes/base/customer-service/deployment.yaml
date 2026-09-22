@@ -54,6 +54,25 @@ spec:
             - configMapRef:
                 name: customer-service-config
           env:
+            # Giai đoạn 5 / B-20: DB_HOST/DB_PORT/DB_NAME now travel the same path as
+            # DB_USER/DB_PASSWORD — read from whatever produced the `customer-db-credentials`
+            # Secret (Kustomize secretGenerator in overlays/local, AWS Secrets Store CSI sync in
+            # overlays/dev) instead of a hand-typed DB_URL literal in a ConfigMap. See ADR-004.
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: customer-db-credentials
+                  key: host
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: customer-db-credentials
+                  key: port
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: customer-db-credentials
+                  key: dbname
             - name: DB_USER
               valueFrom:
                 secretKeyRef:
