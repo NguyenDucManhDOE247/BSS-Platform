@@ -47,12 +47,10 @@ resource "aws_security_group" "rds" {
     security_groups = [var.eks_node_security_group_id]
   }
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  # AWS-0104 fixed for real (not ignored): unlike the VPC-endpoints SG, RDS never initiates
+  # outbound connections of its own — Postgres only replies on the connection a client already
+  # opened, which security groups (stateful) already allow without any egress rule. No egress
+  # block at all = deny all outbound, with zero effect on how Postgres actually works.
 
   tags = var.tags
 }
