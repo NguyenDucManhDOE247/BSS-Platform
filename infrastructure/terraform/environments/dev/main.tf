@@ -135,6 +135,23 @@ module "eventbridge" {
   tags = local.common_tags
 }
 
+# ── Platform addon IAM (B-35) ────────────────────────────────────────────
+module "platform_iam" {
+  source = "../../modules/platform-iam"
+
+  name_prefix               = local.name_prefix
+  cluster_oidc_provider_arn = module.eks.cluster_oidc_provider_arn
+  cluster_oidc_provider_url = module.eks.cluster_oidc_provider_url
+
+  tags = local.common_tags
+}
+
+resource "aws_eks_addon" "ebs_csi" {
+  cluster_name             = module.eks.cluster_name
+  addon_name               = "aws-ebs-csi-driver"
+  service_account_role_arn = module.platform_iam.ebs_csi_role_arn
+}
+
 # ── Observability ──────────────────────────────────────────────────────
 module "observability" {
   source = "../../modules/observability"
