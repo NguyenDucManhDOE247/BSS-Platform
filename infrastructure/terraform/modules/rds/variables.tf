@@ -54,13 +54,7 @@ variable "deletion_protection" {
 variable "secret_recovery_window_days" {
   type        = number
   default     = 30
-  description = "B-37: Secrets Manager recovery window for the master-password secret. Set to 0 for an environment that gets `terraform destroy`'d and re-applied often (dev) — otherwise the next apply fails because the secret NAME is still reserved during its recovery window."
-}
-
-variable "log_statement" {
-  type        = string
-  default     = "ddl"
-  description = "B-39: Postgres log_statement level. \"all\" logs full SQL text (can leak PII into CloudWatch Logs — see CLAUDE.md §10) and costs more per GB ingested. \"ddl\" (schema changes only) is the safe default; log_min_duration_statement=1000 (hardcoded below) still catches slow queries regardless."
+  description = "Secrets Manager recovery window for the master + per-service DB credential secrets (B-21, B-37). Set to 0 for an environment that gets `terraform destroy`'d and re-applied often (dev) — otherwise the next apply fails because the secret NAME is still reserved during its recovery window. (Also applied to modules/rds's master secret in a separate PR — see B-37.)"
 }
 
 variable "tags" {
