@@ -191,6 +191,16 @@ resource "aws_eks_addon" "kube_proxy" {
   addon_name   = "kube-proxy"
 }
 
+# Giai đoạn 5 / B-43: HPA needs metrics-server (resource metrics: cpu/memory) to ever leave
+# "<unknown>/70%". EKS has offered this as a first-class managed addon (same family as
+# vpc-cni/coredns/kube-proxy above) since 2023 — no Helm chart, no IAM role, one fewer manual
+# step in platform/README.md for every new environment.
+resource "aws_eks_addon" "metrics_server" {
+  cluster_name = aws_eks_cluster.this.name
+  addon_name   = "metrics-server"
+  depends_on   = [aws_eks_node_group.system]
+}
+
 # B-35/B-39/B-41: "aws-ebs-csi-driver" addon moved to each environment's own main.tf, NOT here.
 # It needs `service_account_role_arn` from modules/platform-iam, which itself needs THIS
 # module's `cluster_oidc_provider_arn`/`_url` outputs — wiring the addon in here too would make

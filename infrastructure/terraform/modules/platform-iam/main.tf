@@ -46,10 +46,16 @@ resource "aws_iam_role" "alb_controller" {
 # The official policy is long (~20 statements covering ELBv2, EC2 SG/tag, ACM, Cognito, WAF,
 # Shield) and changes with each controller release — hand-maintaining a copy here would silently
 # go stale exactly like B-36's hardcoded RDS/EKS versions did. Fetched from the same place the
-# project's own install docs point at (platform/README.md), pinned to the chart version that
-# README already installs.
+# project's own install docs point at (platform/README.md), pinned to the SAME chart/app version
+# that README's `helm upgrade --install ... --version` installs — the two pins MUST move
+# together (mismatched controller binary vs. IAM policy version is exactly the kind of "chạy 1
+# lần thì được, sai ở apply thật" gap this project has hit before — see B-36's lesson in
+# learning/nhat-ky-hoc-tap.md). Giai đoạn 5: bumped v2.13.0 → v3.5.0 (latest stable as of
+# 2026-09-23, checked via `helm search repo eks/aws-load-balancer-controller --versions`) — like
+# engine_version/k8s_version elsewhere in this repo, this WILL go stale again; re-check before
+# every from-scratch dev apply.
 data "http" "alb_controller_policy" {
-  url = "https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.13.0/docs/install/iam_policy.json"
+  url = "https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v3.5.0/docs/install/iam_policy.json"
 }
 
 resource "aws_iam_role_policy" "alb_controller" {

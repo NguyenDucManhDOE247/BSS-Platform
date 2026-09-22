@@ -5,45 +5,70 @@ They are installed once per EKS cluster, typically via Helm.
 
 ## Install order
 
+Steps are labeled by the `learning/20` giai đoạn (phase) that actually needs them — don't run a
+later phase's addons just because they're in this file; each one costs something (a running pod
+at minimum, sometimes an AWS resource with an hourly charge) for zero benefit until its phase.
+`./scripts/platform-install.sh $ENV` runs steps 1–3 (the Giai đoạn 5 minimum) in order with pinned
+versions — read this file for the "why" behind each one; `make platform-install` calls that script.
+
 After `terraform apply` finishes and `aws eks update-kubeconfig` is set:
 
 ```bash
-# 1. AWS Load Balancer Controller (creates ALBs from Ingress resources)
+# 1. AWS Load Balancer Controller (creates the ALB from the Ingress resource) — Giai đoạn 5.
+# Chart/app version MUST match the iam_policy.json version pinned in
+# infrastructure/terraform/modules/platform-iam/main.tf (mismatched binary vs. IAM policy is a
+# real way to get AccessDenied on ALB creation that "helm upgrade succeeded" won't warn you
+# about) — re-check both together before bumping either.
 helm repo add eks https://aws.github.io/eks-charts
 helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+  --version 3.5.0 \
   -n kube-system -f networking/aws-load-balancer-controller-values.yaml \
   --set clusterName=bss-dev-eks \
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=$(terraform -chdir=../infrastructure/terraform/environments/dev output -raw aws_lb_controller_role_arn)
 
-# 2. External DNS (auto-creates Route 53 records)
+# 2. gp3 StorageClass (B-41) — Giai đoạn 5. EKS ships no default StorageClass; without one,
+# every PVC that doesn't name a class explicitly (Prometheus/Grafana/Alertmanager's, step 7
+# below) sits Pending forever. Needs the EBS CSI driver, which Terraform already installed as a
+# first-class aws_eks_addon (environments/*/main.tf) — nothing to helm-install for that part.
+kubectl apply -f storage/storageclass-gp3.yaml
+
+# 3. Secrets Store CSI Driver + AWS provider (B-20) — Giai đoạn 5. Powers the 4 per-service
+# SecretProviderClass resources in infrastructure/kubernetes/overlays/dev/secrets/.
+helm repo add secrets-store-csi-driver https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts
+helm upgrade --install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver \
+  --version 1.6.1 \
+  -n kube-system -f secrets/secrets-store-csi-values.yaml
+# Pinned to a release TAG, not "main" (B-42) — an unpinned branch reference can change under you
+# between two identical-looking runs of this command with no changelog to check.
+kubectl apply -f https://raw.githubusercontent.com/aws/secrets-store-csi-driver-provider-aws/3.1.4/deployment/aws-provider-installer.yaml
+
+# --- everything below is LATER phases (see learning/20) — not needed for Giai đoạn 5's
+# "7 service chạy trên EKS dev, truy cập qua ALB" checkpoint. Listed here for when you get there.
+
+# 4. External DNS (auto-creates Route 53 records) — needs a real domain first (Giai đoạn 6+).
 helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/
 helm upgrade --install external-dns external-dns/external-dns \
   -n kube-system -f networking/external-dns-values.yaml
 
-# 3. Karpenter (auto-provisioner for workload nodes)
+# 5. Karpenter (auto-provisioner for workload nodes) — Giai đoạn 8 (cost/scaling work).
 helm repo add karpenter oci://public.ecr.aws/karpenter
 helm upgrade --install karpenter karpenter/karpenter \
   -n karpenter --create-namespace
 kubectl apply -f networking/karpenter-nodepool.yaml
 
-# 4. Secrets Store CSI Driver
-helm repo add secrets-store-csi-driver https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts
-helm upgrade --install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver \
-  -n kube-system -f secrets/secrets-store-csi-values.yaml
-kubectl apply -f https://raw.githubusercontent.com/aws/secrets-store-csi-driver-provider-aws/main/deployment/aws-provider-installer.yaml
-
-# 5. Fluent Bit (logs → CloudWatch)
+# 6. Fluent Bit (logs → CloudWatch) — Giai đoạn 7 (observability on AWS).
 helm upgrade --install fluent-bit eks/aws-for-fluent-bit \
   -n amazon-cloudwatch --create-namespace \
   -f logging/fluent-bit-values.yaml
 
-# 6. OpenTelemetry Collector (traces → X-Ray)
+# 7. OpenTelemetry Collector (traces → X-Ray) — Giai đoạn 7, optional per learning/20.
 helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
 helm upgrade --install otel-collector open-telemetry/opentelemetry-collector \
   -n observability --create-namespace \
   -f tracing/otel-collector-values.yaml
 
-# 7. Prometheus + Grafana
+# 8. Prometheus + Grafana — Giai đoạn 7 (already done for kind/local since Giai đoạn 2 — see the
+# "Local (kind)" section below; this is the same stack, pointed at AWS instead).
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
   -n monitoring --create-namespace \
@@ -58,7 +83,9 @@ kubectl create configmap bss-dashboards \
   kubectl apply -f -
 ```
 
-> The `Makefile` wraps these into `make platform-install`.
+> `make ENV=dev platform-install` runs `scripts/platform-install.sh`, which wraps steps 1–3 above
+> (the Giai đoạn 5 minimum) into one command with the same pinned versions. Steps 4–8 are still
+> manual — deliberately, since each belongs to a later phase you haven't necessarily reached yet.
 
 ## Local (kind) — Giai đoạn 2
 

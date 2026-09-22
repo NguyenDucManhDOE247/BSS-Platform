@@ -1,0 +1,22 @@
+# Giai đoạn 5 / B-41: EKS does NOT ship a default StorageClass — unlike a lot of managed
+# Kubernetes offerings, the in-tree "gp2" StorageClass that older EKS versions auto-created is
+# gone now that storage is handled entirely by the aws-ebs-csi-driver addon (already installed by
+# Terraform — see environments/dev/main.tf's `aws_eks_addon.ebs_csi`, IAM role from
+# modules/platform-iam). Without ANY StorageClass marked default, every PVC that doesn't name one
+# explicitly (Prometheus/Grafana/Alertmanager's, in particular) sits `Pending` forever.
+#
+# gp3 over gp2: ~20% cheaper per GB *and* lets you tune IOPS/throughput independently of size
+# (gp2's were both tied to volume size) — no reason to still default to gp2 on a driver that
+# already supports gp3 natively.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+volumeBindingMode: WaitForFirstConsumer # don't provision the EBS volume until a Pod is actually scheduled (picks the right AZ)
+allowVolumeExpansion: true
+reclaimPolicy: Delete # dev/staging cost-saving default; override to Retain for anything holding data you can't regenerate

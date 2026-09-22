@@ -82,8 +82,8 @@ tf-destroy: ## Tear down $$ENV (confirms on prod)
 kube-config: ## Update local kubeconfig for $$ENV cluster
 	aws eks update-kubeconfig --region $(AWS_REGION) --name $(CLUSTER)
 
-platform-install: ## Install ALB controller, ExternalDNS, Karpenter, CSI, Fluent Bit, OTel, Prometheus
-	@echo "See platform/README.md for the full helm install sequence."
+platform-install: ## Install the addons $$ENV's EKS cluster needs (ALB controller, StorageClass, Secrets CSI — see platform/README.md)
+	./scripts/platform-install.sh $(ENV)
 
 # ── Build + push (SERVICE=name) ───────────────────────────────────────
 ecr-login: ## Log docker into ECR
