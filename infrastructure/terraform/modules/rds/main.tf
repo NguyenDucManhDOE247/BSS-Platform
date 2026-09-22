@@ -27,6 +27,56 @@ resource "aws_secretsmanager_secret_version" "db_master" {
   })
 }
 
+# ── B-21: one DB + one least-privilege user PER SERVICE ────────────────
+# The instance only has ONE database (var.initial_database_name, "bss") out of the box — every
+# service's `application.yml` actually points at "customer"/"product"/"orders"/"billing" (see
+# deploy/postgres-init/01-create-databases.sh, the local-dev equivalent of what this does on real
+# RDS), and every service used to share the SAME master user — a violation of least privilege
+# (any compromised service could read/write every other service's data) that this fixes.
+#
+# This resource block only GENERATES the credentials + reserves them in Secrets Manager. It does
+# NOT create the database/role inside Postgres itself — Terraform's AWS provider has no
+# "run SQL on RDS" resource, and this repo doesn't want a `cyrilgdn/postgresql` provider
+# connecting directly from wherever `terraform apply` runs (RDS sits in a private subnet;
+# GitHub Actions runners aren't inside the VPC). The actual `CREATE DATABASE`/`CREATE ROLE` runs
+# as a one-off Kubernetes Job (infrastructure/kubernetes/overlays/dev/db-bootstrap/), applied
+# once per environment after the cluster + these secrets exist — see that directory's README.
+locals {
+  service_databases = {
+    customer-service = "customer"
+    product-catalog  = "product"
+    order-management = "orders"
+    billing-service  = "billing"
+  }
+}
+
+resource "random_password" "service" {
+  for_each = local.service_databases
+  length   = 24
+  special  = false
+}
+
+resource "aws_secretsmanager_secret" "service" {
+  for_each = local.service_databases
+  name     = "${var.name_prefix}/rds/${each.key}"
+
+  recovery_window_in_days = var.secret_recovery_window_days
+
+  tags = var.tags
+}
+
+resource "aws_secretsmanager_secret_version" "service" {
+  for_each  = local.service_databases
+  secret_id = aws_secretsmanager_secret.service[each.key].id
+  secret_string = jsonencode({
+    username = "${each.value}_svc" # e.g. "customer_svc" — distinct from the master user
+    password = random_password.service[each.key].result
+    host     = aws_db_instance.this.address
+    port     = aws_db_instance.this.port
+    dbname   = each.value
+  })
+}
+
 resource "aws_db_subnet_group" "this" {
   name       = "${var.name_prefix}-db"
   subnet_ids = var.private_subnet_ids

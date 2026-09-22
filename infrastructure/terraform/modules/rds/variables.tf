@@ -48,6 +48,12 @@ variable "deletion_protection" {
   default = false
 }
 
+variable "secret_recovery_window_days" {
+  type        = number
+  default     = 30
+  description = "Secrets Manager recovery window for the master + per-service DB credential secrets (B-21, B-37). Set to 0 for an environment that gets `terraform destroy`'d and re-applied often (dev) — otherwise the next apply fails because the secret NAME is still reserved during its recovery window. (Also applied to modules/rds's master secret in a separate PR — see B-37.)"
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

@@ -27,6 +27,11 @@ output "rds_master_secret_arn" {
   value = module.rds.master_secret_arn
 }
 
+output "service_db_secret_arns" {
+  description = "B-21: per-service DB credential secrets — used by each service's SecretProviderClass (Giai đoạn 5)"
+  value       = module.rds.service_secret_arns
+}
+
 output "event_bus_name" {
   value = module.eventbridge.event_bus_name
 }
