@@ -18,6 +18,7 @@ resource "aws_sqs_queue" "dlq" {
 
   name                      = "${var.name_prefix}-${each.key}-dlq"
   message_retention_seconds = 1209600 # 14 days
+  sqs_managed_sse_enabled   = true    # AWS-0096: free (no KMS key to manage), no functional cost
 
   tags = var.tags
 }
@@ -28,6 +29,7 @@ resource "aws_sqs_queue" "main" {
   name                       = "${var.name_prefix}-${each.key}"
   visibility_timeout_seconds = each.value.visibility_timeout_seconds
   message_retention_seconds  = 345600 # 4 days
+  sqs_managed_sse_enabled    = true   # AWS-0096
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.dlq[each.key].arn
