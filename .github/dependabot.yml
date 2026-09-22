@@ -8,6 +8,13 @@ updates:
   # no longer applies automatically; this `github-actions` ecosystem entry is what keeps SHA pins
   # from silently going stale — Dependabot resolves the new SHA for each release itself and opens
   # a PR with both the new SHA and an updated version comment.
+  #
+  # No major-version cap here on purpose: an action's "major version" rarely changes its
+  # behavior the way a language runtime's does, and letting it through is what caught a real bug
+  # for free the first time this ran (PR #99 bumped trivy-action, which pulled a newer trivy
+  # binary and surfaced 5 real Terraform misconfigurations nothing had caught before — see PR
+  # #100). Same reasoning for `terraform` below: provider bumps are cheap to validate (`terraform
+  # validate` catches breakage immediately) and worth seeing.
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:
@@ -21,65 +28,120 @@ updates:
     schedule:
       interval: weekly
 
+  # maven/npm/docker: capped to minor/patch only (`ignore` below on every entry in these 3
+  # ecosystems). First real run of this file (2026-09-22) opened ~30 PRs in one shot, most of
+  # them major-version jumps that were never going to be mergeable as-is — Spring Boot
+  # 3.2→4.1, Spring Framework 6→7 (breaks the version bss-common-java is built against),
+  # TypeScript 5→7, ESLint 8→10, Vite 5→8, a JDK base-image bump 21→26 (a still-unreleased
+  # major at the time). A major bump for a language runtime or framework needs a real upgrade
+  # migration — reading a changelog, testing, likely code changes — not something to propose
+  # automatically every week. Dependabot still finds minor/patch security and bugfix releases
+  # (the actually useful, low-risk case for automation); a deliberate major-version upgrade is
+  # its own dedicated task when someone decides to do it.
   - package-ecosystem: 'maven'
     directory: '/apps/backend/customer-service'
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: 'maven'
     directory: '/apps/backend/product-catalog'
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: 'maven'
     directory: '/apps/backend/order-management'
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: 'maven'
     directory: '/apps/backend/billing-service'
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: 'maven'
     directory: '/apps/backend/api-gateway'
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: 'maven'
     directory: '/packages/bss-common-java'
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: 'npm'
     directory: '/apps/frontend/web-portal'
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: 'npm'
     directory: '/apps/frontend/admin-console'
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: 'docker'
     directory: '/apps/backend/customer-service'
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: 'docker'
     directory: '/apps/backend/product-catalog'
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: 'docker'
     directory: '/apps/backend/order-management'
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: 'docker'
     directory: '/apps/backend/billing-service'
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: 'docker'
     directory: '/apps/backend/api-gateway'
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: 'docker'
     directory: '/apps/frontend/web-portal'
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: 'docker'
     directory: '/apps/frontend/admin-console'
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']

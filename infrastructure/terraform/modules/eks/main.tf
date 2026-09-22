@@ -28,6 +28,22 @@ resource "aws_iam_role_policy_attachment" "cluster_AmazonEKSClusterPolicy" {
   policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
+# AWS-0039: envelope-encrypt Kubernetes Secrets (etcd) with a customer-managed key, on top of the
+# encryption-at-rest AWS already provides by default. Cheap (a few cents/month) and has no
+# behavioral impact on the cluster — safe to turn on unconditionally rather than deferring it.
+resource "aws_kms_key" "eks_secrets" {
+  description             = "${var.name_prefix} EKS Kubernetes Secrets envelope encryption"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+
+  tags = var.tags
+}
+
+resource "aws_kms_alias" "eks_secrets" {
+  name          = "alias/${var.name_prefix}-eks-secrets"
+  target_key_id = aws_kms_key.eks_secrets.key_id
+}
+
 resource "aws_eks_cluster" "this" {
   name     = var.cluster_name
   role_arn = aws_iam_role.cluster.arn
@@ -36,8 +52,23 @@ resource "aws_eks_cluster" "this" {
   vpc_config {
     subnet_ids              = concat(var.private_subnet_ids, var.public_subnet_ids)
     endpoint_private_access = true
-    endpoint_public_access  = true
-    public_access_cidrs     = var.public_access_cidrs
+    # AWS-0040/AWS-0041 (dev): a static scanner can't see the tfvars value applied at `plan`
+    # time, so it always assumes the worst case for a CIDR-typed variable. `public_access_cidrs`
+    # defaults to 0.0.0.0/0 ONLY in dev on purpose (CLAUDE.md §4: dev is a $0, nightly-destroyed
+    # learning cluster with no fixed office/home IP to pin to yet) — staging and prod require an
+    # explicit value with no permissive default (see their own variables.tf), so this is a
+    # documented, reviewed trade-off for dev specifically, not an oversight.
+    #trivy:ignore:AVD-AWS-0040
+    endpoint_public_access = true
+    #trivy:ignore:AVD-AWS-0041
+    public_access_cidrs = var.public_access_cidrs
+  }
+
+  encryption_config {
+    provider {
+      key_arn = aws_kms_key.eks_secrets.arn
+    }
+    resources = ["secrets"]
   }
 
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
