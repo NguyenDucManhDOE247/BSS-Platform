@@ -82,7 +82,13 @@ jobs:
 
       - name: Build container image (no push)
         working-directory: apps/backend/${{ matrix.service }}
-        run: docker build -t ${{ matrix.service }}:ci .
+        # --secret: only customer-service's Dockerfile actually mounts `id=github_token` (to
+        # resolve com.bss:bss-common-java from GitHub Packages inside the isolated build
+        # environment — see its Dockerfile) — passing it uniformly across the matrix is
+        # harmless for the other 4 services, whose Dockerfiles never reference the secret.
+        run: docker build --secret id=github_token,env=GITHUB_TOKEN -t ${{ matrix.service }}:ci .
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Trivy scan
         # B-54: was pinned to tag "0.20.0" (no "v" prefix, and long since removed from the repo's
