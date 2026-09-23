@@ -96,8 +96,14 @@ helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
 
 ## Part 5 — Build + deploy first service
 
+> customer-service depends on `com.bss:bss-common-java`, published to GitHub Packages — building
+> it (locally or via `make ... push`) needs `GITHUB_TOKEN` exported to a PAT with `read:packages`
+> scope (`gh auth token` alone does NOT have this scope by default; `gh auth refresh -s
+> read:packages` first, or use a separate classic PAT). Every other service ignores this.
+
 ```bash
 # Build customer-service container and push to ECR
+export GITHUB_TOKEN=$(gh auth token)   # needs read:packages scope — see note above
 make ENV=dev SERVICE=customer-service push
 
 # Update kustomize overlay to point at the new image
