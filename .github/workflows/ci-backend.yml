@@ -95,9 +95,17 @@ jobs:
         # release list) — CI failed with "Unable to resolve action ... unable to find version".
         # Pinned by commit SHA instead of a tag, per B-54's own warning about supply-chain risk on
         # tag-pinned third-party actions (the tj-actions/changed-files incident, March 2025).
+        #
+        # Bug found for real (Giai đoạn 5, 2026-09-23, first PR to trigger this job since Giai
+        # đoạn 3): `trivyignores` was never set here, so every entry in
+        # apps/backend/*/.trivyignore (each documented with a real reason — see those files) was
+        # SILENTLY NEVER APPLIED. This step has been re-flagging already-accepted, already-tracked
+        # CVEs as brand new failures the entire time; nobody noticed because no PR touched a
+        # backend service's CI-triggering path between Giai đoạn 3 and this one.
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ matrix.service }}:ci
           severity: HIGH,CRITICAL
           exit-code: '1'
           ignore-unfixed: true
+          trivyignores: apps/backend/${{ matrix.service }}/.trivyignore

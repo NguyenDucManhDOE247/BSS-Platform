@@ -73,9 +73,12 @@ jobs:
 
       - name: Trivy scan
         # B-54: see the identical comment in ci-backend.yml — tag "0.20.0" no longer resolves.
+        # Giai đoạn 5: same missing-`trivyignores` bug found in ci-backend.yml applies here too —
+        # see that file's comment for the full explanation.
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ matrix.app }}:ci
           severity: HIGH,CRITICAL
           exit-code: '1'
           ignore-unfixed: true
+          trivyignores: apps/frontend/${{ matrix.app }}/.trivyignore
