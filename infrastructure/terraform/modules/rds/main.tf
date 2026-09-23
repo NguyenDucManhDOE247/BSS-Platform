@@ -30,7 +30,14 @@ resource "aws_secretsmanager_secret_version" "db_master" {
     username = var.master_username
     password = random_password.master.result
     host     = aws_db_instance.this.address
-    port     = aws_db_instance.this.port
+    # Giai đoạn 5: found for real — the Secrets Store CSI driver's AWS provider (jmespath-backed
+    # extraction) rejects a non-string JMESPath result with "Invalid JMES search result type ...
+    # Only string is allowed", and fails the ENTIRE secret fetch (not just this one field) when
+    # it does. `aws_db_instance.this.port` is a Terraform number; jsonencode() would otherwise
+    # write it as a JSON number (5432, no quotes) — tostring() forces it to a JSON string
+    # ("5432") instead, which is all the provider actually requires (Spring reads it right back
+    # into ${DB_PORT:5432} either way — see ADR-004).
+    port = tostring(aws_db_instance.this.port)
   })
 }
 
@@ -79,7 +86,7 @@ resource "aws_secretsmanager_secret_version" "service" {
     username = "${each.value}_svc" # e.g. "customer_svc" — distinct from the master user
     password = random_password.service[each.key].result
     host     = aws_db_instance.this.address
-    port     = aws_db_instance.this.port
+    port     = tostring(aws_db_instance.this.port) # see the identical comment on db_master above
     dbname   = each.value
   })
 }
