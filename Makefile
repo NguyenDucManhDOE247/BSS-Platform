@@ -56,9 +56,23 @@ test-frontend: ## vitest for both frontend apps
 		(cd apps/frontend/$$a && npm test) || exit 1; \
 	done
 
+# customer-service's Dockerfile needs a `--secret id=github_token,env=GITHUB_TOKEN` (GitHub
+# Packages auth for com.bss:bss-common-java — see the comment at the top of that Dockerfile).
+# Harmless to pass unconditionally to every backend build: a Dockerfile that never mounts a
+# secret ignores an unused `--secret` flag, and GITHUB_TOKEN doesn't need to be set at all unless
+# you're actually building customer-service. Set it with a PAT that has `read:packages`
+# (`gh auth token` alone is NOT enough — the default `gh` scopes don't include it; either
+# `gh auth refresh -s read:packages` first, or export a separate classic PAT).
+#
+# Bug discovered building this exact command sequence for real (Giai đoạn 5, 2026-09-23): without
+# this flag, `docker build` for customer-service either fails outright with "secret github_token:
+# not found" (first time on a machine), OR — worse, and the actual way it was found — silently
+# reuses a stale cached image layer built from OLDER source code on a machine that happens to
+# have built it successfully before, reporting `exit 0` while running code that doesn't match
+# what's on disk at all. `--no-cache` was the only way to see the real failure.
 build-images: ## docker build for all 7 services (tag=local) — see docs/adr/ADR-000-local-dev.md
 	@for s in customer-service product-catalog order-management billing-service api-gateway; do \
-		docker build -t bss/$$s:local apps/backend/$$s || exit 1; \
+		docker build --secret id=github_token,env=GITHUB_TOKEN -t bss/$$s:local apps/backend/$$s || exit 1; \
 	done
 	@for a in web-portal admin-console; do \
 		docker build -t bss/$$a:local apps/frontend/$$a || exit 1; \
@@ -90,7 +104,9 @@ ecr-login: ## Log docker into ECR
 	aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(ECR_REGISTRY)
 
 build: ## Build container image for $$SERVICE (tag=git SHA)
-	docker build -t $(ECR_REGISTRY)/bss/$(SERVICE):$(TAG) $(SERVICE_DIR)
+	# See the comment above build-images: only customer-service's Dockerfile actually needs
+	# GITHUB_TOKEN (a PAT with read:packages); harmless no-op for every other SERVICE.
+	docker build --secret id=github_token,env=GITHUB_TOKEN -t $(ECR_REGISTRY)/bss/$(SERVICE):$(TAG) $(SERVICE_DIR)
 
 push: ecr-login build ## Build + push $$SERVICE
 	docker push $(ECR_REGISTRY)/bss/$(SERVICE):$(TAG)
