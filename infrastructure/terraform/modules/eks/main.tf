@@ -130,6 +130,45 @@ resource "aws_iam_instance_profile" "node" {
   role = aws_iam_role.node.name
 }
 
+# Giai đoạn 5: found for real when the AWS Load Balancer Controller crash-looped right after
+# install — "failed to get VPC ID: ... get mac metadata: ... context deadline exceeded". EKS
+# managed node groups WITHOUT a custom launch template get AWS's default one, which sets IMDS's
+# `HttpPutResponseHopLimit` to 1 — enough for a process running directly on the node to reach
+# 169.254.169.254, but NOT enough for a Pod's traffic to get there (it crosses at least one extra
+# hop through the CNI). The controller SDK falls back to instance metadata to auto-discover the
+# VPC ID when none is passed explicitly, so any Pod doing that (not just this controller — the
+# same trap catches anything relying on IMDS auto-discovery) times out. Bumping the hop limit to 2
+# is the standard fix (see AWS EKS best practices guide, already linked in CLAUDE.md §12) —
+# requires a custom launch template since `aws_eks_node_group` has no native argument for it.
+#
+# `iam_instance_profile` is deliberately NOT set here (unlike a self-managed launch template you
+# might copy this from) — real error hit applying this: "Launch template ... should not specify
+# an instance profile. The noderole in your request will be used to construct an instance
+# profile." An EKS MANAGED node group builds its own instance profile from `node_role_arn` below
+# and rejects a launch template that also sets one. `aws_iam_instance_profile.node` above exists
+# for Karpenter later (self-managed capacity, which DOES need an explicit one) — not this
+# resource.
+resource "aws_launch_template" "system_node" {
+  name_prefix = "${var.name_prefix}-system-"
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required" # IMDSv2 only — AWS-0130 (IMDSv1 is the actual security gap; the hop limit above is unrelated to that)
+    http_put_response_hop_limit = 2
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags          = var.tags
+  }
+
+  tags = var.tags
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 # ── Managed node group: minimum capacity for system pods ──────────────
 # Karpenter will provision additional nodes on demand for workloads.
 resource "aws_eks_node_group" "system" {
@@ -137,6 +176,11 @@ resource "aws_eks_node_group" "system" {
   node_group_name = "system"
   node_role_arn   = aws_iam_role.node.arn
   subnet_ids      = var.private_subnet_ids
+
+  launch_template {
+    id      = aws_launch_template.system_node.id
+    version = aws_launch_template.system_node.latest_version
+  }
 
   instance_types = var.system_node_instance_types
   capacity_type  = "ON_DEMAND" # system pods don't tolerate spot interruption
