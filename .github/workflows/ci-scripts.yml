@@ -1,0 +1,38 @@
+name: CI — scripts
+
+# Test cho scripts/release-manifest.sh — trái tim của CD (ADR-005). Chạy khi đụng script hoặc
+# overlay/base K8s (bài test `render` build overlay dev thật bằng `kubectl kustomize`).
+on:
+  pull_request:
+    paths:
+      - 'scripts/**'
+      - 'infrastructure/kubernetes/**'
+      - '.github/workflows/ci-scripts.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - 'infrastructure/kubernetes/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-scripts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shell:
+    name: shellcheck + test release-manifest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # shellcheck, jq, kubectl, git đều có sẵn trên ubuntu-latest — không cần cài thêm.
+      # `-S warning`: chỉ fail khi có warning/error (bỏ qua mức info/style của các script cũ).
+      - name: shellcheck
+        run: shellcheck -S warning scripts/release-manifest.sh scripts/tests/*.sh
+
+      - name: Test release-manifest.sh
+        run: ./scripts/tests/release-manifest.test.sh
