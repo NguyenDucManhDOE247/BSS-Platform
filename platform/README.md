@@ -9,7 +9,8 @@ Steps are labeled by the `learning/20` giai đoạn (phase) that actually needs 
 later phase's addons just because they're in this file; each one costs something (a running pod
 at minimum, sometimes an AWS resource with an hourly charge) for zero benefit until its phase.
 `./scripts/platform-install.sh $ENV` runs steps 1–3 (the Giai đoạn 5 minimum) in order with pinned
-versions — read this file for the "why" behind each one; `make platform-install` calls that script.
+versions — after first creating namespace `bss` (Giai đoạn 6: CD's deployer role can't create a
+cluster-scoped Namespace, see `overlays/dev/kustomization.yaml`) — read this file for the "why" behind each one; `make platform-install` calls that script.
 
 After `terraform apply` finishes and `aws eks update-kubeconfig` is set:
 

@@ -9,7 +9,10 @@ resources:
   # see infrastructure/kubernetes/overlays/dev/secrets/ and ADR-004.
   - secrets
 
-# Image tags: CD pipeline runs `kustomize edit set image NAME=registry/bss/NAME:SHA`.
+# Image tags: the `newTag: dev` values below are only placeholders. CD (Giai đoạn 6, ADR-005) never
+# edits this file: it generates a throwaway kustomization (`scripts/release-manifest.sh render`,
+# under infrastructure/kubernetes/rendered/, gitignored) that stacks `images:` with the real tag of
+# every service on top of this overlay, matching by the FULL name set by `newName` below.
 # AWS account id below (132249065347) is this project's real, already-created AWS account — see
 # learning/nhat-ky-hoc-tap.md "Giai đoạn 4" and memory `bss-platform-phase0-decisions`. It's a
 # stable value (the account itself doesn't get destroyed/recreated by `terraform destroy` — only
@@ -85,6 +88,19 @@ replicas:
   - { name: admin-console,     count: 1 }
 
 patches:
+  # Giai đoạn 6: the CD deployer (bss-github-deployer-dev) only has a NAMESPACE-scoped EKS access
+  # policy on `bss` (B-34, least privilege). A Namespace is a cluster-scoped object, so
+  # `kubectl apply` of it as that role is Forbidden — and the whole apply fails. The namespace is
+  # created once per cluster by `scripts/platform-install.sh` (run by an admin, with the Pod
+  # Security labels from base/namespace.yaml); this patch drops it from what CD applies. base/ still
+  # contains it, so overlays/local (kind) keeps creating it as before.
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: bss
+
   # IRSA bindings — one IAM role per service, scoped to the resources it needs (see `module
   # "iam"` in infrastructure/terraform/environments/dev/main.tf; role name is always
   # "${name_prefix}-${service_key}" = "bss-dev-<service>").

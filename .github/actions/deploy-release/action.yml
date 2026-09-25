@@ -1,0 +1,141 @@
+name: Deploy release manifest
+description: >
+  Áp một release manifest (7 service, mỗi service một image tag) lên cluster EKS của một môi trường,
+  chờ rollout, kiểm drift, chạy smoke test — và TỰ ROLLBACK về manifest cũ nếu bất kỳ bước nào hỏng.
+  Dùng chung cho cd-dev / cd-staging / cd-prod (ADR-005). Cần: đã checkout repo (fetch-depth: 0 nếu
+  còn dùng `desired`), đã cấu hình credential AWS, có kubectl + jq + aws cli (đều có sẵn trên
+  ubuntu-latest).
+
+inputs:
+  environment:
+    description: "Tên overlay: dev | staging | prod"
+    required: true
+  cluster:
+    description: Tên EKS cluster (vd. bss-dev-eks)
+    required: true
+  registry:
+    description: "ECR registry, vd. 123456789012.dkr.ecr.ap-southeast-1.amazonaws.com"
+    required: true
+  manifest:
+    description: Đường dẫn manifest muốn deploy
+    required: true
+  previous-manifest:
+    description: Manifest last-known-good để rollback (để trống nếu chưa từng deploy)
+    required: false
+    default: ""
+  region:
+    description: AWS region
+    required: false
+    default: ap-southeast-1
+  rollout-timeout:
+    description: Thời gian chờ mỗi deployment rollout xong
+    required: false
+    default: 300s
+
+runs:
+  using: composite
+  steps:
+    - name: Cập nhật kubeconfig
+      shell: bash
+      env:
+        REGION: ${{ inputs.region }}
+        CLUSTER: ${{ inputs.cluster }}
+      run: aws eks update-kubeconfig --region "$REGION" --name "$CLUSTER"
+
+    # IAM cho phép `eks:DescribeCluster` KHÔNG có nghĩa kubectl được phép làm gì — quyền Kubernetes
+    # là một lớp riêng (EKS access entry, B-34). Kiểm trước từng loại object overlay sẽ apply để lỗi
+    # thiếu quyền hiện ra rõ ràng ("deployer không được tạo X") thay vì một lỗi apply khó đọc giữa chừng.
+    - name: Preflight — deployer có quyền apply đủ loại object?
+      shell: bash
+      run: |
+        missing=0
+        for res in deployments.apps services serviceaccounts configmaps \
+                   ingresses.networking.k8s.io horizontalpodautoscalers.autoscaling \
+                   poddisruptionbudgets.policy \
+                   secretproviderclasses.secrets-store.csi.x-k8s.io; do
+          if [ "$(kubectl auth can-i create "$res" -n bss 2>/dev/null)" != "yes" ]; then
+            echo "::error::Deployer KHÔNG có quyền create $res trong namespace bss (kiểm tra aws_eks_access_policy_association của môi trường này)"
+            missing=1
+          fi
+        done
+        [ "$missing" -eq 0 ]
+
+    - name: Render + apply
+      shell: bash
+      env:
+        MANIFEST: ${{ inputs.manifest }}
+        ENVIRONMENT: ${{ inputs.environment }}
+        REGISTRY: ${{ inputs.registry }}
+      run: |
+        dir="$(scripts/release-manifest.sh render "$MANIFEST" "$ENVIRONMENT" "$REGISTRY")"
+        kubectl apply -k "$dir"
+
+    - name: Chờ rollout cả 7 deployment
+      shell: bash
+      env:
+        TIMEOUT: ${{ inputs.rollout-timeout }}
+      run: |
+        # Chờ CẢ 7 (không chỉ service "vừa đổi"): manifest là trạng thái đầy đủ, và một service
+        # không đổi vẫn có thể đang kẹt từ lần trước.
+        for svc in $(scripts/release-manifest.sh services | jq -r '.[]'); do
+          kubectl -n bss rollout status "deployment/$svc" --timeout="$TIMEOUT"
+        done
+
+    - name: Kiểm drift — cluster phải chạy đúng image trong manifest
+      shell: bash
+      env:
+        MANIFEST: ${{ inputs.manifest }}
+        REGISTRY: ${{ inputs.registry }}
+      run: kubectl -n bss get deployments -o json | scripts/release-manifest.sh verify-cluster "$MANIFEST" "$REGISTRY"
+
+    - name: Smoke test
+      shell: bash
+      env:
+        ENVIRONMENT: ${{ inputs.environment }}
+        AWS_REGION: ${{ inputs.region }}
+      run: scripts/smoke.sh "$ENVIRONMENT"
+
+    # ── Từ đây trở xuống chỉ chạy khi một bước ở trên hỏng ────────────────────
+    - name: Chẩn đoán (Pod, sự kiện)
+      if: failure()
+      shell: bash
+      run: |
+        echo "::group::kubectl -n bss get pods -o wide"
+        kubectl -n bss get pods -o wide || true
+        echo "::endgroup::"
+        echo "::group::Sự kiện gần nhất"
+        kubectl -n bss get events --sort-by=.lastTimestamp | tail -40 || true
+        echo "::endgroup::"
+        echo "::group::describe các Pod không Ready"
+        kubectl -n bss get pods --no-headers \
+          | awk '{ split($2, r, "/"); if (r[1] != r[2] || $3 != "Running") print $1 }' \
+          | head -5 | xargs -r -n1 kubectl -n bss describe pod | tail -120 || true
+        echo "::endgroup::"
+
+    # Rollback = áp lại CẢ manifest last-known-good (không phải `rollout undo` từng deployment —
+    # cách đó để lại hệ thống lẫn phiên bản: deployment nào lỗi mới quay về). Job vẫn kết thúc ĐỎ
+    # (bước trước đã fail) để người vận hành biết có sự cố, dù cluster đã tự hồi phục.
+    - name: Rollback về manifest last-known-good
+      if: failure() && inputs.previous-manifest != ''
+      shell: bash
+      env:
+        PREVIOUS: ${{ inputs.previous-manifest }}
+        ENVIRONMENT: ${{ inputs.environment }}
+        REGISTRY: ${{ inputs.registry }}
+        TIMEOUT: ${{ inputs.rollout-timeout }}
+        AWS_REGION: ${{ inputs.region }}
+      run: |
+        echo "::warning::Deploy hỏng — rollback về manifest cũ (source $(jq -r '.source.sha' "$PREVIOUS" | cut -c1-12))"
+        dir="$(scripts/release-manifest.sh render "$PREVIOUS" "$ENVIRONMENT" "$REGISTRY")"
+        kubectl apply -k "$dir"
+        for svc in $(scripts/release-manifest.sh services | jq -r '.[]'); do
+          kubectl -n bss rollout status "deployment/$svc" --timeout="$TIMEOUT"
+        done
+        kubectl -n bss get deployments -o json | scripts/release-manifest.sh verify-cluster "$PREVIOUS" "$REGISTRY"
+        scripts/smoke.sh "$ENVIRONMENT"
+        echo "::warning::Đã rollback thành công, hệ thống chạy lại bản cũ. Workflow vẫn ĐỎ để bạn xử lý bản mới."
+
+    - name: Không có gì để rollback
+      if: failure() && inputs.previous-manifest == ''
+      shell: bash
+      run: echo "::warning::Deploy hỏng nhưng chưa có manifest last-known-good (lần deploy đầu tiên của môi trường này) — không có gì để rollback."

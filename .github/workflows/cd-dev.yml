@@ -1,117 +1,235 @@
 name: CD — dev
 
+# Merge vào main → dev tự cập nhật. Thiết kế đầy đủ + lý do: docs/adr/ADR-005-nguon-su-that-phien-ban-cd.md.
+#
+# Ba job nối tiếp:
+#   plan   — tính DESIRED từ git (mỗi service: commit cuối chạm thư mục của nó), xem image nào chưa có
+#            trong ECR (→ cần build), dò xem cluster dev có đang tồn tại không (nightly destroy).
+#   build  — chỉ build+push các service thiếu image; tag = commit cuối chạm service (không phải SHA
+#            của lần merge này) nên "cùng source ⇒ cùng tag ⇒ không build lại" (B-51).
+#   deploy — áp manifest ĐẦY ĐỦ 7 service (không chỉ service vừa đổi — B-50), chờ rollout, kiểm drift,
+#            smoke test THẬT; hỏng thì rollback về last-known-good; thành công thì ghi manifest mới
+#            vào nhánh deploy-state.
+#
+# Cần cấu hình (xem docs/SETUP.md Part 6 và docs/runbooks/cd-dev.md):
+#   • GitHub Environment `dev`  → variable AWS_ROLE_ARN = role bss-github-deployer-dev
+#   • Repository variable       → ECR_REGISTRY = <account>.dkr.ecr.ap-southeast-1.amazonaws.com
+
 on:
   push:
     branches: [main]
     paths:
       - 'apps/**'
+      - 'infrastructure/kubernetes/**'
+      - 'scripts/release-manifest.sh'
+      - 'scripts/smoke.sh'
+      - '.github/workflows/cd-dev.yml'
+      - '.github/actions/deploy-release/**'
+  # "Đồng bộ dev về HEAD của main": dùng sau khi dựng lại cluster dev (nightly destroy), hoặc khi
+  # một run trước bị bỏ qua vì cluster đang tắt. Idempotent — desired luôn tính lại từ git.
+  workflow_dispatch:
 
 permissions:
-  id-token: write   # GitHub OIDC
   contents: read
+
+# Xếp hàng, KHÔNG hủy: hủy một deploy đang chạy dở để nhường run mới là cách chắc chắn nhất để bỏ
+# lại cluster ở trạng thái nửa cũ nửa mới. (GitHub chỉ giữ 1 run đang chờ — chấp nhận được vì
+# desired được tính lại từ HEAD, run bị thay thế không làm mất service nào.)
+concurrency:
+  group: cd-dev
+  cancel-in-progress: false
 
 env:
   AWS_REGION: ap-southeast-1
-  ENVIRONMENT: dev
-  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }} # e.g. 123456789012.dkr.ecr.ap-southeast-1.amazonaws.com
   EKS_CLUSTER: bss-dev-eks
+  ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
 
 jobs:
-  detect:
+  plan:
+    name: Plan (desired ↔ ECR ↔ cluster)
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write
     outputs:
-      backend_services: ${{ steps.f.outputs.changes }}
+      to_build: ${{ steps.missing.outputs.to_build }}
+      cluster_up: ${{ steps.cluster.outputs.up }}
     steps:
-      - uses: actions/checkout@v7
-      - id: f
-        uses: dorny/paths-filter@v4.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          filters: |
-            customer-service: 'apps/backend/customer-service/**'
-            product-catalog:  'apps/backend/product-catalog/**'
-            order-management: 'apps/backend/order-management/**'
-            billing-service:  'apps/backend/billing-service/**'
-            api-gateway:      'apps/backend/api-gateway/**'
-            web-portal:       'apps/frontend/web-portal/**'
-            admin-console:    'apps/frontend/admin-console/**'
+          fetch-depth: 0 # `git log -1 -- <thư mục>` cần đủ lịch sử (ADR-005)
 
-  build-push:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Tính desired từ git
+        run: |
+          scripts/release-manifest.sh new dev "$GITHUB_SHA" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" "$GITHUB_REF" \
+            > "$RUNNER_TEMP/desired.json"
+          scripts/release-manifest.sh validate "$RUNNER_TEMP/desired.json"
+          jq -r '.services | to_entries[] | "  \(.key) → \(.value[0:12])"' "$RUNNER_TEMP/desired.json"
+
+      - name: Service nào chưa có image trong ECR?
+        id: missing
+        run: |
+          to_build="$(scripts/release-manifest.sh ecr-missing "$RUNNER_TEMP/desired.json")"
+          echo "to_build=$to_build" >> "$GITHUB_OUTPUT"
+          echo "Cần build: $to_build"
+
+      - name: Cluster dev có đang chạy không?
+        id: cluster
+        run: |
+          # Dev bị `terraform destroy` mỗi tối (CLAUDE.md §10). Chỉ ResourceNotFoundException mới nghĩa
+          # là "cluster tắt"; lỗi khác (quyền, mạng) phải làm run đỏ chứ không được âm thầm bỏ qua deploy.
+          if out="$(aws eks describe-cluster --name "$EKS_CLUSTER" --region "$AWS_REGION" 2>&1)"; then
+            echo "up=true" >> "$GITHUB_OUTPUT"
+          elif grep -q ResourceNotFoundException <<<"$out"; then
+            echo "up=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cluster $EKS_CLUSTER không tồn tại (nightly destroy?) — chỉ build + push image, bỏ qua deploy. Dựng lại cluster rồi chạy workflow này bằng workflow_dispatch để đồng bộ."
+          else
+            echo "::error::aws eks describe-cluster lỗi: $out"
+            exit 1
+          fi
+
+  build:
     name: Build + push ${{ matrix.service }}
-    needs: detect
-    if: needs.detect.outputs.backend_services != '[]'
+    needs: plan
+    if: needs.plan.outputs.to_build != '[]'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write
+      packages: read # customer-service kéo com.bss:bss-common-java từ GitHub Packages
     strategy:
       fail-fast: false
       matrix:
-        service: ${{ fromJson(needs.detect.outputs.backend_services) }}
-    outputs:
-      sha: ${{ github.sha }}
+        service: ${{ fromJson(needs.plan.outputs.to_build) }}
     steps:
-      - uses: actions/checkout@v7
-
-      - name: Configure AWS via OIDC
-        uses: aws-actions/configure-aws-credentials@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOYER_ROLE_ARN }}
+          fetch-depth: 0
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to ECR
+      - name: Build + push (tag = commit cuối chạm thư mục service)
+        env:
+          SERVICE: ${{ matrix.service }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
-            docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
+          tag="$(scripts/release-manifest.sh desired "$GITHUB_SHA" | jq -r --arg s "$SERVICE" '.[$s]')"
+          dir="$(scripts/release-manifest.sh dir "$SERVICE")"
+          image="$ECR_REGISTRY/bss/$SERVICE:$tag"
+          echo "→ $image (source: $dir)"
 
-      - name: Determine app dir
-        id: dir
-        run: |
-          if [ -d "apps/backend/${{ matrix.service }}" ]; then
-            echo "path=apps/backend/${{ matrix.service }}" >> $GITHUB_OUTPUT
-          else
-            echo "path=apps/frontend/${{ matrix.service }}" >> $GITHUB_OUTPUT
+          # Run khác (hoặc lần chạy lại) có thể đã đẩy tag này — ECR tag là IMMUTABLE nên đẩy lần 2 sẽ lỗi.
+          if aws ecr describe-images --repository-name "bss/$SERVICE" --image-ids "imageTag=$tag" >/dev/null 2>&1; then
+            echo "Image đã có trong ECR — bỏ qua build."
+            exit 0
           fi
 
-      - name: Build + push (tag = git SHA)
-        working-directory: ${{ steps.dir.outputs.path }}
-        run: |
-          IMG=${{ env.ECR_REGISTRY }}/bss/${{ matrix.service }}:${{ github.sha }}
-          docker build -t "$IMG" .
-          docker push "$IMG"
+          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+          # --secret: chỉ Dockerfile của customer-service mount `github_token` (GitHub Packages);
+          # truyền đồng nhất cho mọi service vô hại với 6 service còn lại (giống ci-backend.yml).
+          docker build --secret id=github_token,env=GITHUB_TOKEN -t "$image" "$dir"
+          docker push "$image"
 
   deploy:
-    needs: [detect, build-push]
+    name: Deploy dev (áp manifest 7 service)
+    needs: [plan, build]
+    # `build` có thể bị skipped (không có gì cần build) — vẫn phải deploy. Nhưng nếu build FAIL thì dừng.
+    if: >-
+      ${{ !cancelled() && needs.plan.result == 'success' && needs.build.result != 'failure'
+          && needs.plan.outputs.cluster_up == 'true' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: dev
+    permissions:
+      contents: write # đẩy manifest lên nhánh deploy-state (mức workflow chỉ là read)
+      id-token: write
     steps:
-      - uses: actions/checkout@v7
-
-      - name: Configure AWS via OIDC
-        uses: aws-actions/configure-aws-credentials@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOYER_ROLE_ARN }}
+          fetch-depth: 0
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Update kubeconfig
-        run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER }}
-
-      - uses: imranismail/setup-kustomize@v3
-
-      - name: Update image tags in dev overlay
-        working-directory: infrastructure/kubernetes/overlays/dev
+      - name: Manifest mới (desired) + manifest cũ (last-known-good)
+        id: manifests
         run: |
-          for svc in $(echo '${{ needs.detect.outputs.backend_services }}' | jq -r '.[]'); do
-            IMG=${{ env.ECR_REGISTRY }}/bss/$svc:${{ github.sha }}
-            kustomize edit set image $svc=$IMG || true
-          done
+          scripts/release-manifest.sh new dev "$GITHUB_SHA" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" "$GITHUB_REF" \
+            > "$RUNNER_TEMP/desired.json"
 
-      - name: Apply
-        run: kubectl apply -k infrastructure/kubernetes/overlays/dev
+          # exit 3 = chưa có (lần deploy đầu). Mọi mã khác là lỗi thật, không được coi là "chưa có".
+          rc=0
+          scripts/release-manifest.sh state-get dev.json > "$RUNNER_TEMP/previous.json" || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            scripts/release-manifest.sh validate "$RUNNER_TEMP/previous.json"
+            echo "previous=$RUNNER_TEMP/previous.json" >> "$GITHUB_OUTPUT"
+          elif [ "$rc" -eq 3 ]; then
+            rm -f "$RUNNER_TEMP/previous.json"
+            echo "previous=" >> "$GITHUB_OUTPUT"
+            echo "::notice::Chưa có dev.json trên nhánh deploy-state — đây là lần deploy đầu tiên, chưa thể rollback."
+          else
+            echo "::error::state-get thất bại (exit $rc)"
+            exit "$rc"
+          fi
 
-      - name: Wait for rollout
+          echo "Thay đổi so với last-known-good:"
+          scripts/release-manifest.sh diff "$RUNNER_TEMP/previous.json" "$RUNNER_TEMP/desired.json" || true
+
+      - name: Mọi image trong manifest phải có trong ECR
         run: |
-          for svc in $(echo '${{ needs.detect.outputs.backend_services }}' | jq -r '.[]'); do
-            kubectl -n bss rollout status deployment/$svc --timeout=5m || \
-              { kubectl -n bss rollout undo deployment/$svc; exit 1; }
-          done
+          missing="$(scripts/release-manifest.sh ecr-missing "$RUNNER_TEMP/desired.json")"
+          if [ "$missing" != "[]" ]; then
+            echo "::error::Thiếu image trong ECR cho: $missing (job build của service đó đã lỗi?)"
+            exit 1
+          fi
 
-      - name: Smoke test
+      - name: Deploy + smoke + rollback nếu hỏng
+        uses: ./.github/actions/deploy-release
+        with:
+          environment: dev
+          cluster: ${{ env.EKS_CLUSTER }}
+          registry: ${{ env.ECR_REGISTRY }}
+          manifest: ${{ runner.temp }}/desired.json
+          previous-manifest: ${{ steps.manifests.outputs.previous }}
+          region: ${{ env.AWS_REGION }}
+
+      # Chỉ tới được đây khi rollout + drift + smoke đều PASS → đây mới là "bản tốt gần nhất".
+      - name: Ghi manifest vào nhánh deploy-state
         run: |
-          INGRESS=$(kubectl -n bss get ingress bss-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-          curl -fsSL "http://$INGRESS/api/actuator/health" | jq .status || true
+          if scripts/release-manifest.sh same "$RUNNER_TEMP/previous.json" "$RUNNER_TEMP/desired.json"; then
+            echo "Không service nào đổi so với last-known-good — không ghi commit mới."
+          else
+            scripts/release-manifest.sh state-put "deploy(dev): ${GITHUB_SHA::7}" "dev.json=$RUNNER_TEMP/desired.json"
+          fi
+
+      - name: Tóm tắt
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          {
+            echo "### CD dev — $JOB_STATUS"
+            echo ""
+            echo "Commit \`${GITHUB_SHA::7}\` → cluster \`$EKS_CLUSTER\`"
+            echo ""
+            echo '| Service | Image tag |'
+            echo '|---|---|'
+            jq -r '.services | to_entries[] | "| \(.key) | `\(.value[0:12])` |"' "$RUNNER_TEMP/desired.json" 2>/dev/null || true
+          } >> "$GITHUB_STEP_SUMMARY"
