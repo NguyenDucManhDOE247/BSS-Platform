@@ -146,7 +146,7 @@ admin-console        SHA            rc-vX           vX
 ## 5. CI/CD chiến lược
 
 ### 3 nguyên tắc cốt lõi
-1. **Build once, deploy many** — image tag = git SHA, re-tag khi promote (không bao giờ rebuild).
+1. **Build once, deploy many** — image tag = SHA của commit cuối chạm thư mục service; promote = `aws ecr put-image` gắn thêm tag `rc-vX`/`vX` lên cùng digest (không bao giờ rebuild). Nguồn sự thật phiên bản: ADR-005.
 2. **Trunk-based + tag-based promotion** — `main` luôn deployable; tag `rc-vX` → staging; tag `vX` → prod.
 3. **Path-filter trigger** — chỉ build service nào đã thay đổi.
 
@@ -158,9 +158,9 @@ admin-console        SHA            rc-vX           vX
 | `ci-frontend.yml` | PR đụng `apps/frontend/**` | npm lint/test/build + Trivy + docker build |
 | `ci-terraform.yml` | PR đụng `infrastructure/terraform/**` | fmt + tfsec + plan (post comment) |
 | `ci-k8s.yml` | PR đụng `infrastructure/kubernetes/**` | kustomize build + kubeconform 3 envs |
-| `cd-dev.yml` | Merge `main` | Build + push (tag=SHA) + apply dev overlay + smoke + rollback nếu fail |
-| `cd-staging.yml` | Tag `rc-v*` | Re-tag SHA→rc-vX + apply staging + E2E test |
-| `cd-prod.yml` | Tag `v[0-9]+.[0-9]+.[0-9]+` | **Manual approval** + re-tag rc→v + apply prod + auto rollback |
+| `cd-dev.yml` | Merge `main` / thủ công | plan (desired từ git) → build service thiếu image → apply manifest 7 service + smoke thật → PASS thì ghi `deploy-state`; hỏng thì rollback về manifest cũ (ADR-005) |
+| `cd-staging.yml` | Tag `rc-vX.Y.Z` | Tag phải trên `main` → `ecr put-image` rc-vX → apply staging + smoke → ghi `releases/rc-vX.json` (`verified_in: staging`) |
+| `cd-prod.yml` | Tag `vX.Y.Z` | Cổng kiểm (rc đã qua staging, cùng commit) → **Approve thủ công** → `ecr put-image` vX → apply prod + smoke; hỏng thì tự rollback |
 
 ### Promotion flow (1 release)
 

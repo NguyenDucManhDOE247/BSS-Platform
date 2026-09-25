@@ -1,75 +1,128 @@
 name: CD — staging
 
-# Triggered by tags like rc-v1.2.0
+# Tag `rc-vX.Y.Z` (đặt trên một commit của main) → promote lên staging. Thiết kế: ADR-005 (promotion) +
+# ADR-006 (staging là cluster riêng, dựng theo buổi).
+#
+# "Promote" KHÔNG build lại và KHÔNG pull/push layer nào:
+#   1. tính lại desired TẠI COMMIT CỦA TAG (mỗi service = commit cuối chạm thư mục của nó — cả 7 service
+#      luôn có image, không còn "service không có image ở SHA này" — B-51);
+#   2. `aws ecr put-image` gắn thêm tag `rc-vX.Y.Z` lên đúng manifest digest của 7 image đó;
+#   3. deploy manifest 7 service lên bss-staging-eks; smoke PASS → ghi staging.json + releases/rc-vX.Y.Z.json
+#      (`verified_in: [staging]` — cổng để cd-prod chấp nhận).
+#
+# Chạy lại / dựng lại cluster staging: Actions → CD — staging → Run workflow, chọn "Tag: rc-vX.Y.Z" làm
+# ref (cùng code path như push tag, deterministic).
+#
+# Cần: GitHub Environment `staging` (variable AWS_ROLE_ARN = role bss-github-deployer-staging; deployment
+# tag policy `rc-v*`), repository variable ECR_REGISTRY — xem docs/SETUP.md Part 6.
+
 on:
   push:
     tags:
-      - 'rc-v*'
+      - 'rc-v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
+
+concurrency:
+  group: cd-staging
+  cancel-in-progress: false
 
 env:
   AWS_REGION: ap-southeast-1
-  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
   EKS_CLUSTER: bss-staging-eks
+  ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
 
 jobs:
   promote-and-deploy:
+    name: Promote ${{ github.ref_name }} → staging
+    if: startsWith(github.ref, 'refs/tags/rc-v')
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: staging
+    permissions:
+      contents: write # ghi manifest lên nhánh deploy-state
+      id-token: write
     steps:
-      - uses: actions/checkout@v7
-
-      - name: Configure AWS via OIDC
-        uses: aws-actions/configure-aws-credentials@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOYER_ROLE_ARN }}
+          fetch-depth: 0 # desired cần đủ lịch sử; cũng để có origin/main cho bước kiểm tra bên dưới
+
+      # Một tag rc gắn nhầm vào commit của nhánh feature sẽ đẩy code CHƯA qua review/CI lên staging.
+      - name: Tag phải trỏ vào một commit của main
+        run: scripts/release-manifest.sh on-main "$GITHUB_SHA"
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to ECR
-        run: aws ecr get-login-password | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
-
-      - name: Resolve commit SHA the tag points at
-        id: sha
-        run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-
-      - name: Re-tag images (SHA → tag name)
+      - name: Release manifest = desired tại commit của tag
+        id: manifests
         run: |
-          TAG=${GITHUB_REF_NAME}
-          for svc in customer-service product-catalog order-management billing-service api-gateway web-portal admin-console; do
-            SRC=${{ env.ECR_REGISTRY }}/bss/$svc:${{ steps.sha.outputs.sha }}
-            DST=${{ env.ECR_REGISTRY }}/bss/$svc:$TAG
-            docker pull "$SRC" || { echo "skip $svc (no image for this SHA)"; continue; }
-            docker tag "$SRC" "$DST"
-            docker push "$DST"
-          done
+          scripts/release-manifest.sh new staging "$GITHUB_SHA" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" "$GITHUB_REF" \
+            > "$RUNNER_TEMP/release.json"
+          scripts/release-manifest.sh set-field "$RUNNER_TEMP/release.json" release "$GITHUB_REF_NAME"
+          scripts/release-manifest.sh validate "$RUNNER_TEMP/release.json"
 
-      - name: Update kubeconfig (staging)
-        run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER }}
+          missing="$(scripts/release-manifest.sh ecr-missing "$RUNNER_TEMP/release.json")"
+          if [ "$missing" != "[]" ]; then
+            echo "::error::Chưa có image trong ECR cho: $missing tại commit $GITHUB_SHA. cd-dev chưa build xong / đã lỗi cho commit đó? Tag rc chỉ nên đặt sau khi CD dev của commit ấy xanh."
+            exit 1
+          fi
 
-      - uses: imranismail/setup-kustomize@v3
+          # last-known-good của staging (exit 3 = chưa có; mã khác là lỗi thật)
+          rc=0
+          scripts/release-manifest.sh state-get staging.json > "$RUNNER_TEMP/previous.json" || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "previous=$RUNNER_TEMP/previous.json" >> "$GITHUB_OUTPUT"
+          elif [ "$rc" -eq 3 ]; then
+            rm -f "$RUNNER_TEMP/previous.json"; echo "previous=" >> "$GITHUB_OUTPUT"
+            echo "::notice::Chưa có staging.json — lần deploy staging đầu tiên, chưa thể rollback."
+          else
+            echo "::error::state-get thất bại (exit $rc)"; exit "$rc"
+          fi
+          echo "Thay đổi so với staging hiện tại:"
+          scripts/release-manifest.sh diff "$RUNNER_TEMP/previous.json" "$RUNNER_TEMP/release.json" || true
 
-      - name: Bump image tags in staging overlay
-        working-directory: infrastructure/kubernetes/overlays/staging
+      # Bằng `aws ecr put-image` — không docker pull/tag/push. Chạy lại vô hại (cùng digest → bỏ qua);
+      # tag đã trỏ image KHÁC thì dừng (ECR tag IMMUTABLE).
+      - name: Gắn tag ${{ github.ref_name }} lên 7 image (aws ecr put-image)
+        run: scripts/release-manifest.sh ecr-tag "$RUNNER_TEMP/release.json" "$GITHUB_REF_NAME"
+
+      - name: Deploy staging + smoke + rollback nếu hỏng
+        uses: ./.github/actions/deploy-release
+        with:
+          environment: staging
+          cluster: ${{ env.EKS_CLUSTER }}
+          registry: ${{ env.ECR_REGISTRY }}
+          manifest: ${{ runner.temp }}/release.json
+          previous-manifest: ${{ steps.manifests.outputs.previous }}
+          region: ${{ env.AWS_REGION }}
+
+      # Chỉ tới được đây khi mọi thứ PASS. `verified_in: [staging]` là cổng của cd-prod.
+      - name: Ghi manifest (staging.json + releases/${{ github.ref_name }}.json)
         run: |
-          TAG=${GITHUB_REF_NAME}
-          for svc in customer-service product-catalog order-management billing-service api-gateway web-portal admin-console; do
-            kustomize edit set image $svc=${{ env.ECR_REGISTRY }}/bss/$svc:$TAG || true
-          done
+          scripts/release-manifest.sh add-verified "$RUNNER_TEMP/release.json" staging
+          scripts/release-manifest.sh state-put "release($GITHUB_REF_NAME): staging OK" \
+            "staging.json=$RUNNER_TEMP/release.json" \
+            "releases/$GITHUB_REF_NAME.json=$RUNNER_TEMP/release.json"
 
-      - name: Apply
-        run: kubectl apply -k infrastructure/kubernetes/overlays/staging
-
-      - name: Wait for all rollouts
+      - name: Tóm tắt
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
         run: |
-          for d in $(kubectl -n bss get deploy -o name); do
-            kubectl -n bss rollout status "$d" --timeout=10m
-          done
-
-      - name: E2E smoke tests
-        run: |
-          # TODO: add Karate / Playwright suite once contracts stabilize.
-          INGRESS=$(kubectl -n bss get ingress bss-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-          curl -fsSL "http://$INGRESS/api/actuator/health"
+          {
+            echo "### CD staging — $JOB_STATUS"
+            echo ""
+            echo "Release \`$GITHUB_REF_NAME\` (commit \`${GITHUB_SHA::7}\`) → cluster \`$EKS_CLUSTER\`"
+            echo ""
+            echo '| Service | Image (tag SHA) |'
+            echo '|---|---|'
+            jq -r '.services | to_entries[] | "| \(.key) | `\(.value[0:12])` |"' "$RUNNER_TEMP/release.json" 2>/dev/null || true
+            echo ""
+            echo "Bước tiếp: \`git tag ${GITHUB_REF_NAME#rc-} $GITHUB_SHA && git push origin ${GITHUB_REF_NAME#rc-}\` → cd-prod (chờ duyệt)."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -21,6 +21,9 @@
 #     diff OLD NEW                   in các service đổi (OLD có thể không tồn tại)
 #     set-field FILE KEY VALUE       đặt trường chuỗi ở gốc (vd. release=rc-v0.1.0)
 #     add-verified FILE ENV          thêm ENV vào `verified_in` (cổng promotion)
+#   Cổng promotion (git + jq)
+#     on-main COMMIT [REF]           exit 0 nếu COMMIT nằm trong lịch sử REF (mặc định origin/main)
+#     gate-prod RC_FILE COMMIT       exit 0 nếu rc đã `verified_in` staging VÀ source.sha == COMMIT
 #   Triển khai (cần kubectl)
 #     render FILE ENV REGISTRY       sinh kustomization tạm chồng `images:` lên overlays/ENV,
 #                                    in ra thư mục vừa sinh — KHÔNG sửa file nào trong git
@@ -142,6 +145,26 @@ cmd_add_verified() {
   local file="${1:?add-verified FILE ENV}" env="${2:?}" tmp
   tmp="$(mktemp)"
   jq -S --arg e "$env" '.verified_in = (((.verified_in // []) + [$e]) | unique)' "$file" > "$tmp" && mv "$tmp" "$file"
+}
+
+# ─── cổng promotion ────────────────────────────────────────────────────────
+# Tag rc-v*/v* đặt nhầm vào commit của nhánh feature sẽ đẩy code CHƯA qua PR/CI lên staging/prod.
+cmd_on_main() {
+  local commit="${1:?on-main COMMIT [REF]}" ref="${2:-origin/main}"
+  git rev-parse --verify --quiet "$ref^{commit}" >/dev/null || die "không có ref $ref (checkout thiếu fetch-depth: 0?)"
+  if ! git merge-base --is-ancestor "$commit" "$ref"; then
+    die "commit $commit KHÔNG nằm trong lịch sử của $ref — chỉ promote code đã merge qua PR"
+  fi
+}
+
+# Prod chỉ nhận ĐÚNG những gì đã chạy trên staging: rc phải verified_in staging, và tag v phải trỏ
+# đúng commit mà rc đã test (nếu không, thứ lên prod ≠ thứ đã kiểm thử).
+cmd_gate_prod() {
+  local file="${1:?gate-prod RC_FILE COMMIT}" commit="${2:?}" rc_sha
+  cmd_validate "$file"
+  jq -e '(.verified_in // []) | index("staging")' "$file" >/dev/null     || die "release chưa được xác nhận trên staging (verified_in không chứa 'staging') — deploy staging chưa PASS"
+  rc_sha="$(jq -r '.source.sha' "$file")"
+  [ "$rc_sha" = "$commit" ]     || die "tag trỏ vào $commit nhưng bản rc đã qua staging ở $rc_sha — tag lại vào $rc_sha"
 }
 
 # ─── render / verify-cluster ───────────────────────────────────────────────
@@ -325,6 +348,8 @@ main() {
     diff)           need jq; cmd_diff "$@" ;;
     set-field)      need jq; cmd_set_field "$@" ;;
     add-verified)   need jq; cmd_add_verified "$@" ;;
+    on-main)        need git; cmd_on_main "$@" ;;
+    gate-prod)      need jq; cmd_gate_prod "$@" ;;
     render)         need jq; need git; cmd_render "$@" ;;
     verify-cluster) need jq; cmd_verify_cluster "$@" ;;
     ecr-missing)    need jq; cmd_ecr_missing "$@" ;;
