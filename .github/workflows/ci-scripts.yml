@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   shell:
-    name: shellcheck + test release-manifest
+    name: shellcheck + test release-manifest/smoke
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -32,7 +32,11 @@ jobs:
       # shellcheck, jq, kubectl, git đều có sẵn trên ubuntu-latest — không cần cài thêm.
       # `-S warning`: chỉ fail khi có warning/error (bỏ qua mức info/style của các script cũ).
       - name: shellcheck
-        run: shellcheck -S warning scripts/release-manifest.sh scripts/tests/*.sh
+        run: shellcheck -S warning scripts/release-manifest.sh scripts/smoke.sh scripts/tests/*.sh
 
       - name: Test release-manifest.sh
         run: ./scripts/tests/release-manifest.test.sh
+
+      # Hồi quy B-52: smoke.sh PHẢI exit 1 khi endpoint hỏng (bản cũ nuốt lỗi, không bao giờ fail).
+      - name: Test smoke.sh
+        run: ./scripts/tests/smoke.test.sh
