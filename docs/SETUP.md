@@ -63,7 +63,7 @@ terraform apply         # ~15-20 minutes for EKS to come up
 Outputs you'll need:
 - `kubeconfig_command` — copy/paste to set up kubectl
 - `ecr_registry` — the ECR registry URL for image push
-- `github_deployer_role_arn` — paste into GitHub secret `AWS_DEPLOYER_ROLE_ARN`
+- `github_deployer_role_arn` — the role for the GitHub Environment `dev` (Part 6 sets it as the variable `AWS_ROLE_ARN` for you)
 
 ```bash
 make ENV=dev kube-config
@@ -116,15 +116,45 @@ make ENV=dev smoke
 
 ## Part 6 — GitHub Actions CI/CD
 
-1. Push the repo to GitHub.
-2. Settings → Secrets → add:
-   - `AWS_DEPLOYER_ROLE_ARN` = output from `terraform output github_deployer_role_arn`
-   - `ECR_REGISTRY` = `<account-id>.dkr.ecr.ap-southeast-1.amazonaws.com`
-3. Settings → Environments → create `staging` (no protections) and `production` (require manual approval, restrict to `main` branch).
-4. Open a small PR → `ci-backend` runs.
-5. Merge → `cd-dev` deploys.
-6. Tag `rc-v0.1.0` → `cd-staging` runs.
-7. Tag `v0.1.0` → `cd-prod` waits for your approval.
+How CD is designed: [ADR-005](adr/ADR-005-nguon-su-that-phien-ban-cd.md). Day-to-day use:
+[runbooks/cd-dev.md](runbooks/cd-dev.md), [runbooks/cd-promotion.md](runbooks/cd-promotion.md).
+
+There are **no AWS keys and no GitHub secrets** in this pipeline. Each workflow job authenticates with a
+short-lived OIDC token, and each AWS role trusts exactly **one GitHub Environment** (B-39):
+
+| GitHub Environment | Who may deploy into it | Manual approval | AWS role (variable `AWS_ROLE_ARN`) | Used by |
+|---|---|---|---|---|
+| `dev` | branch `main` | no | `bss-github-deployer-dev` | `cd-dev.yml` |
+| `staging` | tags `rc-v*` | no | `bss-github-deployer-staging` | `cd-staging.yml` |
+| `production` | tags `v*` | **yes** | `bss-github-deployer-prod` | `cd-prod.yml` |
+
+1. **Terraform, in this order** (roles must exist before an environment can use them):
+   ```bash
+   make ENV=shared tf-init && make ENV=shared tf-plan     # read the plan, then:
+   make ENV=shared tf-apply                               # creates the 3 deployer roles, ECR, OIDC provider
+   make ENV=dev    tf-apply                               # EKS access entry for the dev role
+   ```
+2. **Create the GitHub Environments + variables** (dry-run by default — read what it prints first):
+   ```bash
+   ./scripts/setup-github-environments.sh            # prints the plan
+   ./scripts/setup-github-environments.sh --apply
+   ```
+   This creates the 3 Environments (with the allowed branch/tag rules and, for `production`, you as the
+   required reviewer), the repository variable `ECR_REGISTRY`, and one `AWS_ROLE_ARN` per Environment.
+   Working alone? Leave `PREVENT_SELF_REVIEW` at `false` (the default) — otherwise nobody can approve.
+3. **Cluster addons + namespace** (run by an admin, not by CD): `./scripts/platform-install.sh dev`, then the
+   `db-bootstrap` Job (`infrastructure/kubernetes/overlays/dev/db-bootstrap/README.md`).
+4. Open a small PR → `ci-backend`, `ci-scripts`, … run.
+5. Merge → `cd-dev` runs. The **first** run has no `dev.json` yet, so it can deploy but not roll back.
+6. Tag `rc-v0.1.0` → `cd-staging` (needs the staging cluster: [runbooks/cd-staging-prod-demo.md](runbooks/cd-staging-prod-demo.md)).
+7. Tag `v0.1.0` (same commit) → `cd-prod` runs its checks, then **waits for your approval**.
+
+Verify the wiring without deploying anything:
+```bash
+gh api repos/{owner}/{repo}/environments --jq '.environments[].name'      # dev staging production
+gh variable list --env production                                          # AWS_ROLE_ARN
+aws iam get-role --role-name bss-github-deployer-prod --query 'Role.AssumeRolePolicyDocument'
+```
 
 ## Cost optimization
 

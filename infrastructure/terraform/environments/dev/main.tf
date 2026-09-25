@@ -284,14 +284,17 @@ module "iam" {
 # cluster's API server. That's a SEPARATE authorization layer (EKS access entries, replacing
 # the old aws-auth ConfigMap) which this resource grants, scoped to just the `bss` namespace
 # (not cluster-admin).
-resource "aws_eks_access_entry" "deployer_nonprod" {
+#
+# Giai đoạn 6 (B-39): each environment now has its OWN role (`deployer_role_arns["dev"]`), trusted
+# only by jobs running under the GitHub Environment `dev` — no more shared "nonprod" role.
+resource "aws_eks_access_entry" "deployer" {
   cluster_name  = module.eks.cluster_name
-  principal_arn = data.terraform_remote_state.shared.outputs.deployer_nonprod_role_arn
+  principal_arn = data.terraform_remote_state.shared.outputs.deployer_role_arns["dev"]
 }
 
-resource "aws_eks_access_policy_association" "deployer_nonprod_bss" {
+resource "aws_eks_access_policy_association" "deployer_bss" {
   cluster_name  = module.eks.cluster_name
-  principal_arn = data.terraform_remote_state.shared.outputs.deployer_nonprod_role_arn
+  principal_arn = data.terraform_remote_state.shared.outputs.deployer_role_arns["dev"]
   policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
 
   access_scope {
@@ -300,11 +303,11 @@ resource "aws_eks_access_policy_association" "deployer_nonprod_bss" {
   }
 
   # Real bug found running `terraform apply` against actual AWS (not caught by validate/plan):
-  # both this resource and aws_eks_access_entry.deployer_nonprod reference the same external
+  # both this resource and aws_eks_access_entry.deployer reference the same external
   # values (cluster_name, principal_arn) but never reference EACH OTHER, so Terraform has no
   # inferred ordering between them and can create them in either order/in parallel. AWS requires
   # the access ENTRY to exist before you can associate a policy with that principal — without
   # this depends_on, the association's API call can race ahead of the entry and fail with
   # "AssociateAccessPolicy ... 404 ResourceNotFoundException".
-  depends_on = [aws_eks_access_entry.deployer_nonprod]
+  depends_on = [aws_eks_access_entry.deployer]
 }
