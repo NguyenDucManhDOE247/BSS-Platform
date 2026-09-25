@@ -79,3 +79,5 @@ dist-*/
 # ─── Additions ──────────────────────────────────────────────
 course/
 learning/
+# ─── CD: kustomization tạm sinh bởi scripts/release-manifest.sh render (ADR-005) ─────
+infrastructure/kubernetes/rendered/
