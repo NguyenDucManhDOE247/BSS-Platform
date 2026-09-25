@@ -1,0 +1,70 @@
+# One-off Job — NOT part of the regular `kubectl apply -k overlays/staging` loop (a Job's pod
+# template is immutable after creation, so re-applying this alongside every CD run would break
+# the very first time this file's content ever changed). Run manually, once per environment,
+# after the cluster + Secrets Store CSI + these Terraform-generated secrets all exist:
+#
+#   kubectl apply -k infrastructure/kubernetes/overlays/staging/db-bootstrap
+#   kubectl -n bss wait --for=condition=complete job/db-bootstrap --timeout=120s
+#   kubectl -n bss logs job/db-bootstrap
+#   kubectl -n bss delete -k infrastructure/kubernetes/overlays/staging/db-bootstrap   # clean up
+#
+# See README.md in this directory.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-bootstrap
+  namespace: bss
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: db-bootstrap
+    spec:
+      restartPolicy: Never
+      serviceAccountName: db-bootstrap
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: db-bootstrap
+          image: postgres:16-alpine
+          command: ["sh", "/scripts/bootstrap.sh"]
+          envFrom:
+            - secretRef:
+                name: db-bootstrap-credentials
+          env:
+            - name: HOME
+              value: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            - name: secrets
+              mountPath: /mnt/secrets
+              readOnly: true
+      volumes:
+        - name: scripts
+          configMap:
+            name: db-bootstrap-script
+        - name: tmp
+          emptyDir: {}
+        - name: secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: db-bootstrap-credentials

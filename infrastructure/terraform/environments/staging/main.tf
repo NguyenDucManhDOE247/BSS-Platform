@@ -99,7 +99,8 @@ module "rds" {
   multi_az                     = false
   backup_retention_days        = 7
   performance_insights_enabled = true
-  deletion_protection          = true
+  deletion_protection          = !var.ephemeral
+  secret_recovery_window_days  = var.ephemeral ? 0 : 30 # B-37: see var.ephemeral
 
   tags = local.common_tags
 }
@@ -145,13 +146,33 @@ module "iam" {
   cluster_oidc_provider_arn = module.eks.cluster_oidc_provider_arn
   cluster_oidc_provider_url = module.eks.cluster_oidc_provider_url
 
+  # Giai đoạn 6 (ADR-006): brought to parity with environments/dev (Giai đoạn 5, B-20/B-21, ADR-004).
+  # This block had drifted — every service still read the RDS MASTER secret (one shared superuser for
+  # all databases) and `product-catalog` had no role at all (its ServiceAccount would be annotated with
+  # a role that doesn't exist). Now each service may read ONLY its own least-privilege secret.
   services = {
     customer-service = {
       namespace           = "bss"
       service_account     = "customer-service"
       managed_policy_arns = []
       inline_policy_statements = [
-        { Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = [module.rds.master_secret_arn] }
+        {
+          Effect   = "Allow"
+          Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+          Resource = [module.rds.service_secret_arns["customer-service"]]
+        }
+      ]
+    }
+    product-catalog = {
+      namespace           = "bss"
+      service_account     = "product-catalog"
+      managed_policy_arns = []
+      inline_policy_statements = [
+        {
+          Effect   = "Allow"
+          Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+          Resource = [module.rds.service_secret_arns["product-catalog"]]
+        }
       ]
     }
     order-management = {
@@ -159,8 +180,16 @@ module "iam" {
       service_account     = "order-management"
       managed_policy_arns = []
       inline_policy_statements = [
-        { Effect = "Allow", Action = ["events:PutEvents"], Resource = [module.eventbridge.event_bus_arn] }, # B-31: list, not bare string
-        { Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = [module.rds.master_secret_arn] }
+        {
+          Effect   = "Allow"
+          Action   = ["events:PutEvents"]
+          Resource = [module.eventbridge.event_bus_arn] # B-31: a list, not a bare string
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["secretsmanager:GetSecretValue"]
+          Resource = [module.rds.service_secret_arns["order-management"]]
+        }
       ]
     }
     billing-service = {
@@ -168,8 +197,39 @@ module "iam" {
       service_account     = "billing-service"
       managed_policy_arns = []
       inline_policy_statements = [
-        { Effect = "Allow", Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"], Resource = [module.eventbridge.queue_arns["billing-orders"]] },
-        { Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = [module.rds.master_secret_arn] }
+        {
+          Effect   = "Allow"
+          Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+          Resource = [module.eventbridge.queue_arns["billing-orders"]]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["secretsmanager:GetSecretValue"]
+          Resource = [module.rds.service_secret_arns["billing-service"]]
+        }
+      ]
+    }
+    # B-21: read-only access to the master secret + the 4 per-service secrets, for the one-off
+    # db-bootstrap Job (overlays/staging/db-bootstrap/README.md). The only ServiceAccount in the cluster
+    # that can read the master password.
+    db-bootstrap = {
+      namespace           = "bss"
+      service_account     = "db-bootstrap"
+      managed_policy_arns = []
+      inline_policy_statements = [
+        {
+          Effect = "Allow"
+          Action = ["secretsmanager:GetSecretValue"]
+          # A literal list on purpose (not concat()/values() of a module output) — mixing `list(string)`
+          # and `tuple` breaks type unification across this whole `services` map, same family as B-31.
+          Resource = [
+            module.rds.master_secret_arn,
+            module.rds.service_secret_arns["customer-service"],
+            module.rds.service_secret_arns["product-catalog"],
+            module.rds.service_secret_arns["order-management"],
+            module.rds.service_secret_arns["billing-service"],
+          ]
+        }
       ]
     }
   }

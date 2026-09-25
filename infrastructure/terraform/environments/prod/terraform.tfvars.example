@@ -1,4 +1,10 @@
 owner_email = "you@example.com"
 
-# Restrict in prod — never 0.0.0.0/0
+# Restrict in prod — never 0.0.0.0/0 for a prod you would miss. GitHub-hosted runners (cd-prod.yml) have
+# no fixed IP, so a restricted list means CI cannot reach the API: for an EPHEMERAL demo prod (ADR-006)
+# you may temporarily use ["0.0.0.0/0"] — see docs/runbooks/cd-staging-prod-demo.md §4 for the trade-off
+# and the alternatives (self-hosted runner, deploy from your laptop).
 public_access_cidrs = ["1.2.3.4/32", "5.6.7.0/24"]
+
+# ADR-006: true = destroyable (demo). Leave false (default) for any prod whose data matters.
+ephemeral = true

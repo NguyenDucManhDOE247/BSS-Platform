@@ -1,2 +1,10 @@
-owner_email         = "you@example.com"
-public_access_cidrs = ["1.2.3.4/32"] # tighten in staging
+owner_email = "you@example.com"
+
+# EKS public endpoint. Restricted CIDRs are the safe default — BUT GitHub-hosted runners (cd-staging.yml)
+# have no fixed IP, so with a restricted list `kubectl` from CI times out. For an ephemeral session you
+# can temporarily use ["0.0.0.0/0"]: the API is still IAM-authenticated + RBAC-authorised, and the
+# cluster is destroyed hours later. Trade-off + alternatives: docs/runbooks/cd-staging-prod-demo.md §4.
+public_access_cidrs = ["1.2.3.4/32"]
+
+# ADR-006: true = destroyable environment (no deletion protection, secrets deleted immediately).
+ephemeral = true
