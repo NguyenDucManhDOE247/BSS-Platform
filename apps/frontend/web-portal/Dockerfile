@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1.6
+# checkpoint GD6 #3: thay đổi vô hại để kiểm chứng CD chỉ đổi đúng service này
 #
 # Multi-stage:
 #   • build:  Node 24 (Active LTS) builds the static bundle
@@ -20,6 +21,14 @@ RUN npm run build
 # pid file moved to /tmp, cache/log directories already owned by the non-root user, and it
 # listens on 8080 by default — no manual `adduser`/`chown`/`USER` dance needed at all.
 FROM nginxinc/nginx-unprivileged:1.30-alpine
+
+# Giai đoạn 6: a NEW HIGH CVE (libexpat 2.8.4-r0, fixed in 2.8.5-r0) appeared in the Alpine base image on
+# 2026-09-25 and Trivy (ci-frontend.yml) blocks every PR that touches this app. The upstream base tag
+# had not been rebuilt yet, so patch just that package here. Root only for this one layer; the final
+# user is set back to the unprivileged uid 101 that nginx-unprivileged runs as (CLAUDE.md §10: non-root).
+USER root
+RUN apk upgrade --no-cache libexpat
+USER 101
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 8080
