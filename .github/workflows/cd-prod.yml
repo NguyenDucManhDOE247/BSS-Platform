@@ -1,80 +1,159 @@
 name: CD — prod
 
-# Triggered by tags like v1.2.0 (note: NOT rc-v*)
+# Tag `vX.Y.Z` → prod, SAU KHI người duyệt bấm Approve (GitHub Environment `production` có Required
+# reviewers). Thiết kế: ADR-005 + ADR-006.
+#
+# Prod nhận ĐÚNG những image đã chạy trên staging — không build lại, không "gần giống":
+#   check  (không cần AWS, chạy TRƯỚC khi xin duyệt — đừng bắt người duyệt xem một bản đã chắc chắn hỏng)
+#     • tag vX.Y.Z phải nằm trong lịch sử main;
+#     • releases/rc-vX.Y.Z.json phải tồn tại và `verified_in` chứa "staging" (tức rc đã deploy + smoke PASS);
+#     • tag vX.Y.Z phải trỏ ĐÚNG commit của rc-vX.Y.Z (source.sha của manifest rc).
+#   deploy (environment: production → chờ duyệt)
+#     • `aws ecr put-image` gắn tag vX.Y.Z lên cùng 7 digest; deploy; smoke; rollback về prod.json cũ nếu hỏng;
+#       PASS → ghi prod.json + releases/vX.Y.Z.json.
+#
+# Chạy lại / dựng lại cluster prod (ADR-006, ephemeral): Actions → CD — prod → Run workflow, chọn
+# "Tag: vX.Y.Z" làm ref.
+#
+# Cần: GitHub Environment `production` (Required reviewers; deployment tag policy `v*`; variable
+# AWS_ROLE_ARN = role bss-github-deployer-prod), repository variable ECR_REGISTRY — docs/SETUP.md Part 6.
+
 on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
+
+concurrency:
+  group: cd-prod
+  cancel-in-progress: false
 
 env:
   AWS_REGION: ap-southeast-1
-  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
   EKS_CLUSTER: bss-prod-eks
+  ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
 
 jobs:
-  deploy:
+  check:
+    name: Cổng kiểm — rc đã qua staging chưa?
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    # Requires manual approval via repository Environment protection rules.
-    environment: production
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      rc_tag: ${{ steps.gate.outputs.rc_tag }}
     steps:
-      - uses: actions/checkout@v7
-
-      - name: Configure AWS via OIDC
-        uses: aws-actions/configure-aws-credentials@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          role-to-assume: ${{ secrets.AWS_PROD_DEPLOYER_ROLE_ARN }}
+          fetch-depth: 0
+
+      - name: Kiểm tra
+        id: gate
+        run: |
+          rc_tag="rc-$GITHUB_REF_NAME"
+          echo "rc_tag=$rc_tag" >> "$GITHUB_OUTPUT"
+
+          scripts/release-manifest.sh on-main "$GITHUB_SHA"
+
+          rc=0
+          scripts/release-manifest.sh state-get "releases/$rc_tag.json" > "$RUNNER_TEMP/rc.json" || rc=$?
+          if [ "$rc" -eq 3 ]; then
+            echo "::error::Chưa có releases/$rc_tag.json — chưa từng promote $rc_tag lên staging. Đặt tag $rc_tag trên đúng commit này trước, đợi CD staging xanh."
+            exit 1
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error::state-get thất bại (exit $rc)"; exit "$rc"
+          fi
+          scripts/release-manifest.sh validate "$RUNNER_TEMP/rc.json"
+
+          # rc đã verified_in staging + tag v trỏ đúng commit của rc (source.sha)
+          scripts/release-manifest.sh gate-prod "$RUNNER_TEMP/rc.json" "$GITHUB_SHA"
+          echo "✓ $rc_tag đã qua staging, cùng commit ${GITHUB_SHA::7} — sẵn sàng xin duyệt."
+
+  deploy:
+    name: Promote ${{ github.ref_name }} → prod
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production # ← Required reviewers: job dừng ở đây cho tới khi có người Approve
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to ECR
-        run: aws ecr get-login-password | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
-
-      - name: Promote images (rc-v* → v*)
+      - name: Manifest prod = bản rc đã qua staging
+        id: manifests
+        env:
+          RC_TAG: ${{ needs.check.outputs.rc_tag }}
         run: |
-          TAG=${GITHUB_REF_NAME}
-          RC_TAG="rc-${TAG}"
-          for svc in customer-service product-catalog order-management billing-service api-gateway web-portal admin-console; do
-            SRC=${{ env.ECR_REGISTRY }}/bss/$svc:$RC_TAG
-            DST=${{ env.ECR_REGISTRY }}/bss/$svc:$TAG
-            docker pull "$SRC" || { echo "skip $svc (no rc image)"; continue; }
-            docker tag "$SRC" "$DST"
-            docker push "$DST"
-          done
+          # Đọc lại (job check chạy ở runner khác) và dựng manifest prod từ ĐÚNG manifest rc đóng băng.
+          scripts/release-manifest.sh state-get "releases/$RC_TAG.json" > "$RUNNER_TEMP/prod.json"
+          scripts/release-manifest.sh set-field "$RUNNER_TEMP/prod.json" environment prod
+          scripts/release-manifest.sh set-field "$RUNNER_TEMP/prod.json" release "$GITHUB_REF_NAME"
+          scripts/release-manifest.sh validate "$RUNNER_TEMP/prod.json"
 
-      - name: Update kubeconfig (prod)
-        run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER }}
+          missing="$(scripts/release-manifest.sh ecr-missing "$RUNNER_TEMP/prod.json")"
+          if [ "$missing" != "[]" ]; then
+            echo "::error::Image bị mất khỏi ECR: $missing (lifecycle policy đã xóa? — tag rc-v*/v* lẽ ra được bảo vệ)."
+            exit 1
+          fi
 
-      - uses: imranismail/setup-kustomize@v3
+          rc=0
+          scripts/release-manifest.sh state-get prod.json > "$RUNNER_TEMP/previous.json" || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "previous=$RUNNER_TEMP/previous.json" >> "$GITHUB_OUTPUT"
+          elif [ "$rc" -eq 3 ]; then
+            rm -f "$RUNNER_TEMP/previous.json"; echo "previous=" >> "$GITHUB_OUTPUT"
+            echo "::notice::Chưa có prod.json — lần deploy prod đầu tiên, chưa thể rollback."
+          else
+            echo "::error::state-get thất bại (exit $rc)"; exit "$rc"
+          fi
+          echo "Thay đổi so với prod hiện tại:"
+          scripts/release-manifest.sh diff "$RUNNER_TEMP/previous.json" "$RUNNER_TEMP/prod.json" || true
 
-      - name: Bump image tags in prod overlay
-        working-directory: infrastructure/kubernetes/overlays/prod
+      - name: Gắn tag ${{ github.ref_name }} lên 7 image (aws ecr put-image)
+        run: scripts/release-manifest.sh ecr-tag "$RUNNER_TEMP/prod.json" "$GITHUB_REF_NAME"
+
+      - name: Deploy prod + smoke + rollback nếu hỏng
+        uses: ./.github/actions/deploy-release
+        with:
+          environment: prod
+          cluster: ${{ env.EKS_CLUSTER }}
+          registry: ${{ env.ECR_REGISTRY }}
+          manifest: ${{ runner.temp }}/prod.json
+          previous-manifest: ${{ steps.manifests.outputs.previous }}
+          region: ${{ env.AWS_REGION }}
+
+      - name: Ghi manifest (prod.json + releases/${{ github.ref_name }}.json)
         run: |
-          TAG=${GITHUB_REF_NAME}
-          for svc in customer-service product-catalog order-management billing-service api-gateway web-portal admin-console; do
-            kustomize edit set image $svc=${{ env.ECR_REGISTRY }}/bss/$svc:$TAG || true
-          done
+          scripts/release-manifest.sh add-verified "$RUNNER_TEMP/prod.json" prod
+          scripts/release-manifest.sh state-put "release($GITHUB_REF_NAME): prod OK" \
+            "prod.json=$RUNNER_TEMP/prod.json" \
+            "releases/$GITHUB_REF_NAME.json=$RUNNER_TEMP/prod.json"
 
-      - name: Apply (canary-aware rolling update)
-        # For a real canary, install Argo Rollouts and replace Deployments with
-        # Rollouts that have analysis templates. Plain Deployments do gradual
-        # rollouts via maxSurge/maxUnavailable, which is good enough for now.
-        run: kubectl apply -k infrastructure/kubernetes/overlays/prod
-
-      - name: Wait + rollback on failure
-        run: |
-          for d in $(kubectl -n bss get deploy -o name); do
-            if ! kubectl -n bss rollout status "$d" --timeout=10m; then
-              echo "Rollout failed for $d — rolling back"
-              kubectl -n bss rollout undo "$d"
-              exit 1
-            fi
-          done
-
-      - name: Notify
+      - name: Tóm tắt
         if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          RC_TAG: ${{ needs.check.outputs.rc_tag }}
         run: |
-          echo "Deployment of ${GITHUB_REF_NAME} to prod: ${{ job.status }}"
-          # TODO: post to Slack via webhook
+          {
+            echo "### CD prod — $JOB_STATUS"
+            echo ""
+            echo "Release \`$GITHUB_REF_NAME\` (= \`$RC_TAG\` đã qua staging, commit \`${GITHUB_SHA::7}\`) → cluster \`$EKS_CLUSTER\`"
+            echo ""
+            echo '| Service | Image (tag SHA) |'
+            echo '|---|---|'
+            jq -r '.services | to_entries[] | "| \(.key) | `\(.value[0:12])` |"' "$RUNNER_TEMP/prod.json" 2>/dev/null || true
+          } >> "$GITHUB_STEP_SUMMARY"
