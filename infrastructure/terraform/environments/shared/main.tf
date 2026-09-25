@@ -95,6 +95,10 @@ locals {
     prod    = { github_environment = "production", ecr_push = false }
   }
 
+  # Every accepted form of "who is this repo" in a `sub` claim: the plain name, plus (if the repo uses
+  # immutable subjects) the owner-id/repo-id form — see var.github_extra_sub_prefixes.
+  github_sub_prefixes = concat([for repo in var.github_repos : "repo:${repo}"], var.github_extra_sub_prefixes)
+
   ecr_repo_arns = "arn:aws:ecr:${var.region}:${data.aws_caller_identity.current.account_id}:repository/bss/*"
 }
 
@@ -113,7 +117,7 @@ resource "aws_iam_role" "deployer" {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           "token.actions.githubusercontent.com:sub" = [
-            for repo in var.github_repos : "repo:${repo}:environment:${each.value.github_environment}"
+            for prefix in local.github_sub_prefixes : "${prefix}:environment:${each.value.github_environment}"
           ]
         }
       }
