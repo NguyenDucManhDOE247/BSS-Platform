@@ -34,3 +34,21 @@ output "aws_lb_controller_role_arn" {
 output "ebs_csi_role_arn" {
   value = module.platform_iam.ebs_csi_role_arn
 }
+
+output "ecr_repository_urls" {
+  value = data.terraform_remote_state.shared.outputs.ecr_repository_urls
+}
+
+output "rds_master_secret_arn" {
+  value = module.rds.master_secret_arn
+}
+
+output "service_db_secret_arns" {
+  description = "B-21: per-service DB credential secrets — used by each service's SecretProviderClass"
+  value       = module.rds.service_secret_arns
+}
+
+output "github_deployer_role_arn" {
+  description = "Convenience mirror of environments/shared's output — the role for the GitHub Environment `production` (variable AWS_ROLE_ARN)."
+  value       = data.terraform_remote_state.shared.outputs.deployer_role_arns["prod"]
+}
