@@ -22,11 +22,19 @@ REGION="${AWS_REGION:-ap-southeast-1}"
 TF_DIR="infrastructure/terraform/environments/$ENV"
 CLUSTER="bss-$ENV-eks"
 
-echo "=== 1/4 — kubeconfig for $CLUSTER ==="
+echo "=== 1/5 — kubeconfig for $CLUSTER ==="
 aws eks update-kubeconfig --region "$REGION" --name "$CLUSTER"
 
 echo ""
-echo "=== 2/4 — AWS Load Balancer Controller (creates the ALB from Ingress) ==="
+echo "=== 2/5 — namespace bss (with Pod Security labels) ==="
+# Giai đoạn 6: the CD deployer role can only touch objects INSIDE namespace `bss` (namespace-scoped
+# EKS access policy), and a Namespace is cluster-scoped — so overlays/{dev,staging,prod} drop it
+# from what `kubectl apply -k` sends (see the `$patch: delete` at the top of their `patches:`), and
+# this admin-run script creates it instead, once per cluster. Idempotent.
+kubectl apply -f infrastructure/kubernetes/base/namespace.yaml
+
+echo ""
+echo "=== 3/5 — AWS Load Balancer Controller (creates the ALB from Ingress) ==="
 helm repo add eks https://aws.github.io/eks-charts >/dev/null 2>&1 || true
 helm repo update eks >/dev/null
 # Chart/app version 3.5.0 MUST match the iam_policy.json version pinned in
@@ -38,11 +46,11 @@ helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-contro
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$(terraform -chdir="$TF_DIR" output -raw aws_lb_controller_role_arn)"
 
 echo ""
-echo "=== 3/4 — gp3 StorageClass (B-41: EKS ships none by default) ==="
+echo "=== 4/5 — gp3 StorageClass (B-41: EKS ships none by default) ==="
 kubectl apply -f platform/storage/storageclass-gp3.yaml
 
 echo ""
-echo "=== 4/4 — Secrets Store CSI Driver + AWS provider (B-20: per-service RDS credentials) ==="
+echo "=== 5/5 — Secrets Store CSI Driver + AWS provider (B-20: per-service RDS credentials) ==="
 helm repo add secrets-store-csi-driver https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts >/dev/null 2>&1 || true
 helm repo update secrets-store-csi-driver >/dev/null
 helm upgrade --install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver \

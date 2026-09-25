@@ -32,8 +32,9 @@ local-reset: ## Stop and WIPE local data
 	cd deploy && docker compose down -v
 
 # ── Giai đoạn 6: test cho công cụ CD (không cần AWS/cluster) ─────────────
-test-scripts: ## Test scripts/release-manifest.sh — nguồn sự thật phiên bản của CD (ADR-005)
+test-scripts: ## Test release-manifest.sh (nguồn sự thật phiên bản CD, ADR-005) + smoke.sh (B-52)
 	./scripts/tests/release-manifest.test.sh
+	./scripts/tests/smoke.test.sh
 
 # ── Giai đoạn 1: build + verify (Java 21 + Maven + Docker required) ────
 verify: ## mvn verify for one backend $$SERVICE (default customer-service) — runs *IT tests
