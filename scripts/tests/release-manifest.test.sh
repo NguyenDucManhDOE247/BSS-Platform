@@ -104,6 +104,24 @@ eq "set-field đặt release"          "$(jq -r .release "$WORK/rel.json")" "rc-
 eq "add-verified không thêm trùng"  "$(jq -c .verified_in "$WORK/rel.json")" '["staging"]'
 
 # ═══════════════════════════════════════════════════════════════════════════
+section "cổng promotion — on-main / gate-prod"
+# repo giả R (đã có ở trên): nhánh chính hiện là HEAD; thêm một nhánh feature có commit riêng.
+git -C "$R" branch -M main
+git -C "$R" update-ref refs/remotes/origin/main "$(git -C "$R" rev-parse main)"
+git -C "$R" switch -q -c feature
+echo f >> "$R/apps/backend/api-gateway/file"; git -C "$R" add -A; git -C "$R" commit -q -m "feature-only"
+FEAT="$(git -C "$R" rev-parse HEAD)"
+succeeds "on-main: commit đã nằm trên main → đạt" bash -c "cd '$R' && '$RM' on-main '$C2'"
+fails    "on-main: commit chỉ có ở nhánh feature → CHẶN (tag rc gắn nhầm)" bash -c "cd '$R' && '$RM' on-main '$FEAT'"
+fails    "on-main: ref origin/main không tồn tại → báo lỗi thay vì cho qua" bash -c "cd '$R' && '$RM' on-main '$C2' origin/khong-co"
+RC="$WORK/rc.json"; ( cd "$R" && "$RM" new staging "$C2" ) > "$RC"
+fails    "gate-prod: rc CHƯA verified_in staging → chặn" "$RM" gate-prod "$RC" "$C2"
+"$RM" add-verified "$RC" staging
+succeeds "gate-prod: rc đã qua staging + đúng commit → đạt" "$RM" gate-prod "$RC" "$C2"
+fails    "gate-prod: tag v trỏ commit khác commit rc đã test → chặn" "$RM" gate-prod "$RC" "$C3"
+git -C "$R" switch -q main
+
+# ═══════════════════════════════════════════════════════════════════════════
 section "render — overlay thật của repo (cần kubectl)"
 REG="132249065347.dkr.ecr.ap-southeast-1.amazonaws.com"
 DIR="$(cd "$REPO_ROOT" && "$RM" render "$M" dev "$REG")"

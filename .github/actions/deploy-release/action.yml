@@ -35,7 +35,26 @@ inputs:
 runs:
   using: composite
   steps:
+    # Staging/prod là ephemeral (ADR-006): cluster có thể chưa được dựng. Nói thẳng điều đó thay vì để
+    # `update-kubeconfig` ném ResourceNotFoundException khó hiểu.
+    - name: Cluster có tồn tại không?
+      shell: bash
+      env:
+        REGION: ${{ inputs.region }}
+        CLUSTER: ${{ inputs.cluster }}
+        ENVIRONMENT: ${{ inputs.environment }}
+      run: |
+        if ! out="$(aws eks describe-cluster --region "$REGION" --name "$CLUSTER" 2>&1)"; then
+          if grep -q ResourceNotFoundException <<<"$out"; then
+            echo "::error::Cluster $CLUSTER không tồn tại. Staging/prod là ephemeral (ADR-006): dựng trước bằng 'make ENV=$ENVIRONMENT tf-apply' rồi './scripts/platform-install.sh $ENVIRONMENT' (docs/runbooks/cd-staging-prod-demo.md), sau đó chạy lại workflow."
+          else
+            echo "::error::aws eks describe-cluster lỗi: $out"
+          fi
+          exit 1
+        fi
+
     - name: Cập nhật kubeconfig
+      id: kubeconfig
       shell: bash
       env:
         REGION: ${{ inputs.region }}
@@ -76,6 +95,7 @@ runs:
         [ "$missing" -eq 0 ]
 
     - name: Render + apply
+      id: apply
       shell: bash
       env:
         MANIFEST: ${{ inputs.manifest }}
@@ -111,8 +131,10 @@ runs:
       run: scripts/smoke.sh "$ENVIRONMENT"
 
     # ── Từ đây trở xuống chỉ chạy khi một bước ở trên hỏng ────────────────────
+    # Chỉ khi đã kết nối được cluster (không chẩn đoán/rollback nếu hỏng ở bước kiểm cluster/preflight —
+    # lúc đó chưa đụng gì vào cluster nên không có gì để hoàn tác).
     - name: Chẩn đoán (Pod, sự kiện)
-      if: failure()
+      if: failure() && steps.kubeconfig.conclusion == 'success'
       shell: bash
       run: |
         echo "::group::kubectl -n bss get pods -o wide"
@@ -131,7 +153,7 @@ runs:
     # cách đó để lại hệ thống lẫn phiên bản: deployment nào lỗi mới quay về). Job vẫn kết thúc ĐỎ
     # (bước trước đã fail) để người vận hành biết có sự cố, dù cluster đã tự hồi phục.
     - name: Rollback về manifest last-known-good
-      if: failure() && inputs.previous-manifest != ''
+      if: failure() && steps.apply.conclusion != 'skipped' && inputs.previous-manifest != ''
       shell: bash
       env:
         PREVIOUS: ${{ inputs.previous-manifest }}
@@ -151,6 +173,6 @@ runs:
         echo "::warning::Đã rollback thành công, hệ thống chạy lại bản cũ. Workflow vẫn ĐỎ để bạn xử lý bản mới."
 
     - name: Không có gì để rollback
-      if: failure() && inputs.previous-manifest == ''
+      if: failure() && steps.apply.conclusion != 'skipped' && inputs.previous-manifest == ''
       shell: bash
       run: echo "::warning::Deploy hỏng nhưng chưa có manifest last-known-good (lần deploy đầu tiên của môi trường này) — không có gì để rollback."
