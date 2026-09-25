@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1.6
+# checkpoint GD6 #3: thay đổi vô hại để kiểm chứng CD chỉ đổi đúng service này
 #
 # Multi-stage:
 #   • build:  Node 24 (Active LTS) builds the static bundle
