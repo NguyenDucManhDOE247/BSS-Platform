@@ -2,3 +2,7 @@
 
 owner_email  = "you@example.com"
 github_repos = ["YOUR_GH_USERNAME/bss-platform"]
+
+# Only if your repo uses immutable subject claims (check: gh api repos/OWNER/REPO/actions/oidc/customization/sub
+# → "use_immutable_subject": true). Copy the exact `sub_claim_prefix` it prints:
+# github_extra_sub_prefixes = ["repo:YOUR_GH_USERNAME@<owner-id>/bss-platform@<repo-id>"]
