@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1.6
+# checkpoint GD6 #1: thay đổi vô hại để kiểm chứng CD chỉ đổi đúng service này
 #
 # Multi-stage build:
 #   • Stage 1 builds the fat JAR with a Maven image that already has Maven on it.
