@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-bootstrap-script
+  namespace: bss
+data:
+  bootstrap.sh: |
+    #!/bin/sh
+    # B-21: create 1 database + 1 least-privilege user PER SERVICE on the shared RDS instance.
+    # Idempotent — safe to re-run (e.g. after adding a 5th service later): every statement below
+    # is a no-op if the database/role already exists, and ALTER ROLE ... PASSWORD is harmless to
+    # repeat with the same (Terraform-managed, stable-across-applies) password.
+    set -eu
+
+    export PGPASSWORD="$MASTER_PASSWORD"
+
+    bootstrap_one() {
+      db="$1"; user="$2"; pass="$3"
+      echo "=== bootstrapping database '$db' / role '$user' ==="
+
+      psql -h "$MASTER_HOST" -U "$MASTER_USER" -d postgres -v ON_ERROR_STOP=1 <<-SQL
+        SELECT 'CREATE DATABASE $db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$db')\gexec
+        SELECT 'CREATE ROLE $user LOGIN' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$user')\gexec
+        ALTER ROLE $user WITH PASSWORD '$pass';
+        GRANT ALL PRIVILEGES ON DATABASE $db TO $user;
+    SQL
+
+      # Ownership of the DATABASE isn't enough for a role to CREATE TABLE inside it — Postgres
+      # 15+ locks down the "public" schema by default, so this grant runs separately, connected
+      # to the target database itself (not "postgres").
+      psql -h "$MASTER_HOST" -U "$MASTER_USER" -d "$db" -v ON_ERROR_STOP=1 <<-SQL
+        GRANT ALL ON SCHEMA public TO $user;
+    SQL
+    }
+
+    bootstrap_one "$CUSTOMER_DB" "$CUSTOMER_USER" "$CUSTOMER_PASSWORD"
+    bootstrap_one "$PRODUCT_DB"  "$PRODUCT_USER"  "$PRODUCT_PASSWORD"
+    bootstrap_one "$ORDERS_DB"   "$ORDERS_USER"   "$ORDERS_PASSWORD"
+    bootstrap_one "$BILLING_DB"  "$BILLING_USER"  "$BILLING_PASSWORD"
+
+    echo "db-bootstrap: all 4 databases ready"

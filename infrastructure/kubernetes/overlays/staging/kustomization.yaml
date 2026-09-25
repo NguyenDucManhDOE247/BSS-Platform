@@ -5,85 +5,179 @@ namespace: bss
 
 resources:
   - ../../base
+  # Giai đoạn 6 (ADR-006): same 4 SecretProviderClass as overlays/dev, one per service's own
+  # least-privilege RDS user (B-20, ADR-004) — this overlay had drifted (still on DB_URL literals,
+  # no secrets, CHANGE_ME everywhere) which made `rc-vX` undeployable.
+  - secrets
 
+# Image tags: the `newTag: rc` values below are only placeholders. CD (ADR-005) never edits this
+# file — it generates a throwaway kustomization (`scripts/release-manifest.sh render`, under
+# infrastructure/kubernetes/rendered/, gitignored) that stacks `images:` with the real tag of every
+# service on top of this overlay, matching by the FULL name set by `newName` below. The AWS account id
+# (132249065347) is this project's real, stable account (see overlays/dev).
 images:
-  - { name: customer-service,  newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/customer-service,  newTag: rc }
-  - { name: product-catalog,   newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/product-catalog,   newTag: rc }
-  - { name: order-management,  newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/order-management,  newTag: rc }
-  - { name: billing-service,   newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/billing-service,   newTag: rc }
-  - { name: api-gateway,       newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/api-gateway,       newTag: rc }
-  - { name: web-portal,        newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/web-portal,        newTag: rc }
-  - { name: admin-console,     newName: CHANGE_ME.dkr.ecr.ap-southeast-1.amazonaws.com/bss/admin-console,     newTag: rc }
+  - name: customer-service
+    newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/customer-service
+    newTag: rc
+  - name: product-catalog
+    newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/product-catalog
+    newTag: rc
+  - name: order-management
+    newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/order-management
+    newTag: rc
+  - name: billing-service
+    newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/billing-service
+    newTag: rc
+  - name: api-gateway
+    newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/api-gateway
+    newTag: rc
+  - name: web-portal
+    newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/web-portal
+    newTag: rc
+  - name: admin-console
+    newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/admin-console
+    newTag: rc
 
 configMapGenerator:
+  # DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD come from each service's own SecretProviderClass
+  # (overlays/staging/secrets/, ADR-004), not from literals here.
   - name: customer-service-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=INFO
       - AWS_REGION=ap-southeast-1
-      - DB_URL=jdbc:postgresql://bss-staging-rds.CHANGE_ME.rds.amazonaws.com:5432/customer
   - name: product-catalog-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=INFO
       - AWS_REGION=ap-southeast-1
-      - DB_URL=jdbc:postgresql://bss-staging-rds.CHANGE_ME.rds.amazonaws.com:5432/product
   - name: order-management-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=INFO
       - AWS_REGION=ap-southeast-1
       - EVENT_BUS_NAME=bss-staging-events
-      - DB_URL=jdbc:postgresql://bss-staging-rds.CHANGE_ME.rds.amazonaws.com:5432/orders
   - name: billing-service-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=INFO
       - AWS_REGION=ap-southeast-1
-      - SQS_QUEUE_URL=https://sqs.ap-southeast-1.amazonaws.com/CHANGE_ME_ACCOUNT_ID/bss-staging-billing-orders
-      - DB_URL=jdbc:postgresql://bss-staging-rds.CHANGE_ME.rds.amazonaws.com:5432/billing
-  # B-24: see the identical comment in overlays/dev/kustomization.yaml.
+      - SQS_QUEUE_URL=https://sqs.ap-southeast-1.amazonaws.com/132249065347/bss-staging-billing-orders
   - name: api-gateway-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=INFO
 
 replicas:
-  - { name: customer-service,  count: 2 }
-  - { name: product-catalog,   count: 2 }
-  - { name: order-management,  count: 2 }
-  - { name: billing-service,   count: 2 }
-  - { name: api-gateway,       count: 2 }
-  - { name: web-portal,        count: 2 }
-  - { name: admin-console,     count: 2 }
+  - { name: customer-service, count: 2 }
+  - { name: product-catalog, count: 2 }
+  - { name: order-management, count: 2 }
+  - { name: billing-service, count: 2 }
+  - { name: api-gateway, count: 2 }
+  - { name: web-portal, count: 2 }
+  - { name: admin-console, count: 2 }
 
 patches:
+  # The CD deployer role only has a NAMESPACE-scoped EKS access policy on `bss` (B-34, least
+  # privilege); a Namespace is cluster-scoped, so applying it as that role is Forbidden. It is
+  # created once per cluster by `scripts/platform-install.sh` instead (see overlays/dev).
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: bss
+
+  # IRSA bindings — one IAM role per service ("bss-staging-<service>", environments/staging/main.tf `module "iam"`).
   - target: { kind: ServiceAccount, name: customer-service }
     patch: |-
       - op: add
         path: /metadata/annotations
-        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-staging-customer-service }
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::132249065347:role/bss-staging-customer-service }
   - target: { kind: ServiceAccount, name: product-catalog }
     patch: |-
       - op: add
         path: /metadata/annotations
-        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-staging-product-catalog }
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::132249065347:role/bss-staging-product-catalog }
   - target: { kind: ServiceAccount, name: order-management }
     patch: |-
       - op: add
         path: /metadata/annotations
-        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-staging-order-management }
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::132249065347:role/bss-staging-order-management }
   - target: { kind: ServiceAccount, name: billing-service }
     patch: |-
       - op: add
         path: /metadata/annotations
-        value: { eks.amazonaws.com/role-arn: arn:aws:iam::CHANGE_ME_ACCOUNT_ID:role/bss-staging-billing-service }
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::132249065347:role/bss-staging-billing-service }
 
+  # Mount each service's own SecretProviderClass — without a Pod mounting it the Secrets Store CSI
+  # driver never syncs the Kubernetes Secret the base Deployment's secretKeyRef expects.
+  - target: { kind: Deployment, name: customer-service }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: customer-db-credentials
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value: { name: secrets-store, mountPath: /mnt/secrets-store, readOnly: true }
+  - target: { kind: Deployment, name: product-catalog }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: product-db-credentials
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value: { name: secrets-store, mountPath: /mnt/secrets-store, readOnly: true }
+  - target: { kind: Deployment, name: order-management }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: order-db-credentials
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value: { name: secrets-store, mountPath: /mnt/secrets-store, readOnly: true }
+  - target: { kind: Deployment, name: billing-service }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: billing-db-credentials
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value: { name: secrets-store, mountPath: /mnt/secrets-store, readOnly: true }
+
+  # No domain/ACM certificate yet (deferred — see ADR-006 and overlays/dev B-23): base ingress.yaml
+  # turns on HTTPS + ssl-redirect and a host, and an ALB Controller that can't find a certificate
+  # silently never creates the ALB. HTTP-only, path-based routing against the ALB's own DNS name.
   - target: { kind: Ingress, name: bss-ingress }
     patch: |-
-      - op: replace
+      - op: remove
         path: /spec/rules/0/host
-        value: staging.bss.example.com
-      - op: add
-        path: /metadata/annotations/external-dns.alpha.kubernetes.io~1hostname
-        value: staging.bss.example.com
+      - op: replace
+        path: /metadata/annotations/alb.ingress.kubernetes.io~1listen-ports
+        value: '[{"HTTP":80}]'
+      - op: remove
+        path: /metadata/annotations/alb.ingress.kubernetes.io~1ssl-redirect
