@@ -10,10 +10,7 @@ output "github_oidc_provider_arn" {
   value = aws_iam_openid_connect_provider.github.arn
 }
 
-output "deployer_nonprod_role_arn" {
-  value = aws_iam_role.deployer_nonprod.arn
-}
-
-output "deployer_prod_role_arn" {
-  value = aws_iam_role.deployer_prod.arn
+output "deployer_role_arns" {
+  description = "Environment name (dev|staging|prod) -> its GitHub Actions deployer role ARN. Each environment's own state reads only its own entry (EKS access entry); scripts/setup-github-environments.sh puts each one into the matching GitHub Environment's AWS_ROLE_ARN variable."
+  value       = { for k, r in aws_iam_role.deployer : k => r.arn }
 }
