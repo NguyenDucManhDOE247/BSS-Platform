@@ -246,7 +246,10 @@ resource "aws_eks_access_entry" "deployer" {
 resource "aws_eks_access_policy_association" "deployer_bss" {
   cluster_name  = module.eks.cluster_name
   principal_arn = data.terraform_remote_state.shared.outputs.deployer_role_arns["staging"]
-  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
+  # Giai đoạn 6: EditPolicy does NOT cover the Secrets Store CSI CRD (SecretProviderClass) — found by the first
+  # real cd-dev run (preflight `kubectl auth can-i` said so). ClusterAdminPolicy is still bounded by
+  # `access_scope` below to namespace `bss` only (no cluster-wide power, cannot touch other namespaces).
+  policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
 
   access_scope {
     type       = "namespace"
