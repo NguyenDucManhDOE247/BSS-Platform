@@ -6,6 +6,8 @@ on:
       - 'apps/backend/**'
       - 'packages/bss-common-java/**'
       - '.github/workflows/ci-backend.yml'
+      - 'scripts/check-migrations.sh'
+      - 'scripts/tests/check-migrations.test.sh'
   push:
     branches: [main]
     paths:
@@ -17,6 +19,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Giai đoạn 6 (course 11.6): migration phải chạy được với CẢ code cũ lẫn code mới — trong lúc rolling
+  # update và sau mỗi lần rollback tự động, Pod cũ chạy trên schema MỚI. Xem docs/runbooks/schema-migration.md.
+  migration-guard:
+    name: Flyway migrations tương thích ngược?
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # cần lịch sử để diff origin/<base>...HEAD
+
+      - name: Test chính checker
+        run: ./scripts/tests/check-migrations.test.sh
+
+      - name: Kiểm migration trong PR này
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: scripts/check-migrations.sh "origin/$BASE_REF"
+
   detect:
     name: Detect changed services
     runs-on: ubuntu-latest
