@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1.6
+# checkpoint GD6 #2: thay đổi vô hại để kiểm chứng CD chỉ đổi đúng service này
 # B-01 fix — see product-catalog/Dockerfile for the full explanation.
 FROM maven:3.9.16-eclipse-temurin-21 AS build
 WORKDIR /workspace
