@@ -62,6 +62,22 @@ Ngoài ra thiết kế gốc là **3 cluster** (CLAUDE.md §4) và người dùn
 - ⚠️ `ephemeral = true` cho **prod** chỉ hợp lý vì đây là dự án học tập/đề tài; với prod thật phải
   để `false`. Biến này tách "chính sách" khỏi "code" để việc đó là một dòng `tfvars`, không phải sửa module.
 
+## Ràng buộc kèm theo: EKS public endpoint ↔ runner của GitHub
+
+CLAUDE.md §10 yêu cầu endpoint API của EKS **giới hạn CIDR** ở prod. Nhưng CD chạy trên runner do GitHub
+cấp (`ubuntu-latest`) — không có IP cố định (hàng nghìn dải, đổi liên tục; EKS chỉ nhận ≤ 40 CIDR). Với danh
+sách chặt, `kubectl` trong Actions **timeout**. Không có lựa chọn "vừa chặt vừa tự động" miễn phí:
+
+| Lựa chọn | Đánh đổi |
+|---|---|
+| A. `0.0.0.0/0` **chỉ trong buổi demo** rồi destroy | API vẫn cần chữ ký IAM + RBAC (không ẩn danh) và tồn tại vài giờ; nhưng mở cho Internet và vi phạm chữ nghĩa của §10 |
+| B. Self-hosted runner trong VPC + endpoint private | Đúng chuẩn production; tốn thêm EC2 + vận hành runner |
+| C. Deploy bằng tay từ máy có IP trong danh sách | Giữ endpoint chặt; mất tự động hóa + cổng duyệt của GitHub cho bước deploy |
+
+**Quyết định của ADR này:** mặc định trong code **giữ danh sách chặt** (không đổi hành vi hiện có); dùng A là một
+**ngoại lệ có chủ đích, do chủ repo tự bật** trong `terraform.tfvars` cho buổi ephemeral và phải được nêu rõ trong
+tài liệu đề tài. Với prod chạy thật, dùng B. Chi tiết và lệnh: `docs/runbooks/cd-staging-prod-demo.md` §4.
+
 ## Điều kiện xem lại
 
 - Ngân sách bị siết mạnh ⇒ hướng 1 (namespace) kèm ADR mới về cách nhân bản IRSA/DB/bus theo
