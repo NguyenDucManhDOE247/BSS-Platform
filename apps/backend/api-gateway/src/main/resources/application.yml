@@ -18,7 +18,7 @@ spring:
           predicates:
             - Path=/api/tmf-api/customerManagement/**
         - id: product
-          uri: http://product-catalog.bss.svc.cluster.local
+          uri: http://product-catalog.bss.svc.cluster.local:9999
           predicates:
             - Path=/api/tmf-api/productCatalog/**
         - id: order
