@@ -3,7 +3,7 @@
         tf-init tf-plan tf-apply tf-destroy \
         kube-config platform-install \
         ecr-login build push deploy set-image smoke grafana \
-        kind-up kind-down kind-load deploy-local e2e-kind load-test
+        kind-up kind-down kind-load deploy-local e2e-kind load-test test-scripts
 
 ENV ?= dev
 AWS_REGION ?= ap-southeast-1
@@ -30,6 +30,10 @@ local-down: ## Stop local stack (keeps data)
 
 local-reset: ## Stop and WIPE local data
 	cd deploy && docker compose down -v
+
+# ── Giai đoạn 6: test cho công cụ CD (không cần AWS/cluster) ─────────────
+test-scripts: ## Test scripts/release-manifest.sh — nguồn sự thật phiên bản của CD (ADR-005)
+	./scripts/tests/release-manifest.test.sh
 
 # ── Giai đoạn 1: build + verify (Java 21 + Maven + Docker required) ────
 verify: ## mvn verify for one backend $$SERVICE (default customer-service) — runs *IT tests
