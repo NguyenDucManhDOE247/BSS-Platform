@@ -42,6 +42,21 @@ runs:
         CLUSTER: ${{ inputs.cluster }}
       run: aws eks update-kubeconfig --region "$REGION" --name "$CLUSTER"
 
+    # Lỗi thật lần chạy cd-dev đầu tiên: endpoint EKS giới hạn CIDR nên runner GitHub (IP không cố định)
+    # KHÔNG kết nối được → mỗi `kubectl auth can-i` treo ~90s rồi trả "không có quyền" — 8 lần liền
+    # (~12 phút) và thông báo sai (nghe như thiếu RBAC, thật ra là mạng). Kiểm tra kết nối TRƯỚC, nhanh và nói đúng.
+    - name: API server có với tới được không?
+      shell: bash
+      env:
+        CLUSTER: ${{ inputs.cluster }}
+      run: |
+        if ! out="$(kubectl --request-timeout=20s get --raw /readyz 2>&1)"; then
+          echo "::error::Runner không kết nối được API server của $CLUSTER: ${out:0:200}"
+          echo "::error::Nguyên nhân thường gặp: public_access_cidrs của cluster chỉ cho IP nhà bạn — runner GitHub không có IP cố định (ADR-006, docs/runbooks/cd-staging-prod-demo.md §4). Không phải lỗi quyền RBAC."
+          exit 1
+        fi
+        echo "API server OK ($out)"
+
     # IAM cho phép `eks:DescribeCluster` KHÔNG có nghĩa kubectl được phép làm gì — quyền Kubernetes
     # là một lớp riêng (EKS access entry, B-34). Kiểm trước từng loại object overlay sẽ apply để lỗi
     # thiếu quyền hiện ra rõ ràng ("deployer không được tạo X") thay vì một lỗi apply khó đọc giữa chừng.
@@ -53,7 +68,7 @@ runs:
                    ingresses.networking.k8s.io horizontalpodautoscalers.autoscaling \
                    poddisruptionbudgets.policy \
                    secretproviderclasses.secrets-store.csi.x-k8s.io; do
-          if [ "$(kubectl auth can-i create "$res" -n bss 2>/dev/null)" != "yes" ]; then
+          if [ "$(kubectl --request-timeout=20s auth can-i create "$res" -n bss 2>/dev/null)" != "yes" ]; then
             echo "::error::Deployer KHÔNG có quyền create $res trong namespace bss (kiểm tra aws_eks_access_policy_association của môi trường này)"
             missing=1
           fi
