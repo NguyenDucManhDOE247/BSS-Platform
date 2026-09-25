@@ -1,9 +1,9 @@
 {
-  "deployed_at": "2026-09-25T07:51:20Z",
+  "deployed_at": "2026-09-25T08:41:16Z",
   "environment": "dev",
   "schema": 1,
   "services": {
-    "admin-console": "a02d8f79432f27fece9c1b7729aa2d43385315ea",
+    "admin-console": "05ba49d9ad20cd898bd042b2ae7c22d1b788508b",
     "api-gateway": "108b09ee461054272b1c447b26f493de2b154207",
     "billing-service": "ba8b4a5c82fe74a4467b414c2afdf0f2c17b9948",
     "customer-service": "c938e09215b2ea4a0d2111d20a65bca2d440195a",
@@ -13,7 +13,7 @@
   },
   "source": {
     "ref": "refs/heads/main",
-    "run_url": "https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/runs/36109210628",
-    "sha": "fe3939b6ddd975af2a5623888c63605a81315c31"
+    "run_url": "https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/runs/36114158867",
+    "sha": "05ba49d9ad20cd898bd042b2ae7c22d1b788508b"
   }
 }
