@@ -18,7 +18,7 @@ spring:
     locations: classpath:db/migration
 
 server:
-  port: 9090
+  port: 8080
   shutdown: graceful
 
 management:
