@@ -177,15 +177,15 @@ module "iam" {
   tags = local.common_tags
 }
 
-# ── B-34: EKS access entry for the CI/CD deployer role (nonprod — same role as dev) ─────
-resource "aws_eks_access_entry" "deployer_nonprod" {
+# ── B-34: EKS access entry for the CI/CD deployer role (staging's own role — B-39) ─────
+resource "aws_eks_access_entry" "deployer" {
   cluster_name  = module.eks.cluster_name
-  principal_arn = data.terraform_remote_state.shared.outputs.deployer_nonprod_role_arn
+  principal_arn = data.terraform_remote_state.shared.outputs.deployer_role_arns["staging"]
 }
 
-resource "aws_eks_access_policy_association" "deployer_nonprod_bss" {
+resource "aws_eks_access_policy_association" "deployer_bss" {
   cluster_name  = module.eks.cluster_name
-  principal_arn = data.terraform_remote_state.shared.outputs.deployer_nonprod_role_arn
+  principal_arn = data.terraform_remote_state.shared.outputs.deployer_role_arns["staging"]
   policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
 
   access_scope {
@@ -196,5 +196,5 @@ resource "aws_eks_access_policy_association" "deployer_nonprod_bss" {
   # See the long comment on the equivalent resource in environments/dev/main.tf — AWS requires
   # the access entry to exist before a policy can be associated with that principal; without
   # this, Terraform may create both in parallel and race.
-  depends_on = [aws_eks_access_entry.deployer_nonprod]
+  depends_on = [aws_eks_access_entry.deployer]
 }

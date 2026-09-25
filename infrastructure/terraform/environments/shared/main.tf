@@ -7,8 +7,8 @@
 #     many" is that the SAME image, in the SAME repo, gets promoted across environments)
 #   - GitHub OIDC provider (there can only be ONE per AWS account — creating a second
 #     "token.actions.githubusercontent.com" provider fails)
-#   - 2 CI/CD deployer roles (nonprod: dev+staging, prod: prod only — least privilege,
-#     separate blast radius)
+#   - 3 CI/CD deployer roles, ONE PER ENVIRONMENT (dev / staging / prod). Each trusts exactly one
+#     GitHub *Environment* (see "Deployer roles" below) — B-39, Giai đoạn 6
 #
 # Apply this FIRST, before dev/staging/prod (they read its outputs via
 # `terraform_remote_state`).
@@ -41,6 +41,8 @@ provider "aws" {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
 locals {
   common_tags = {
     Project     = "bss-platform"
@@ -67,12 +69,39 @@ resource "aws_iam_openid_connect_provider" "github" {
   tags = local.common_tags
 }
 
-# ── Deployer role: nonprod (dev + staging) ──────────────────────────────
-# Trusted by: merges to main (cd-dev), rc-v* tags (cd-staging), and pull_request runs
-# (ci-terraform's plan-dev job, read-mostly). B-39: this is still narrower than the
-# original `repo:<repo>:*` (which trusted literally every branch/tag/PR/environment).
-resource "aws_iam_role" "deployer_nonprod" {
-  name = "bss-github-deployer-nonprod"
+# ── Deployer roles: one per environment, trust pinned to a GitHub *Environment* (B-39) ─────
+# How a GitHub Actions job proves who it is to AWS (OIDC): the JWT it presents has a `sub` claim.
+# Its shape depends on what the job declares:
+#
+#   no `environment:`            -> repo:OWNER/REPO:ref:refs/heads/main      (branch)   <- too broad:
+#                                   anything that can push a branch/tag can produce a matching `sub`
+#   `environment: production`    -> repo:OWNER/REPO:environment:production   (ref is DROPPED)
+#
+# Pinning each role's trust to `...:environment:<name>` means "you can only get this role by running
+# a job that passed that Environment's protection rules" — required reviewers + allowed branches/tags
+# (configured in GitHub, see scripts/setup-github-environments.sh). A pull_request `sub` is not
+# trusted by ANY role any more: PR code can no longer obtain credentials that push to ECR (the old
+# nonprod trust list included `pull_request`).
+#
+# `StringEquals` (exact match), not `StringLike` with a wildcard: there is nothing to wildcard.
+locals {
+  # Key = our environment name (-> role name, and the cluster name bss-<key>-eks).
+  # github_environment = the GitHub Environment name the workflow declares (`environment:`).
+  # ecr_push = may this role upload NEW image layers? Only dev builds images. Staging/prod promote by
+  # adding a tag to an existing manifest (`aws ecr put-image`) — they must not be able to push code.
+  deployers = {
+    dev     = { github_environment = "dev", ecr_push = true }
+    staging = { github_environment = "staging", ecr_push = false }
+    prod    = { github_environment = "production", ecr_push = false }
+  }
+
+  ecr_repo_arns = "arn:aws:ecr:${var.region}:${data.aws_caller_identity.current.account_id}:repository/bss/*"
+}
+
+resource "aws_iam_role" "deployer" {
+  for_each = local.deployers
+
+  name = "bss-github-deployer-${each.key}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -83,50 +112,8 @@ resource "aws_iam_role" "deployer_nonprod" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-        }
-        StringLike = {
-          "token.actions.githubusercontent.com:sub" = flatten([
-            for repo in var.github_repos : [
-              "repo:${repo}:ref:refs/heads/main",
-              "repo:${repo}:ref:refs/tags/rc-v*",
-              "repo:${repo}:pull_request",
-            ]
-          ])
-        }
-      }
-    }]
-  })
-
-  tags = local.common_tags
-}
-
-resource "aws_iam_role_policy" "deployer_nonprod" {
-  name   = "deployer"
-  role   = aws_iam_role.deployer_nonprod.id
-  policy = local.deployer_policy_json
-}
-
-# ── Deployer role: prod ─────────────────────────────────────────────────
-# Trusted ONLY by v* tags (matches cd-prod.yml's trigger). ⚠️ Still repo-wide rather than
-# scoped to a GitHub Environment with required reviewers — that needs GitHub Environments
-# configured first (Giai đoạn 6, B-39 follow-up), tighten the condition to
-# "repo:<repo>:environment:production" once that exists.
-resource "aws_iam_role" "deployer_prod" {
-  name = "bss-github-deployer-prod"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
-      Action    = "sts:AssumeRoleWithWebIdentity"
-      Condition = {
-        StringEquals = {
-          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-        }
-        StringLike = {
           "token.actions.githubusercontent.com:sub" = [
-            for repo in var.github_repos : "repo:${repo}:ref:refs/tags/v*"
+            for repo in var.github_repos : "repo:${repo}:environment:${each.value.github_environment}"
           ]
         }
       }
@@ -136,46 +123,71 @@ resource "aws_iam_role" "deployer_prod" {
   tags = local.common_tags
 }
 
-resource "aws_iam_role_policy" "deployer_prod" {
-  name   = "deployer"
-  role   = aws_iam_role.deployer_prod.id
-  policy = local.deployer_policy_json
+# The prod role already existed under the old address (`aws_iam_role.deployer_prod`) — keep the same
+# AWS role (same name, same ARN) instead of destroy + create.
+moved {
+  from = aws_iam_role.deployer_prod
+  to   = aws_iam_role.deployer["prod"]
 }
 
-# ── Shared policy document (both roles get the same permissions today) ─
-# B-34: EKS access — kubectl-level authorization — is granted SEPARATELY, per cluster, via
-# `aws_eks_access_entry` in each environment's own main.tf (an access entry needs
-# `cluster_name`, which only the environment's own state knows). `eks:DescribeCluster` here is
-# only what `aws eks update-kubeconfig` needs to fetch connection details — it does NOT grant
-# any Kubernetes RBAC permission by itself (that's the classic IAM-vs-K8s-RBAC confusion B-34
-# was about).
-locals {
-  deployer_policy_json = jsonencode({
+resource "aws_iam_role_policy" "deployer" {
+  for_each = local.deployers
+
+  name = "deployer"
+  role = aws_iam_role.deployer[each.key].id
+
+  policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "ECRPushPull"
-        Effect = "Allow"
-        Action = [
-          "ecr:GetAuthorizationToken",
-          "ecr:BatchCheckLayerAvailability",
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:BatchGetImage",
-          "ecr:PutImage",
-          "ecr:InitiateLayerUpload",
-          "ecr:UploadLayerPart",
-          "ecr:CompleteLayerUpload",
-          "ecr:DescribeRepositories",
-          "ecr:DescribeImages",
-        ]
-        Resource = "*"
-      },
-      {
-        Sid      = "EKSDescribe"
-        Effect   = "Allow"
-        Action   = ["eks:DescribeCluster", "eks:ListClusters"]
-        Resource = "*"
-      },
-    ]
+    Statement = concat(
+      [
+        {
+          Sid    = "ECRReadAndTag"
+          Effect = "Allow"
+          # Read the image manifest + add a tag to it (`aws ecr batch-get-image` / `put-image`), and
+          # check whether an image exists (`describe-images`). Scoped to bss/* repos, not "*".
+          Action = [
+            "ecr:BatchGetImage",
+            "ecr:GetDownloadUrlForLayer",
+            "ecr:BatchCheckLayerAvailability",
+            "ecr:DescribeImages",
+            "ecr:DescribeRepositories",
+            "ecr:PutImage",
+          ]
+          Resource = local.ecr_repo_arns
+        },
+        {
+          # B-34: this only lets `aws eks update-kubeconfig` fetch connection details — kubectl-level
+          # authorization is a SEPARATE layer (aws_eks_access_entry in each environment's own state).
+          # Scoped to THIS environment's cluster: the dev role cannot even describe the prod cluster.
+          Sid      = "EKSDescribeOwnCluster"
+          Effect   = "Allow"
+          Action   = ["eks:DescribeCluster"]
+          Resource = "arn:aws:eks:${var.region}:${data.aws_caller_identity.current.account_id}:cluster/bss-${each.key}-eks"
+        },
+      ],
+      each.value.ecr_push ? [
+        {
+          Sid      = "ECRLogin"
+          Effect   = "Allow"
+          Action   = ["ecr:GetAuthorizationToken"]
+          Resource = "*" # this one action does not support resource-level scoping
+        },
+        {
+          Sid    = "ECRPushLayers"
+          Effect = "Allow"
+          Action = [
+            "ecr:InitiateLayerUpload",
+            "ecr:UploadLayerPart",
+            "ecr:CompleteLayerUpload",
+          ]
+          Resource = local.ecr_repo_arns
+        },
+      ] : []
+    )
   })
+}
+
+moved {
+  from = aws_iam_role_policy.deployer_prod
+  to   = aws_iam_role_policy.deployer["prod"]
 }

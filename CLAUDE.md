@@ -170,13 +170,18 @@ Day 3  git tag rc-v1.2.0  → cd-staging deploy STAGING (QA test)
 Day 5  git tag v1.2.0     → cd-prod chờ approve → rollout PROD
 ```
 
-### Required GitHub Secrets
+### GitHub Environments & Variables (không có secret nào — B-39)
 
-| Secret | Mô tả |
-|---|---|
-| `AWS_DEPLOYER_ROLE_ARN` | IAM role cho dev + staging (tạo bởi Terraform `iam` module) |
-| `AWS_PROD_DEPLOYER_ROLE_ARN` | IAM role riêng cho prod (least privilege) |
-| `ECR_REGISTRY` | `{account_id}.dkr.ecr.ap-southeast-1.amazonaws.com` |
+Không có AWS access key/secret trong GitHub. Mỗi role AWS chỉ tin **một GitHub Environment**
+(`sub` = `repo:<owner>/<repo>:environment:<tên>`). Tạo bằng `scripts/setup-github-environments.sh --apply`.
+
+| Environment | Deploy được từ | Duyệt tay | Variable `AWS_ROLE_ARN` = |
+|---|---|---|---|
+| `dev` | nhánh `main` | không | `bss-github-deployer-dev` |
+| `staging` | tag `rc-v*` | không | `bss-github-deployer-staging` |
+| `production` | tag `v*` | **có** | `bss-github-deployer-prod` |
+
+Repository variable `ECR_REGISTRY` = `{account_id}.dkr.ecr.ap-southeast-1.amazonaws.com` (không phải bí mật).
 
 ---
 
@@ -347,7 +352,7 @@ bss-platform/
 
 ### Phase 5 — CI/CD wiring
 - [ ] Push repo lên GitHub.
-- [ ] GitHub Settings → Secrets thêm `AWS_DEPLOYER_ROLE_ARN` (từ `terraform output github_deployer_role_arn`).
+- [ ] `./scripts/setup-github-environments.sh --apply` (3 Environment + variable `AWS_ROLE_ARN`/`ECR_REGISTRY` — không còn secret).
 - [ ] Mở PR sửa nhỏ → verify `ci-backend` chạy + pass.
 - [ ] Merge → verify `cd-dev` deploy thành công.
 

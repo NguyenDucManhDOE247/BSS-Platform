@@ -41,8 +41,8 @@ output "service_role_arns" {
 }
 
 output "github_deployer_role_arn" {
-  description = "Convenience mirror of environments/shared's output — dev+staging use this one."
-  value       = data.terraform_remote_state.shared.outputs.deployer_nonprod_role_arn
+  description = "Convenience mirror of environments/shared's output — the role for the GitHub Environment `dev` (variable AWS_ROLE_ARN)."
+  value       = data.terraform_remote_state.shared.outputs.deployer_role_arns["dev"]
 }
 
 output "aws_lb_controller_role_arn" {
