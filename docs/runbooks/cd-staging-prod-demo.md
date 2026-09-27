@@ -32,9 +32,36 @@ aws service-quotas request-service-quota-increase --service-code ec2 --quota-cod
 aws service-quotas list-requested-service-quota-change-history-by-quota --service-code ec2 --quota-code L-1216C47A --region ap-southeast-1 --query 'RequestedQuotas[].[Status,DesiredValue]'
 ```
 
+Kiểm quota **đang có** (không phải quota đã xin) — prod cần **≥ 12** (5 node chạy = 10 vCPU; `system_node_max_size = 6` ⇒ 12 nếu scale/thay node):
+
+```bash
+aws service-quotas get-service-quota --service-code ec2 --quota-code L-1216C47A --region ap-southeast-1 --query 'Quota.Value'
+```
+
 Khi chưa có quota: chạy **tuần tự** — destroy dev trước, staging (6 vCPU) xong thì destroy rồi mới dựng prod (không chạy được prod 10 vCPU với hạn mức 8).
 
 **Ghi chú công cụ (Windows):** Helm trên Windows là v4 (bạn đã chốt giữ Helm v3.22 → dùng trong WSL). `scripts/platform-install.sh` chạy trong WSL cần `terraform output` (WSL không đọc được cache provider của Windows) và tải chart (mạng WSL có lúc timeout tải `.tgz`). Cách né đã dùng: lấy `aws_lb_controller_role_arn` bằng Terraform phía Windows, tải sẵn chart đã ghim phiên bản bằng `curl` rồi `helm upgrade --install <file.tgz>` trong WSL.
+
+## 1c. Checklist ngay trước khi dựng prod (release `v0.1.0`)
+
+Làm theo thứ tự; mục nào không đạt thì **dừng, chưa `tf-apply`** (tf-apply prod là bước duy nhất tốn tiền lớn: RDS multi-AZ + NAT + EKS ≈ $1.3/giờ).
+
+1. Quota vCPU **≥ 12** (lệnh ở §1b). Chưa đạt ⇒ dừng, đừng thử "4 node" hay hạ replicas: request ~8.15 vCPU > allocatable 7.72 của 4 node t3.large, và hạ replicas buộc phải tag lại `rc` + chạy lại staging.
+2. `main` đã có PR #150 (staging 3 node, prod 5 node): `git log --oneline -3 origin/main`.
+3. Tag `rc-v0.1.0` còn trên remote và trỏ commit `4c13211`: `git ls-remote --tags origin rc-v0.1.0`.
+4. Bản ghi rc đã `verified_in: [staging]`: `git fetch origin deploy-state && git show origin/deploy-state:releases/rc-v0.1.0.json | jq '.verified_in, .source.sha'`.
+5. 7 image của bản rc vẫn còn trong ECR (lifecycle policy có thể xóa image cũ): digest tag `rc-v0.1.0` phải tồn tại cho cả 7 repo `bss/*`.
+6. Không còn cluster nào đang chạy ngoài ý muốn: `aws eks list-clusters --region ap-southeast-1` (cộng vCPU: dev 4 + prod 10 vẫn < 32 nên được phép chạy chung, nhưng đó là tiền).
+7. `terraform.tfvars` của prod: `ephemeral = true`; `public_access_cidrs` đúng lựa chọn A ở §4 (runner GitHub cần vào API server).
+8. `make ENV=prod tf-plan` ⇒ kỳ vọng `Plan: 85 to add, 0 to change, 0 to destroy` (đã kiểm 2026-09-27).
+
+Tag prod đặt trên **đúng commit của rc**, không phải HEAD của `main` (gate `gate-prod` so `source.sha`):
+
+```bash
+git tag v0.1.0 4c13211 && git push origin v0.1.0     # → cd-prod: check ✓ → dừng chờ Approve
+```
+
+Sau khi bấm **Approve** (Actions → run → Review deployments → `production`): xem job `deploy` tới smoke PASS, kiểm `kubectl -n bss get pods` (7 service × replicas, tất cả `Running`), rồi **destroy ngay** (§5). `releases/v0.1.0.json` được ghi trên nhánh `deploy-state` — đó là kết quả của buổi prod.
 
 ## 2. Dựng cluster (lặp lại cho `staging`, rồi `prod` nếu cần)
 
@@ -46,10 +73,10 @@ cp terraform.tfvars.example terraform.tfvars      # sửa owner_email, public_ac
 cd -
 
 make ENV=<env> tf-init
-make ENV=<env> tf-plan            # ĐỌC plan. staging ≈ 60–70 tài nguyên; prod tương tự + RDS multi-AZ
+make ENV=<env> tf-plan            # ĐỌC plan. staging và prod đều 85 tài nguyên (prod: RDS multi-AZ, 5 node)
 make ENV=<env> tf-apply           # ~20–25 phút (EKS chiếm phần lớn)
 make ENV=<env> kube-config
-kubectl get nodes                 # 2 node (staging: t3.large) / 3 node (prod)
+kubectl get nodes                 # 3 node t3.large (staging) / 5 node t3.large (prod) — Ready hết mới đi tiếp
 ```
 
 Addon + namespace + database (lần nào dựng lại cũng phải làm — dữ liệu không được giữ, ADR-006):
@@ -120,4 +147,6 @@ Hôm sau xem chi phí: Cost Explorer → lọc tag `Environment` = `staging`/`pr
 | `destroy` báo `Cannot delete protected DB instance` | Dựng với `ephemeral = false` | Đặt `ephemeral = true`, `terraform apply` (chỉ tắt bảo vệ), rồi destroy |
 | Actions: `kubectl` timeout ở Preflight | `public_access_cidrs` chặn IP runner (§4) | Chọn A/B/C ở §4 |
 | Pod `CreateContainerConfigError` (secret `*-db-credentials` không có) | Chưa chạy `db-bootstrap`, hoặc SPC/IRSA sai | `kubectl -n bss describe pod`; xem [ADR-004](../adr/ADR-004-db-credential-wiring-dev.md) |
+| `apply` prod: node group `CREATE_FAILED`, `VcpuLimitExceeded` | Quota vCPU EC2 (mặc định 8) < 10 cần cho 5 × t3.large. Cluster + RDS + NAT đã tạo nên đang **tốn tiền** | `make ENV=prod tf-destroy` ngay; xin/chờ quota (§1b), rồi dựng lại. Đừng để cluster dở dang qua đêm |
+| Pod `Pending` "Insufficient cpu" dù node `Ready` | Tổng `requests` > allocatable (t3.large ≈ 1.93 vCPU/node); chưa có autoscaler nên không tự thêm node | Xem mục "Allocated resources" của `kubectl describe node`; thêm node (nâng `desired_size` trong quota cho phép) — không nới `requests` để "lách" |
 | `namespaces "bss" not found` | Chưa `platform-install.sh` | Chạy nó (bước 2) |
