@@ -1,0 +1,94 @@
+# Test đơn vị cho bss-order-management-slo.yaml — chạy bằng `./scripts/test-alert-rules.sh`.
+# Trọng tâm: chứng minh vì sao multi-window (AND của cửa sổ dài + ngắn) tốt hơn 1 cửa sổ đơn —
+# xem docs/SLO.md mục 4.
+#
+# `interval: 1m` (không phải 5m/30s như file khác) — bài học thật rút ra khi viết file này: range
+# vector của PromQL là `(t-range, t]` (mở đầu, đóng cuối) — nếu mẫu dữ liệu cách nhau ĐÚNG BẰNG độ
+# rộng cửa sổ (ví dụ lấy mẫu mỗi 5 phút cho cửa sổ 5 phút), mẫu ở đầu cửa sổ bị loại (nằm ngoài
+# khoảng mở), cửa sổ chỉ còn ĐÚNG 1 điểm dữ liệu — `rate()` cần tối thiểu 2 điểm mới tính được,
+# trả về "không có dữ liệu" (`nil`) chứ không phải lỗi ồn ào. Bài test đầu tiên viết bằng
+# `interval: 5m` FAIL vì đúng lý do này (promtool báo `got: nil` cho `rate5m`, `rate1h` thì đúng vì
+# cửa sổ 1h có nhiều mẫu hơn) — đổi sang lấy mẫu dày hơn nhiều so với cửa sổ ngắn nhất (5 phút) là
+# cách sửa đúng, không phải đoán mò.
+rule_files:
+  - bss-order-management-slo.rules.yaml
+
+evaluation_interval: 30s
+
+tests:
+  # ── 1. Đốt nhanh (fast burn) kéo dài — CẢ 2 cửa sổ cùng tệ → phải Firing ────────────────────
+  - name: lỗi 10% liên tục hơn 2h30 — vượt ngưỡng 7.2% ở cả cửa sổ 1h lẫn 5m
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{application="order-management",status="200"}'
+        values: '0+90x150'   # 150 phút, 90 request thành công/phút
+      - series: 'http_server_requests_seconds_count{application="order-management",status="500"}'
+        values: '0+10x150'  # 10 lỗi/phút ⇒ tỉ lệ lỗi = 10/100 = 10%
+    promql_expr_test:
+      # Giá trị mong đợi không phải "0.1" tròn — rate() nội suy trên float64 để lại sai số cực nhỏ
+      # (10/100 → 0.09999999999999999), vô hại cho việc so sánh `>` với ngưỡng burn-rate nhưng
+      # promtool `exp_samples` khớp CHÍNH XÁC từng bit nên phải ghi đúng giá trị thật đã đo được.
+      - expr: order_management:error_ratio:rate5m
+        eval_time: 90m
+        exp_samples: [{ labels: 'order_management:error_ratio:rate5m', value: 0.09999999999999999 }]
+      - expr: order_management:error_ratio:rate1h
+        eval_time: 90m
+        exp_samples: [{ labels: 'order_management:error_ratio:rate1h', value: 0.1 }]
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: OrderMgmtSloFastBurn
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              team: platform
+              slo: order-management-availability
+            exp_annotations:
+              summary: "order-management đang đốt error budget SLO với tốc độ ≥ 14.4× (hết ngân sách 30 ngày trong ~2 ngày)"
+              description: "Tỉ lệ lỗi 5xx vượt 7.2% ở CẢ cửa sổ 1h lẫn 5m — không phải nhiễu ngắn hạn."
+              runbook_url: "https://github.com/NguyenDucManhDOE247/BSS-Platform/blob/main/docs/runbooks/slo-burn-rate.md"
+      # 10% cũng vượt luôn ngưỡng slow-burn (3%) — cả 2 alert cùng Firing là ĐÚNG (sự cố nặng vẫn
+      # đang đốt ngân sách theo mọi khung nhìn, không mâu thuẫn).
+      - eval_time: 90m
+        alertname: OrderMgmtSloSlowBurn
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: platform
+              slo: order-management-availability
+            exp_annotations:
+              summary: "order-management đang đốt error budget SLO với tốc độ ≥ 6× (hết ngân sách 30 ngày trong ~5 ngày)"
+              description: "Tỉ lệ lỗi 5xx vượt 3.0% ở CẢ cửa sổ 6h lẫn 30m — chưa khẩn cấp bằng FastBurn nhưng cần xử lý trong vài ngày tới."
+              runbook_url: "https://github.com/NguyenDucManhDOE247/BSS-Platform/blob/main/docs/runbooks/slo-burn-rate.md"
+
+  # ── 2. Khỏe mạnh — không alert nào Firing (chặn báo động giả) ─────────────────────────────────
+  - name: lỗi 0.1% liên tục 8h — dưới mọi ngưỡng
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{application="order-management",status="200"}'
+        values: '0+999x480'
+      - series: 'http_server_requests_seconds_count{application="order-management",status="500"}'
+        values: '0+1x480'
+    alert_rule_test:
+      - { eval_time: 8h, alertname: OrderMgmtSloFastBurn, exp_alerts: [] }
+      - { eval_time: 8h, alertname: OrderMgmtSloSlowBurn, exp_alerts: [] }
+
+  # ── 3. Sự cố NGẮN (chỉ 10 phút) giữa nền khỏe mạnh 80 phút — cửa sổ ngắn tệ, cửa sổ dài vẫn ổn ─
+  # Bằng chứng CHÍNH cho lý do dùng AND(dài, ngắn): nhìn riêng 5 phút cuối, hệ thống trông như
+  # đang cháy (lỗi ~100%); nhưng cửa sổ 1h (đa số vẫn là traffic khỏe mạnh) cho thấy error budget
+  # CHƯA thật sự bị đốt đáng kể — không đáng đánh thức người trực lúc 3 giờ sáng.
+  - name: lỗi 100% chỉ trong 10 phút cuối, 80 phút trước đó khỏe mạnh — KHÔNG Firing
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{application="order-management",status="200"}'
+        values: '0+999x79 78921+0x10'  # 79 phút khỏe (999/phút), rồi ĐỨNG YÊN 10 phút — không còn request thành công
+      - series: 'http_server_requests_seconds_count{application="order-management",status="500"}'
+        values: '0+1x79 79+100x10'     # 79 phút khỏe (1 lỗi/phút), rồi lỗi tăng vọt +100/phút trong 10 phút cuối
+    promql_expr_test:
+      # Cửa sổ 5 phút cuối: gần như 100% lỗi — xác nhận "trông như đang cháy" nếu chỉ nhìn ngắn hạn.
+      - expr: order_management:error_ratio:rate5m
+        eval_time: 90m
+        exp_samples: [{ labels: 'order_management:error_ratio:rate5m', value: 1 }]
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: OrderMgmtSloFastBurn
+        exp_alerts: [] # cửa sổ 1h bị pha loãng bởi ~50 phút traffic khỏe mạnh trước đó ⇒ AND fail

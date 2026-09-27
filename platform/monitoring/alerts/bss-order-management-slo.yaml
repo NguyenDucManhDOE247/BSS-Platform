@@ -1,0 +1,71 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: bss-order-management-slo
+  namespace: monitoring
+  labels:
+    release: monitoring
+# Giai đoạn 7, việc 4 — SLO cho order-management (docs/SLO.md). Multi-window burn-rate alert theo
+# SRE Workbook "Implementing SLOs" (Google): mỗi alert kiểm 2 cửa sổ (dài để chắc chắn không phải
+# nhiễu, ngắn để tự "reset" nhanh khi sự cố đã qua) — khác `BssHighErrorRate` ở
+# bss-alerts.yaml (ngưỡng cứng, không liên hệ SLO/error-budget).
+#
+# SLO = 99.5%/30 ngày ⇒ error budget = 0.5% = 0.005. burn_rate = tỉ_lệ_lỗi / 0.005.
+#   14.4× → đốt hết ngân sách 30 ngày trong ~2 ngày (0.005 × 14.4 = 0.072 = 7.2% lỗi)
+#    6.0× → đốt hết ngân sách 30 ngày trong ~5 ngày (0.005 ×  6.0 = 0.030 = 3.0% lỗi)
+spec:
+  groups:
+    - name: bss.order-management.slo
+      interval: 30s
+      rules:
+        # Ghi lại tỉ lệ lỗi theo từng cửa sổ dưới dạng "recording rule" — vừa tránh tính lại cùng
+        # 1 biểu thức 2 lần (long + short window) trong chính alert, vừa cho Grafana truy vấn
+        # thẳng (không phải chép lại PromQL dài mỗi lần vẽ panel).
+        - record: order_management:error_ratio:rate5m
+          expr: |
+            sum(rate(http_server_requests_seconds_count{application="order-management",status=~"5.."}[5m]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="order-management"}[5m]))
+        - record: order_management:error_ratio:rate30m
+          expr: |
+            sum(rate(http_server_requests_seconds_count{application="order-management",status=~"5.."}[30m]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="order-management"}[30m]))
+        - record: order_management:error_ratio:rate1h
+          expr: |
+            sum(rate(http_server_requests_seconds_count{application="order-management",status=~"5.."}[1h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="order-management"}[1h]))
+        - record: order_management:error_ratio:rate6h
+          expr: |
+            sum(rate(http_server_requests_seconds_count{application="order-management",status=~"5.."}[6h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="order-management"}[6h]))
+
+        - alert: OrderMgmtSloFastBurn
+          expr: |
+            order_management:error_ratio:rate1h > (14.4 * 0.005)
+            and
+            order_management:error_ratio:rate5m > (14.4 * 0.005)
+          labels:
+            severity: critical
+            team: platform
+            slo: order-management-availability
+          annotations:
+            summary: "order-management đang đốt error budget SLO với tốc độ ≥ 14.4× (hết ngân sách 30 ngày trong ~2 ngày)"
+            description: "Tỉ lệ lỗi 5xx vượt 7.2% ở CẢ cửa sổ 1h lẫn 5m — không phải nhiễu ngắn hạn."
+            runbook_url: "https://github.com/NguyenDucManhDOE247/BSS-Platform/blob/main/docs/runbooks/slo-burn-rate.md"
+
+        - alert: OrderMgmtSloSlowBurn
+          expr: |
+            order_management:error_ratio:rate6h > (6 * 0.005)
+            and
+            order_management:error_ratio:rate30m > (6 * 0.005)
+          labels:
+            severity: warning
+            team: platform
+            slo: order-management-availability
+          annotations:
+            summary: "order-management đang đốt error budget SLO với tốc độ ≥ 6× (hết ngân sách 30 ngày trong ~5 ngày)"
+            description: "Tỉ lệ lỗi 5xx vượt 3.0% ở CẢ cửa sổ 6h lẫn 30m — chưa khẩn cấp bằng FastBurn nhưng cần xử lý trong vài ngày tới."
+            runbook_url: "https://github.com/NguyenDucManhDOE247/BSS-Platform/blob/main/docs/runbooks/slo-burn-rate.md"
