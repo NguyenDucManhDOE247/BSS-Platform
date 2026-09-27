@@ -57,16 +57,14 @@ helm upgrade --install karpenter karpenter/karpenter \
   -n karpenter --create-namespace
 kubectl apply -f networking/karpenter-nodepool.yaml
 
-# 6. Fluent Bit (logs → CloudWatch) — Giai đoạn 7 (observability on AWS).
-helm upgrade --install fluent-bit eks/aws-for-fluent-bit \
-  -n amazon-cloudwatch --create-namespace \
-  -f logging/fluent-bit-values.yaml
+# 6. Fluent Bit (logs → CloudWatch) — Giai đoạn 7. 1 lệnh (schema values cũ SAI — xem cảnh báo
+# lớn ở đầu logging/fluent-bit-values.yaml, đã sửa và kiểm bằng `helm template`).
+../scripts/logging-install.sh dev
 
-# 7. OpenTelemetry Collector (traces → X-Ray) — Giai đoạn 7, optional per learning/20.
-helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
-helm upgrade --install otel-collector open-telemetry/opentelemetry-collector \
-  -n observability --create-namespace \
-  -f tracing/otel-collector-values.yaml
+# 7. OpenTelemetry Collector (traces → X-Ray) — Giai đoạn 7, tùy chọn per learning/20. Java agent
+# TỰ inject qua initContainer trong mỗi Deployment (infrastructure/kubernetes/base/*/deployment.yaml)
+# — không phải bước ở đây, ở đây chỉ cài nơi NHẬN trace.
+../scripts/tracing-install.sh dev
 
 # 8. Prometheus + Grafana + Alertmanager — Giai đoạn 7. Một lệnh (đã gom ~15 lệnh cũ, cùng đường đi
 # với kind — xem mục "Local (kind)" bên dưới): tạo Secret mật khẩu Grafana + webhook, cài chart đã
@@ -79,12 +77,16 @@ ALERT_WEBHOOK_KIND=discord ALERT_WEBHOOK_URL='https://discord.com/api/webhooks/.
 > (the Giai đoạn 5 minimum) into one command with the same pinned versions. Steps 4–8 are still
 > manual — deliberately, since each belongs to a later phase you haven't necessarily reached yet.
 
-## Local (kind) — Giai đoạn 2
+## Local (kind) — Giai đoạn 2 + 7
 
-Chỉ 1 addon áp dụng được ở local: **Prometheus + Grafana + Alertmanager** (metrics/dashboard/
-alert thật — checkpoint của Giai đoạn 2). Các addon còn lại (ALB Controller, ExternalDNS,
-Karpenter, Secrets CSI, Fluent Bit, OTel→X-Ray) đều gắn chặt với dịch vụ AWS thật, không có bản
-tương đương chạy trên kind — xem `learning/16` mục 2 bảng "điều kiện chạy".
+**Giai đoạn 2:** Prometheus + Grafana + Alertmanager (metrics/dashboard/alert thật — checkpoint
+Giai đoạn 2). **Giai đoạn 7 (mới):** Fluent Bit + OTel Collector **cũng chạy thật trên kind** —
+kind dùng containerd giống EKS (cùng định dạng log CRI), nên đây là cách kiểm chứng B-17/B-42 và
+việc 3 (OTel) mà **không cần AWS, không tốn tiền**: `./scripts/logging-install.sh kind` (đích đến
+là 1 sink HTTP cục bộ thay CloudWatch), `./scripts/tracing-install.sh kind` (đích đến là exporter
+`debug` thay X-Ray). Chỉ 3 addon còn lại (ALB Controller, ExternalDNS, Karpenter, Secrets CSI) gắn
+chặt với dịch vụ AWS thật, không có bản tương đương trên kind — xem `learning/16` mục 2 bảng
+"điều kiện chạy".
 
 ```bash
 # ingress-nginx + metrics-server: cài bởi scripts/kind-up.sh, không phải bước ở đây.

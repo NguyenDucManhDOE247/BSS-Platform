@@ -1,0 +1,58 @@
+# Fluent Bit cho kind (Giai đoạn 7 — kiểm chứng B-17/B-42 THẬT, không cần AWS). kind cũng chạy
+# containerd (giống EKS) nên đây KHÔNG phải bản giả lập — cùng định dạng log CRI thật, chỉ khác
+# đích đến: không có CloudWatch ở local, dùng OUTPUT "http" gửi tới 1 sink tự viết để soi từng
+# field parse ra (xem docs/runbooks/tracing.md mục kiểm chứng chung logging+tracing).
+#
+# Install: ./scripts/logging-install.sh kind
+
+cloudWatchLogs:
+  enabled: false
+
+input:
+  path: /var/log/containers/*.log
+  multilineParser: "cri"
+  # Bug thật gặp khi tự kiểm chứng lần đầu (không phải lỗi sản phẩm — lỗi trong CHÍNH bộ test cục
+  # bộ này): sink HTTP dùng để soi log lại chạy như 1 Pod trong cluster, in ra chính request nó
+  # vừa nhận ("POST /logs <body>") ra stdout của NÓ — Fluent Bit đọc luôn log đó (nó cũng là 1
+  # container log), gửi lại cho sink, sink lại in ra, Fluent Bit lại đọc... JSON phình to theo cấp
+  # số nhân trong vài giây (thấy rõ trong log: hàng chục lớp `\"` lồng nhau). Bài học: bất cứ đích
+  # nào bản thân cũng chạy trong cluster mà Fluent Bit đang thu log, PHẢI tự loại trừ log của
+  # chính nó — nếu không sẽ tạo vòng lặp. Loại trừ theo NAMESPACE (không phải theo pod riêng) để
+  # không lặp lại lỗi này nếu đổi tên sink sau này.
+  extraInputs: |
+    Exclude_Path /var/log/containers/*_kube-system_*.log,/var/log/containers/*_local-path-storage_*.log,/var/log/containers/*_ingress-nginx_*.log,/var/log/containers/*_monitoring_*.log,/var/log/containers/*_observability_*.log,/var/log/containers/*_amazon-cloudwatch_*.log,/var/log/containers/*_default_*.log
+
+filter:
+  mergeLog: "On"
+  mergeLogKey: "data"
+  keepLog: "Off"
+
+# Sink cục bộ thay CloudWatch — xem docs/runbooks/tracing.md để tự dựng lại khi cần kiểm tra.
+additionalOutputs: |
+  [OUTPUT]
+      Name  http
+      Match *
+      Host  webhook-sink.default.svc.cluster.local
+      Port  8000
+      URI   /logs
+      Format json_lines
+      Json_date_key timestamp
+      Json_date_format iso8601
+
+serviceAccount:
+  create: true
+  name: fluent-bit
+  annotations: {}
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 100Mi
+  limits:
+    cpu: 200m
+    memory: 250Mi
+
+tolerations:
+  - operator: Exists
+
+priorityClassName: system-node-critical

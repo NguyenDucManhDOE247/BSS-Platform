@@ -1,0 +1,41 @@
+# Giai đoạn 7 (việc 2+3, gộp chung — xem PR): cấu hình OTel Java agent DÙNG CHUNG cho cả 5
+# service Java (4 backend + gateway). Mỗi service chỉ còn 1 biến riêng (OTEL_SERVICE_NAME) khai
+# trong Deployment của chính nó — mọi thứ khác (endpoint collector, propagator, tắt exporter
+# metrics/logs trùng lặp) nằm ở ĐÚNG MỘT chỗ, sửa 1 lần áp dụng cho cả 5.
+#
+# Đây là ConfigMap TĨNH ở base (không phải configMapGenerator của overlay — cùng giá trị cho mọi
+# overlay, không dev/staging/prod nào cần override), nên nằm ở base/ và các Deployment tham chiếu
+# bằng tên cố định "otel-common-config" qua envFrom, y hệt cách chúng tham chiếu
+# "<service>-config" (ConfigMap RIÊNG, sinh bởi configMapGenerator của từng overlay).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-common-config
+  namespace: bss
+data:
+  # -javaagent tự động instrument Spring MVC/WebFlux, JDBC, Reactor Netty (Spring Cloud Gateway)…
+  # KHÔNG cần sửa code — xem init container "otel-agent-init" trong mỗi deployment.yaml (chép
+  # /javaagent.jar vào volume dùng chung). JAVA_TOOL_OPTIONS là biến chuẩn của JVM: mọi lệnh `java`
+  # tự động thêm các cờ trong đó, kể cả khi ENTRYPOINT của Dockerfile không sửa gì.
+  JAVA_TOOL_OPTIONS: "-javaagent:/otel/javaagent.jar"
+  # otel-collector triển khai ở namespace "observability" (giống otel-collector-values.yaml) —
+  # xem scripts/tracing-install.sh. Cổng 4318 = OTLP/HTTP (đơn giản hơn gRPC:4317 khi phải đi qua
+  # NetworkPolicy — 1 cổng TCP thường, không cần hiểu HTTP/2 để viết luật).
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.observability.svc.cluster.local:4318"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
+  OTEL_TRACES_EXPORTER: "otlp"
+  # Tắt 2 exporter còn lại của agent: metrics đã có Micrometer→Prometheus (B-16, ServiceMonitor),
+  # logs đã có Fluent Bit đọc stdout — bật thêm ở đây sẽ gửi TRÙNG dữ liệu qua đường khác, tốn
+  # băng thông/tiền CloudWatch mà không thêm giá trị.
+  OTEL_METRICS_EXPORTER: "none"
+  OTEL_LOGS_EXPORTER: "none"
+  # W3C Trace Context (chuẩn, mọi framework hiện đại hiểu) + baggage. KHÔNG thêm "xray" ở đây:
+  # X-Ray cần ID sinh theo định dạng riêng (8 ký tự đầu = timestamp) qua AwsXrayIdGenerator — việc
+  # đó thuộc phần "nối vào AWS X-Ray thật" (chưa làm, cần kiểm chứng trên tài khoản AWS thật, xem
+  # ghi chú trong platform/tracing/otel-collector-values.yaml) chứ không phải mặc định dùng chung.
+  OTEL_PROPAGATORS: "tracecontext,baggage"
+  # Mặc định của agent đã là true khi phát hiện Logback trên classpath — đặt tường minh để không
+  # phụ thuộc "mặc định ngầm" của một bản agent tương lai. Đây là điều làm trace_id/span_id tự
+  # xuất hiện trong MDC (B-17) mà KHÔNG cần sửa code Java nào — logback-spring.xml (mỗi service)
+  # chỉ cần in MDC ra JSON, không cần tự tay set trace_id.
+  OTEL_INSTRUMENTATION_LOGBACK_MDC_ENABLED: "true"

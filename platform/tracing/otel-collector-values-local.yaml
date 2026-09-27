@@ -1,0 +1,63 @@
+# OpenTelemetry Collector cho kind (Giai đoạn 7 — kiểm chứng trace THẬT không cần AWS). Khác
+# otel-collector-values.yaml (AWS) ở đúng 1 chỗ: exporter. Không có tài khoản AWS nào ở đây nên
+# không thể dùng `awsxray` (cần IAM) — dùng `debug` (in span ra log của chính Pod otel-collector)
+# để xác nhận toàn bộ đường đi: app → agent → OTLP → collector nhận được span đúng, có đúng
+# trace_id khớp với trace_id trong log JSON của app (xem docs/runbooks/tracing.md).
+#
+# Install: ./scripts/tracing-install.sh kind
+
+mode: deployment
+
+# Bug thật gặp khi kiểm chứng lần đầu: không đặt cái này, Service sinh ra tên
+# "otel-collector-opentelemetry-collector" (release "otel-collector" + tên chart nối lại theo mặc
+# định của Helm) — KHÔNG khớp OTEL_EXPORTER_OTLP_ENDPOINT trong otel-config.yaml
+# ("otel-collector.observability...") → agent báo "Name or service not known" (DNS không phân
+# giải được), lỗi im lặng (Pod app vẫn Running, chỉ mất trace). fullnameOverride cố định tên
+# Service, tách khỏi tên bản Helm release.
+fullnameOverride: otel-collector
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+  processors:
+    batch:
+      timeout: 5s
+      send_batch_size: 1000
+    memory_limiter:
+      check_interval: 5s
+      limit_mib: 200
+      spike_limit_mib: 50
+
+  exporters:
+    # verbosity: detailed in đủ span ID, trace ID, attribute — cần để soi bằng mắt lúc kiểm chứng
+    # lần đầu; hạ về "basic" nếu chỉ muốn biết "có nhận được span hay không".
+    debug:
+      verbosity: detailed
+
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [debug]
+
+serviceAccount:
+  create: true
+  name: otel-collector
+  # Không cần annotation IRSA ở kind — không phải EKS, không có IAM.
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 100Mi
+  limits:
+    memory: 250Mi
