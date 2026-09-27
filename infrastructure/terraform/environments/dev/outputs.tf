@@ -53,3 +53,8 @@ output "aws_lb_controller_role_arn" {
 output "ebs_csi_role_arn" {
   value = module.platform_iam.ebs_csi_role_arn
 }
+
+output "waf_web_acl_arn" {
+  description = "Feed to scripts/wire-waf.sh after `kubectl apply -k` to associate this env's ALB with its Web ACL"
+  value       = module.waf.web_acl_arn
+}

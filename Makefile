@@ -104,6 +104,9 @@ kube-config: ## Update local kubeconfig for $$ENV cluster
 platform-install: ## Install the addons $$ENV's EKS cluster needs (ALB controller, StorageClass, Secrets CSI — see platform/README.md)
 	./scripts/platform-install.sh $(ENV)
 
+wire-waf: ## Attach $$ENV's WAF Web ACL to its live ALB (run AFTER `deploy` — see docs/runbooks/waf.md)
+	./scripts/wire-waf.sh $(ENV)
+
 # ── Build + push (SERVICE=name) ───────────────────────────────────────
 ecr-login: ## Log docker into ECR
 	aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(ECR_REGISTRY)
