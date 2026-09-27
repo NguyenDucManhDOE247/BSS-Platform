@@ -60,7 +60,13 @@ echo "→ Đã gửi lệnh xóa lúc t=0s. Đang chờ pod thay thế Ready..."
 
 deadline=$((SECONDS + 120))
 while :; do
-  ready_count=$(kubectl -n "$NAMESPACE" get pods -l "app=$APP_LABEL" -o jsonpath='{range .items[*]}{.status.containerStatuses[0].ready}{" "}{end}' | tr ' ' '\n' | grep -c true || true)
+  # Đếm CHỈ những pod KHÁC pod vừa xóa. Lý do: sau `delete --wait=false`, pod cũ bước vào
+  # Terminating nhưng container của nó có thể vẫn báo containerStatuses[0].ready=true trong
+  # suốt grace period (SIGTERM không lập tức lật cờ Ready) — nếu đếm cả nó, vòng lặp sẽ thoát
+  # NGAY LẬP TỨC (đo được "0s hồi phục" giả), trước khi pod thay thế thật sự tồn tại. Bug này
+  # đã tự bắt được khi chạy thật lần đầu (2026-09-27) — xem nhật ký.
+  ready_count=$(kubectl -n "$NAMESPACE" get pods -l "app=$APP_LABEL" -o json \
+    | jq --arg victim "$victim" '[.items[] | select(.metadata.name != $victim) | select(.status.containerStatuses[0].ready == true)] | length')
   if [ "$ready_count" -ge "$count_before" ]; then
     break
   fi
