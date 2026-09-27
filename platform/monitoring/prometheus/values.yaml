@@ -1,9 +1,8 @@
 # kube-prometheus-stack values, tuned for AWS EKS.
-# Install:
-#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-#   helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
-#     -n monitoring --create-namespace \
-#     -f platform/monitoring/prometheus/values.yaml
+# Install (Giai đoạn 7): ./scripts/monitoring-install.sh dev|staging|prod
+#   Script này tạo Secret `grafana-admin` + `alertmanager-webhook` TRƯỚC khi chạy Helm, rồi cài chart
+#   với file này + 1 file values tạm sinh ra (receiver Alertmanager, chứa đường dẫn tới Secret — không
+#   chứa URL). Không còn `CHANGE_ME` nào phải sửa tay.
 
 prometheus:
   prometheusSpec:
@@ -29,7 +28,12 @@ prometheus:
     enabled: false
 
 grafana:
-  adminPassword: CHANGE_ME
+  # Mật khẩu KHÔNG nằm trong git (trước đây là `adminPassword: CHANGE_ME` — B-42): Grafana đọc từ Secret
+  # do scripts/monitoring-install.sh tạo (sinh ngẫu nhiên lần đầu, giữ nguyên các lần sau).
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
   persistence:
     enabled: true
     storageClassName: gp3
@@ -86,11 +90,11 @@ alertmanager:
       # cài thật lần đầu trên kind ở Giai đoạn 2) — thiếu receiver này, Alertmanager Operator báo
       # lỗi 'undefined receiver "null" used in route' và không bao giờ tạo StatefulSet.
       - name: "null"
+      # Receiver "default" cố tình KHÔNG có integration nào ở đây: scripts/monitoring-install.sh thêm
+      # discord/slack/webhook_configs (đọc URL từ FILE trong Secret `alertmanager-webhook`) qua một
+      # file values tạm khi bạn đặt ALERT_WEBHOOK_URL — URL thật không bao giờ vào git hay `helm get values`.
+      # Xem docs/runbooks/alerting-setup.md.
       - name: "default"
-        # Wire to Slack / Discord / PagerDuty:
-        # slack_configs:
-        #   - api_url: https://hooks.slack.com/services/...
-        #     channel: "#bss-alerts"
 
 defaultRules:
   rules:

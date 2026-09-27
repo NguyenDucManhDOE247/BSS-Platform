@@ -5,6 +5,7 @@ on:
     paths:
       - 'infrastructure/kubernetes/**'
       - 'platform/**'
+      - 'scripts/test-alert-rules.sh'
       - '.github/workflows/ci-k8s.yml'
 
 jobs:
@@ -55,3 +56,15 @@ jobs:
             kustomize build infrastructure/kubernetes/overlays/$env > /tmp/manifests-$env.yaml
             kube-linter lint /tmp/manifests-$env.yaml || true
           done
+
+  # Giai đoạn 7: alert cũng là code — test đơn vị bằng promtool (không cần cluster). Job này bắt các lỗi
+  # kiểu "sửa PromQL làm alert không bao giờ bắn" ngay ở PR thay vì lúc 3 giờ sáng.
+  alert-rules:
+    name: promtool — test alert rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # yq + docker đều có sẵn trên ubuntu-latest; promtool chạy trong image prom/prometheus (ghim version trong script).
+      - name: promtool test rules
+        run: ./scripts/test-alert-rules.sh
