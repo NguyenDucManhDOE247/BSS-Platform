@@ -511,38 +511,55 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 
 ## 13. Trạng thái hiện tại (cập nhật khi chuyển Phase)
 
-- **Ngày khởi tạo:** 2026-05-22
-- **Phase hiện tại:** 1 ✅ code-complete cho local (chờ user cài Java 21 + Docker để chạy)
-- **AWS account:** chưa tạo
-- **Ngân sách dev/tháng mục tiêu:** < $50 USD
-- **Người maintain:** chủ repo (1 người, học part-time)
+> ⚠️ Mục này chỉ tóm tắt. Chi tiết đầy đủ từng buổi làm việc, từng bug thật, từng lệnh đã chạy nằm
+> trong `learning/nhat-ky-hoc-tap.md` và `learning/20-lo-trinh-hoan-thanh.md` (cả hai **chỉ tồn tại
+> local**, không commit lên git — xem `.gitignore`). File này là bản public, súc tích; nhật ký local
+> là bản đầy đủ dùng để học lại.
 
-### Cập nhật ngày 2026-05-22 (sau khi user nâng plan Max)
+- **Ngày khởi tạo:** 2026-05-22 — dự án được dựng ban đầu (scaffold) trong ~1 tuần cùng Claude Code.
+- **Ngày tiếp nhận:** repo được người maintain hiện tại (không phải người dựng scaffold ban đầu)
+  tiếp nhận, kiểm chứng lại toàn bộ từ đầu, và tách hẳn khỏi repo gốc — xem
+  `learning/01-hien-trang-va-danh-sach-loi.md` cho danh sách đầy đủ lỗi phát hiện lúc tiếp nhận.
+- **Phase hiện tại: 8 — Reliability, load test, tài liệu, demo (đang làm).** Phase 0 → 7 đã
+  **hoàn thành và kiểm chứng thật** trên hạ tầng thật (không chỉ code) — xem
+  [docs/ROADMAP.md](docs/ROADMAP.md) cho bảng trạng thái public, và bảng dưới đây cho tóm tắt bằng
+  chứng của từng phase.
+- **AWS account:** đã tạo, MFA bật, Budget alert theo dõi (ngân sách dev mục tiêu **< $50/tháng**,
+  không chạy 24/7 — mọi environment dựng theo buổi rồi `terraform destroy`, xem
+  [ADR-002](docs/adr/ADR-002-mang-dev.md), [ADR-006](docs/adr/ADR-006-staging-prod-ephemeral.md)).
+- **Repo:** `NguyenDucManhDOE247/BSS-Platform` — **không phải fork**, độc lập hoàn toàn với repo gốc.
+- **Người maintain:** chủ repo (1 người, học part-time, ~10–12h/tuần theo nhịp
+  `learning/20-lo-trinh-hoan-thanh.md`).
 
-**Đã hoàn thành (vượt scope Phase 0 scaffold):**
-- ✅ **Flyway migrations** cho 4 backend (customer, product, order, billing) — `ddl-auto: validate`, schema do Flyway sở hữu
-- ✅ **product-catalog TMF620** hoàn chỉnh: `Category`, `ProductSpecification`, `ProductOffering` + repo/service/controller + seed data 4 gói mẫu
-- ✅ **billing-service TMF678** hoàn chỉnh: `BillingAccount`, `Invoice`, `InvoiceItem` + VAT 10% + `processed_event` để dedup SQS + idempotent `OrderEventListener`
-- ✅ **order-management TMF622** hoàn chỉnh: `ProductOrder`, `OrderItem` + **transactional outbox** pattern (`EventOutbox` JSONB) → `OrderEventPublisher` drainer
-- ✅ **customer-service**: thêm PATCH (`application/merge-patch+json`), tách `CustomerService` layer, pagination
-- ✅ **Testcontainers IT** cho cả 4 service (Postgres container, `@ServiceConnection`)
-- ✅ **K8s manifests** cho 6 service còn thiếu (api-gateway, product-catalog, order-management, billing-service, web-portal, admin-console) + cập nhật 3 overlay (dev/staging/prod) với image, configmap, IRSA, replicas
-- ✅ **OpenAPI 3.1 specs** cho product/order/billing trong `packages/api-contracts/`
-- ✅ **LocalStack-aware AwsConfig** (`endpointOverride` qua env var)
-- ✅ **Web portal**: HomePage, PlansPage (gọi real API), OrderPage (place order), BillsPage (poll invoices)
-- ✅ **Admin console**: Dashboard với metrics tiles, CustomersPage CRUD, OfferingsPage
+### Bằng chứng theo Phase (mỗi dòng = đã chạy thật, không phải suy đoán từ đọc code)
 
-**Còn lại trước khi chạy được Phase 1:**
-- ⏳ User cần cài **Java 21** (đang có 17) — `brew install openjdk@21` hoặc `sdk install java 21.0.5-tem`
-- ⏳ User cần **bật Docker Desktop** (binary đã cài)
+| Phase | Trạng thái | Bằng chứng chính |
+|---|---|---|
+| 0 — Scaffold | ✅ | Monorepo, 7 module Terraform, CI/CD 7 workflow, docker-compose + LocalStack |
+| 1 — Local end-to-end | ✅ | `scripts/e2e-local.sh` PASS; đặt hàng thật qua trình duyệt → hóa đơn VAT đúng 10% |
+| 2 — K8s local (`kind`) + observability | ✅ | `scripts/e2e-kind.sh` PASS; k6 50 VU → HPA scale tới `maxReplicas`, giảm lại sau 5 phút |
+| 3 — CI xanh trên GitHub | ✅ | 4 workflow xanh với `Tests run > 0` thật; Trivy chặn thật CVE Terraform + image (xem `docs/POSTMORTEMS.md` PM-01 cho bài học về "CI xanh" giả) |
+| 4 — Terraform + AWS bootstrap | ✅ | `apply` → `kubectl get nodes` 2 node Ready; `destroy` → 77 resource, xác nhận sạch qua AWS CLI |
+| 5 — Deploy dev EKS | ✅ | 7 Pod `Running` trên EKS thật; hóa đơn thật qua ALB → EventBridge → SQS → billing (IRSA thật, B-19) |
+| 6 — CD dev/staging/prod | ✅ | 3 lần merge liên tiếp → dev tự deploy đúng; rollback tự động có log thật (2 kịch bản) |
+| 7 — Observability + security | ✅ | Dashboard/alert/SLO thật trên `kind`; WAF chặn SQLi + rate-limit thật trên EKS dev (dựng + phá + destroy trong 1 buổi) |
+| 8 — Reliability, docs, demo | 🚧 | k6 threshold, chaos (pod delete/drain node), `tools/ops/`, ADR-007 (Karpenter — không áp dụng), tài liệu này — xem `learning/20` mục Giai đoạn 8 cho checklist đang chạy |
 
-**Còn lại trước khi đụng AWS (Phase 2+):**
-- ⏳ Cài `terraform`, `aws-cli`, `kustomize`, `helm`
-- ⏳ Tạo AWS account + bật MFA + budget alert
-- ⏳ Replace tất cả `CHANGE_ME` / `CHANGE_ME_ACCOUNT_ID` trong overlays sau khi có account ID + RDS hostname
+### Quyết định kiến trúc đã chốt kể từ scaffold ban đầu (ADR đầy đủ ở `docs/adr/`)
 
-**Chưa làm (deferred):**
-- Spring Boot Actuator graceful shutdown timeouts cho prod
-- NetworkPolicy default-deny + per-service whitelist (Phase 9)
-- WAF + Shield (Phase 9)
-- bss-common-java chưa được import bởi các service (mỗi service vẫn tự viết NotFoundException/handler — duplication có thể refactor sau)
+- **Không dùng Karpenter** ở giai đoạn hiện tại — [ADR-007](docs/adr/ADR-007-karpenter.md). Khác
+  với dự định ban đầu ở mục 2 (bảng "Vai trò | Lựa chọn") — bảng đó ghi lại **lý do lựa chọn công
+  nghệ lúc scaffold**, không phải trạng thái đang chạy; ADR-007 là quyết định **cập nhật** sau khi
+  đối chiếu với ADR-006 (staging/prod ephemeral) làm giảm giá trị của Karpenter.
+- **Mạng dev dùng NAT Gateway**, không phải VPC Endpoint như dự định ban đầu — [ADR-002](docs/adr/ADR-002-mang-dev.md) (VPC Endpoint vừa không đủ chạy được vừa đắt hơn ở quy mô 2 AZ).
+- **3 cluster riêng (dev/staging/prod), nhưng staging/prod ephemeral** (dựng theo buổi) — [ADR-006](docs/adr/ADR-006-staging-prod-ephemeral.md).
+- **Nguồn sự thật phiên bản CD** = commit git (desired) + release manifest ở nhánh `deploy-state`
+  (last-known-good), không phải bot tự commit lại overlay — [ADR-005](docs/adr/ADR-005-nguon-su-that-phien-ban-cd.md).
+
+### Còn lại (không chặn Phase 8, ghi để không quên)
+
+- `bss-common-java` chưa được mọi service import (một phần dùng, xem `learning/01` B-15).
+- NetworkPolicy đã kiểm chứng thật trên `kind` (Calico) nhưng **chưa bật** `network_policy_configuration`
+  của VPC CNI addon trên EKS thật — xem `docs/runbooks/network-policy.md`.
+- ~48 CVE HIGH/CRITICAL còn tồn đọng do chưa nâng Spring Boot minor version (nỗ lực nâng cấp lớn
+  trước đó phá Flyway/Postgres compatibility — để dành đợt nâng cấp có chủ đích riêng).

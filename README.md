@@ -2,16 +2,17 @@
 
 > Production-grade reference implementation of a **Business Support System (BSS)** running on **Amazon EKS** — full monorepo with frontend, backend microservices, Infrastructure-as-Code, GitHub Actions CI/CD, and an observability stack.
 
-[![CI Backend](https://github.com/gemmy94/bss-platform/actions/workflows/ci-backend.yml/badge.svg)](https://github.com/gemmy94/bss-platform/actions/workflows/ci-backend.yml)
-[![CI Frontend](https://github.com/gemmy94/bss-platform/actions/workflows/ci-frontend.yml/badge.svg)](https://github.com/gemmy94/bss-platform/actions/workflows/ci-frontend.yml)
-[![CI Terraform](https://github.com/gemmy94/bss-platform/actions/workflows/ci-terraform.yml/badge.svg)](https://github.com/gemmy94/bss-platform/actions/workflows/ci-terraform.yml)
+[![CI Backend](https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/workflows/ci-backend.yml/badge.svg)](https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/workflows/ci-backend.yml)
+[![CI Frontend](https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/workflows/ci-frontend.yml/badge.svg)](https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/workflows/ci-frontend.yml)
+[![CI Terraform](https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/workflows/ci-terraform.yml/badge.svg)](https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/workflows/ci-terraform.yml)
+[![CI Kubernetes](https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/workflows/ci-k8s.yml/badge.svg)](https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/workflows/ci-k8s.yml)
 [![Java](https://img.shields.io/badge/Java-21-007396?logo=openjdk)](https://openjdk.org/projects/jdk/21/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2-6DB33F?logo=spring-boot)](https://spring.io/projects/spring-boot)
-[![Terraform](https://img.shields.io/badge/Terraform-1.7+-7B42BC?logo=terraform)](https://www.terraform.io/)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.30+-326CE5?logo=kubernetes)](https://kubernetes.io/)
+[![Terraform](https://img.shields.io/badge/Terraform-1.16+-7B42BC?logo=terraform)](https://www.terraform.io/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.34-326CE5?logo=kubernetes)](https://kubernetes.io/)
 [![AWS](https://img.shields.io/badge/AWS-EKS-FF9900?logo=amazon-aws)](https://aws.amazon.com/eks/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-WIP%20%E2%80%94%20Phase%201%20complete-blue)](docs/ROADMAP.md)
+[![Status](https://img.shields.io/badge/Status-Phase%207%20done%20%E2%80%94%20Phase%208%20in%20progress-blue)](docs/ROADMAP.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 ## Table of contents
@@ -64,7 +65,7 @@ bss-platform/
   │  admin-console       customer-service        Grafana         │
   │                      product-catalog         Fluent Bit      │
   │                      order-management ──┐    OTel Collector  │
-  │                      billing-service  <─┤    Karpenter       │
+  │                      billing-service  <─┤    metrics-server  │
   │                                         │                    │
   └─────────────────────────────────────────┼────────────────────┘
                                             │
@@ -92,7 +93,7 @@ bss-platform/
 | Backend | Java 21, Spring Boot 3.2, Spring Cloud Gateway, AWS SDK v2 |
 | Frontend | Vite, React 18, TypeScript, react-query |
 | Container | Multi-stage Docker (distroless-style), non-root |
-| Orchestration | EKS 1.30 + Managed Node Groups + Karpenter |
+| Orchestration | EKS 1.34 + Managed Node Groups (Karpenter evaluated, not adopted — see [ADR-007](docs/adr/ADR-007-karpenter.md)) |
 | IaC | Terraform 1.7 + hashicorp/aws 5.x |
 | K8s packaging | Kustomize (base + overlays/dev|staging|prod) |
 | CI/CD | GitHub Actions + OIDC → IAM Role (no static keys) |
@@ -145,25 +146,32 @@ Phase-by-phase tracking lives in [docs/ROADMAP.md](docs/ROADMAP.md). Today:
 
 | Phase | Status |
 |---|---|
-| 0 — Scaffold (monorepo, Terraform modules, CI/CD, docker-compose) | ✅ done |
-| 1 — Local dev (4 TMF services, frontend, contracts, K8s manifests) | ✅ code-complete |
-| 2 — AWS account bootstrap | ⏳ pending |
-| 3 — Deploy dev infra to EKS | ⏳ pending |
-| 4–10 — First service to AWS → CI/CD → observability → prod hardening | ⏳ pending |
+| 0 — Scaffold (monorepo, Terraform modules, CI/CD, docker-compose) | ✅ Done |
+| 1 — Local dev end-to-end (5 backends, 2 frontends, real browser run) | ✅ Done |
+| 2 — Kubernetes local (`kind`) + observability local | ✅ Done |
+| 3 — CI green on GitHub (tests actually executing) | ✅ Done |
+| 4 — Terraform + real AWS bootstrap (`apply`/`destroy`, no orphans) | ✅ Done |
+| 5 — Deploy dev to real EKS (RDS, EventBridge/SQS, ALB) | ✅ Done |
+| 6 — CD: dev auto-deploy → staging/prod tag-based promotion + rollback | ✅ Done |
+| 7 — Observability + security on AWS (dashboards, OAuth2, WAF, Trivy gate) | ✅ Done |
+| 8 — Reliability, load test, ops tooling, docs, `v1.0.0` demo | 🚧 In progress |
 
-See [CHANGELOG.md](CHANGELOG.md) for the detailed v0.1.0 changelog.
+Every ✅ above was verified against **real infrastructure**, not just written and assumed working —
+see [`docs/adr/`](docs/adr/) for the decisions and [`docs/runbooks/`](docs/runbooks/) for the
+verification evidence. See [CHANGELOG.md](CHANGELOG.md) for the release history.
 
 ## Cost
 
-| Environment | USD/day |
-|---|---|
-| Dev (`tf-destroy` nightly) | ~$5 |
-| Dev (always on) | ~$5 |
-| Staging | ~$9 |
-| Prod | ~$30+ |
+Real, ADR-backed numbers (see [ADR-002](docs/adr/ADR-002-mang-dev.md) for the dev network cost
+analysis) — not an initial estimate:
 
-> AWS Free Tier (first 12 months) reduces dev cost to ~$3/day for RDS + EC2.
-> The EKS control plane ($0.10/hour) is **not** free-tier eligible.
+| Environment | Pattern | Approx. cost |
+|---|---|---|
+| Dev | `terraform apply` for a session, `destroy` right after (no idle spend) | ~$1.5–2/hour while the cluster is up |
+| Staging / Prod | Ephemeral — stood up per demo/release, destroyed after (see [ADR-006](docs/adr/ADR-006-staging-prod-ephemeral.md)) | Same per-hour order of magnitude as dev, ×3 node count |
+
+> No environment in this project runs 24/7. This is a deliberate cost control for a
+> self-funded learning project, tracked with a monthly AWS Budget alert (CLAUDE.md §4).
 
 ## Learning roadmap
 

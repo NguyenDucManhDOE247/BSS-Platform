@@ -7,9 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Everything below shipped after `v0.1.0` (local-only scaffold) and is verified against **real AWS
+infrastructure**, not just written and assumed working — see `docs/adr/` for the decisions and
+`docs/runbooks/` for the verification evidence. This section will become `[1.0.0]` when Phase 8
+closes and the repo is tagged.
+
 ### Added
 
-- Nothing yet.
+- **Kubernetes local (`kind`) + observability local** — full stack on `kind` via Kustomize,
+  kube-prometheus-stack, Alertmanager, `NetworkPolicy` (Calico-verified), k6 load test.
+- **CI on GitHub Actions** — 4 workflows (backend/frontend/terraform/k8s) actually executing
+  tests and gating on Trivy findings; SHA-pinned actions; Dependabot.
+- **Real AWS infrastructure** — Terraform for VPC/EKS/RDS/ECR/EventBridge/IAM across
+  `dev`/`staging`/`prod`/`shared`, IRSA per service, GitHub OIDC deployer roles (no static AWS keys).
+- **CD pipeline** — merge-to-`main` auto-deploys dev; `rc-vX` tag promotes to staging; `vX` tag +
+  manual approval promotes to prod; automatic rollback to the last-known-good release manifest on
+  a failed smoke test.
+- **Observability on AWS** — Prometheus/Grafana/Alertmanager, Fluent Bit → CloudWatch (JSON logs +
+  `trace_id`), OTel → X-Ray, an SLO with a multi-window burn-rate alert for `order-management`.
+- **Security hardening** — NetworkPolicy default-deny + whitelist, Keycloak + OAuth2 Resource
+  Server on the gateway, AWS WAF in front of the ALB (managed rule groups + rate limiting),
+  Pod Security `restricted`, Trivy config scanning.
+- **Reliability tooling (Phase 8)** — `tests/load/dev-threshold.js` (k6 capacity-threshold test
+  against real dev EKS), `scripts/chaos-delete-pod.sh` / `scripts/chaos-drain-node.sh` chaos
+  experiments, `tools/ops/` day-2 scripts (`cost_report.py`, `dlq_tool.py`, `health_check.py`).
+- **Documentation** — 7 ADRs, 10+ runbooks, `docs/POSTMORTEMS.md`, a public `docs/ROADMAP.md`.
+
+### Fixed
+
+- Dozens of real bugs found by actually running each phase's checkpoint against live
+  infrastructure rather than trusting green CI or "looks correct" code review — see
+  `docs/POSTMORTEMS.md` for the most instructive one (a dedup mechanism that looked fixed but was
+  a silent no-op for ~4 months because of a JPA `merge()`-vs-`persist()` mismatch).
 
 ## [0.1.0] — 2026-05-28
 
