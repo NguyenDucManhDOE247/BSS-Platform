@@ -1,0 +1,100 @@
+# Giai đoạn 7, việc 6 (B-18): Keycloak — CHỈ ở overlay `local` (kind), phục vụ kiểm chứng auth mà
+# không cần AWS. dev/staging/prod dùng AWS Cognito hoặc Keycloak Terraform-hóa riêng — chưa làm,
+# xem docs/runbooks/auth.md mục "Còn lại".
+#
+# `KC_HOSTNAME` cố định = DNS nội bộ cluster: Keycloak stamp CHÍNH XÁC chuỗi này vào claim `iss`
+# của mọi token nó phát hành, BẤT KỂ client gọi tới nó qua đường nào (Service nội bộ, Ingress từ
+# host, port-forward…) — api-gateway (chạy TRONG cluster) luôn resolve được DNS này để lấy JWKS +
+# so khớp `iss`. Không có dòng này, Keycloak mặc định lấy `iss` từ Host header của chính request
+# xin token — 2 client gọi qua 2 đường khác nhau (host qua Ingress vs Pod nội bộ) sẽ NHẬN token
+# với `iss` KHÁC NHAU, token bên này gateway không validate được token bên kia (đã tự kiểm chứng
+# lỗi này trước khi thêm dòng KC_HOSTNAME — xem nhật ký học tập).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: bss
+  labels:
+    app: keycloak
+    tier: edge # dùng chung allow-public-ingress (base/network-policies, Giai đoạn 7 việc 5) khi PR đó đã merge
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: keycloak }
+  template:
+    metadata:
+      labels: { app: keycloak, tier: edge }
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.5
+          args: ["start-dev", "--import-realm"]
+          env:
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              valueFrom: { secretKeyRef: { name: keycloak-admin, key: username } }
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-admin, key: password } }
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            - name: KC_HOSTNAME
+              value: "http://keycloak.bss.svc.cluster.local:8080"
+            - name: KC_HOSTNAME_STRICT
+              value: "true"
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+          ports:
+            - { containerPort: 8080, name: http }
+            - { containerPort: 9000, name: management }
+          # Bug thật gặp khi deploy lần đầu: Keycloak 26.x phục vụ /health/* trên PORT QUẢN TRỊ
+          # RIÊNG (9000, "Management interface" — thấy rõ trong log khởi động), KHÔNG phải cổng
+          # ứng dụng 8080. Trỏ probe vào 8080 khiến kubelet nhận HTTP 404 (cổng 8080 vẫn trả lời,
+          # chỉ là không có route đó) — khác hẳn "connection refused" (sẽ thấy nếu cổng sai hẳn),
+          # dấu hiệu để phân biệt 2 loại lỗi này trong tương lai.
+          readinessProbe:
+            httpGet: { path: /health/ready, port: 9000 }
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            failureThreshold: 20 # Quarkus + import realm lần đầu có thể mất > 30s
+          livenessProbe:
+            httpGet: { path: /health/live, port: 9000 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "250m", memory: "768Mi" } # JVM Quarkus — nhẹ hơn Spring Boot nhưng vẫn cần kha khá RAM lúc khởi động
+            limits: { cpu: "1000m", memory: "1Gi" }
+          # Bug thật gặp khi deploy lần đầu: `readOnlyRootFilesystem: true` (mọi container khác
+          # trong repo đều dùng) làm Keycloak CrashLoop ngay — `start-dev --import-realm` kích
+          # hoạt bước "augmentation" của Quarkus (build runner jar LÚC KHỞI ĐỘNG, ghi thẳng vào
+          # /opt/keycloak/lib/quarkus/…, KHÔNG phải /opt/keycloak/data), lỗi thật:
+          # `java.nio.file.ReadOnlyFileSystemException`. Đây là đặc thù riêng của "dev mode" —
+          # ảnh production đúng cách chạy `kc.sh build` NGAY LÚC BUILD IMAGE (đóng gói sẵn 1 bản
+          # đã "augment") rồi `kc.sh start` (không "-dev") lúc runtime KHÔNG cần ghi gì vào
+          # rootfs — readOnlyRootFilesystem hoạt động bình thường với cách đó. Không làm ở đây vì
+          # Keycloak này chỉ phục vụ kiểm thử cục bộ trên kind, không phải để chạy production.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000 # image quay.io/keycloak đã mặc định UID 1000 — xác nhận bằng `docker run ... id`
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities: { drop: ["ALL"] }
+            seccompProfile: { type: RuntimeDefault }
+          volumeMounts:
+            - { name: data, mountPath: /opt/keycloak/data }
+            - { name: tmp, mountPath: /tmp }
+            - { name: realm-import, mountPath: /opt/keycloak/data/import, readOnly: true }
+      volumes:
+        - { name: data, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
+        - name: realm-import
+          configMap: { name: keycloak-realm-bss }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: bss
+  labels: { app: keycloak, tier: edge }
+spec:
+  selector: { app: keycloak }
+  ports:
+    - { name: http, port: 8080, targetPort: 8080 }

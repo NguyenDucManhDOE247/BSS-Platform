@@ -13,6 +13,16 @@
 # bump rieng duoc an toan (nhay 3 minor version, doi API tracing tu dong cua Boot) -- cung loai
 # no ky thuat "can nang ca dong Spring Boot" nhu cac CVE ben duoi.
 CVE-2026-40984
+# CVE-2026-22732 (CRITICAL, Giai doan 7 viec 6 -- B-18): moi phat sinh THAT boi chinh thay doi
+# nay -- them spring-boot-starter-security keo theo spring-security-web:6.2.8 (quan ly boi Boot
+# 3.2.x BOM). Ban va CHI co tu 6.5.9/7.0.4 -- khong co ban va nao trong dong 6.2.x/6.3.x/6.4.x, va
+# cac module Spring Security khac (core/config/crypto/oauth2-resource-server) van dang o 6.2.8 --
+# nang rieng mot minh spring-security-web len 6.5.x se lech version giua cac module cung 1 bo
+# khung, rui ro hong runtime cao hon la giu nguyen + ghi nhan. Danh doi co chu dich: B-18 (khong
+# co xac thuc = ai cung xoa duoc khach hang) nghiem trong hon CVE nay (policy bypass/information
+# disclosure trong 1 tinh huong cau hinh cu the) -- cung loai no ky thuat "can Boot 3.3/3.4+" nhu
+# cac CVE khac trong file nay.
+CVE-2026-22732
 CVE-2025-14813
 CVE-2025-22228
 CVE-2025-22235
