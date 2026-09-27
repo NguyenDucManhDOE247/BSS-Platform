@@ -1,0 +1,21 @@
+# Prometheus (namespace "monitoring") phải gọi được /actuator/prometheus của MỌI backend + gateway
+# (ServiceMonitor "bss-services", Giai đoạn 7 việc 1) — không có luật này, default-deny chặn hết,
+# mọi target chuyển "down", toàn bộ dashboard/alert từ việc 1 mù thông tin.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-scrape
+  namespace: bss
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: tier, operator: In, values: [backend, edge] } # khớp đúng nhãn ServiceMonitor dùng
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring # nhãn tự động K8s gắn cho mọi Namespace
+      ports:
+        - { protocol: TCP, port: 8080 }

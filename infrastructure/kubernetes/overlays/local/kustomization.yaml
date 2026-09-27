@@ -18,6 +18,7 @@ resources:
   - ../../base
   - postgres
   - localstack
+  - network-policies-local.yaml
 
 images:
   # Tag "local" khớp đúng `make build-images` (build context không đổi — xem
