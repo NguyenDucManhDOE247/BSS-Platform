@@ -14,6 +14,28 @@ Bối cảnh: [ADR-006](../adr/ADR-006-staging-prod-ephemeral.md) — staging/pr
 - Đã có ít nhất một lần **CD dev xanh** cho commit muốn ship (image phải có trong ECR).
 - Bạn đã chọn commit và biết số phiên bản (`rc-v0.1.0` / `v0.1.0`).
 
+## 1b. ⚠️ Hạn mức vCPU EC2 — xin TRƯỚC buổi demo (lỗi thật gặp ngày 2026-09-25)
+
+Tài khoản mới chỉ có **8 vCPU** "Running On-Demand Standard (A, C, D, H, I, M, R, T, Z)". Mỗi `t3.large` = 2 vCPU, `t3.medium` = 2 vCPU:
+
+| Môi trường | Node | vCPU |
+|---|---|---|
+| dev | 2 × t3.medium | 4 |
+| staging | 3 × t3.large (2 node **không đủ**: 14 Pod × request 250–500m + hệ thống ≈ 3.6 vCPU/3.86) | 6 |
+| prod | 5 × t3.large (6850m request app + hệ thống ≈ 8.5 vCPU; chưa có autoscaler) | 10 |
+
+Prod thất bại với `VcpuLimitExceeded` khi apply (cluster + RDS multi-AZ + NAT đã tạo, nhưng node group `CREATE_FAILED` — tốn ~$0.4/giờ cho tới khi destroy).
+**Xin quota trước** (miễn phí, có thể thành support case và mất giờ–ngày):
+
+```bash
+aws service-quotas request-service-quota-increase --service-code ec2 --quota-code L-1216C47A --desired-value 32 --region ap-southeast-1
+aws service-quotas list-requested-service-quota-change-history-by-quota --service-code ec2 --quota-code L-1216C47A --region ap-southeast-1 --query 'RequestedQuotas[].[Status,DesiredValue]'
+```
+
+Khi chưa có quota: chạy **tuần tự** — destroy dev trước, staging (6 vCPU) xong thì destroy rồi mới dựng prod (không chạy được prod 10 vCPU với hạn mức 8).
+
+**Ghi chú công cụ (Windows):** Helm trên Windows là v4 (bạn đã chốt giữ Helm v3.22 → dùng trong WSL). `scripts/platform-install.sh` chạy trong WSL cần `terraform output` (WSL không đọc được cache provider của Windows) và tải chart (mạng WSL có lúc timeout tải `.tgz`). Cách né đã dùng: lấy `aws_lb_controller_role_arn` bằng Terraform phía Windows, tải sẵn chart đã ghim phiên bản bằng `curl` rồi `helm upgrade --install <file.tgz>` trong WSL.
+
 ## 2. Dựng cluster (lặp lại cho `staging`, rồi `prod` nếu cần)
 
 Thay `<env>` bằng `staging` hoặc `prod`.

@@ -79,9 +79,13 @@ module "eks" {
   public_subnet_ids          = module.vpc.public_subnet_ids
   public_access_cidrs        = var.public_access_cidrs
   system_node_instance_types = ["t3.large"]
-  system_node_desired_size   = 2
-  system_node_min_size       = 2
-  system_node_max_size       = 5
+  # Found for real on the first staging session (2026-09-25): 7 services x 2 replicas request 2600m CPU
+  # in total, and with the system pods (~1000m) that is ~93% of two t3.large (3.86 vCPU allocatable) —
+  # one pod stayed Pending ("Insufficient cpu") while real usage was 4%. There is no cluster
+  # autoscaler/Karpenter yet, so the node count must be right up front: 3 nodes.
+  system_node_desired_size = 3
+  system_node_min_size     = 2
+  system_node_max_size     = 5
 
   tags = local.common_tags
 }
