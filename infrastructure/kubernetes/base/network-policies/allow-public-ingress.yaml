@@ -1,0 +1,35 @@
+# 3 Pod nhận traffic THẬT từ bên ngoài cluster, theo đúng route trong base/ingress.yaml
+# (/api → api-gateway, /admin → admin-console, / → web-portal): cho vào từ BẤT KỲ nguồn nào.
+#
+# "Cho phép từ MỌI nguồn" = KHÔNG viết field `from:` trong luật ingress. Bài học thật (kiểm bằng
+# `kubectl apply` thật, API server từ chối ngay, không phải đoán): `from: [{}]` (1 phần tử object
+# rỗng) tưởng như "1 peer selector rỗng = khớp hết" nhưng bị NGAY CHÍNH API server từ chối —
+# `spec.ingress[0].from[0]: Required value: must specify a peer` (peer PHẢI có ít nhất 1 trong 3:
+# podSelector/namespaceSelector/ipBlock, object hoàn toàn rỗng thì không hợp lệ). Chỉ có đúng 1
+# cách hợp lệ để nói "mọi nguồn": bỏ hẳn field `from`, chỉ còn `ports:` trong luật.
+#
+# Vì sao không giới hạn nguồn theo namespace ingress-nginx (local) / dải IP ALB (AWS)? Hai môi
+# trường có cơ chế route KHÁC NHAU tới mức không viết chung 1 luật chính xác được:
+#   - kind: ingress-nginx forward request MANG IP của chính Pod controller (namespace ingress-nginx).
+#   - AWS: ALB Controller dùng target-type "ip" — request tới THẲNG IP Pod, nguồn là ENI của ALB
+#     nằm trong VPC (không phải 1 Pod/namespace K8s nào để `namespaceSelector` chọn được).
+# Siết đúng theo AWS (SecurityGroup của ALB, ACM, WAF ở lớp trước — CLAUDE.md §2 lớp 2) an toàn
+# hơn nhiều so với NetworkPolicy cho ca này; NetworkPolicy chỉ cần đảm bảo 3 Pod NÀY được vào,
+# còn lại (billing, order, ...) không nhận trực tiếp — đó mới là phần whitelist NetworkPolicy lo.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-public-ingress
+  namespace: bss
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: tier, operator: In, values: [edge, frontend] }
+  policyTypes:
+    - Ingress
+  ingress:
+    # NetworkPolicy lọc theo CONTAINER port (Pod thật sự lắng nghe), không phải Service port — cả
+    # 3 Deployment (api-gateway, web-portal, admin-console) đều expose containerPort 8080 (Nginx
+    # dùng ảnh "nginx-unprivileged" — B-05 — nên không nghe ở 80 dù Service map port 80 → 8080).
+    - ports:
+        - { protocol: TCP, port: 8080 }

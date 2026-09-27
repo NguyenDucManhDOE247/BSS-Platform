@@ -1,0 +1,51 @@
+# Giai đoạn 7, việc 5 (B-25) — CHỈ áp dụng cho overlay local: Postgres + LocalStack là 2 Pod chỉ
+# tồn tại ở kind (dev/staging/prod dùng RDS/EventBridge/SQS thật, nằm NGOÀI cluster — không phải
+# đối tượng của NetworkPolicy, mà là AWS Security Group, việc khác). `default-deny-ingress.yaml`
+# (base, podSelector: {} = MỌI Pod trong namespace bss) áp dụng luôn cho 2 Pod này một khi
+# namespace được set = bss ở overlay — thiếu 2 luật allow dưới đây, `make local-up`/e2e-kind sẽ
+# gãy hoàn toàn (không service nào kết nối được DB/AWS giả lập).
+#
+# ⚠️ Chưa kiểm chứng: kubelet (readiness/livenessProbe của chính Postgres/LocalStack) có bị
+# NetworkPolicy chặn không — tùy CNI (nhiều CNI xem traffic probe của kubelet là traffic riêng,
+# không đi qua đường Pod-to-Pod bị NetworkPolicy kiểm soát, nhưng KHÔNG phải luôn luôn đúng với
+# mọi CNI). kindnet (CNI mặc định của kind) không thực thi NetworkPolicy nên không lộ ra được vấn
+# đề này ở đây — chỉ kiểm chứng được trên CNI có enforcement thật (xem
+# docs/runbooks/network-policy.md mục 2, việc cần làm khi bật NetworkPolicy trên EKS thật).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backends-to-postgres
+  namespace: bss
+spec:
+  podSelector:
+    matchLabels: { app: postgres }
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - { key: tier, operator: In, values: [backend] }
+      ports:
+        - { protocol: TCP, port: 5432 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-order-billing-to-localstack
+  namespace: bss
+spec:
+  podSelector:
+    matchLabels: { app: localstack }
+  policyTypes:
+    - Ingress
+  ingress:
+    # Chỉ order-management (publish EventBridge) và billing-service (consume SQS) thật sự gọi
+    # LocalStack — xem AWS_ENDPOINT_URL trong configMapGenerator của kustomization.yaml overlay
+    # này. customer-service/product-catalog/api-gateway không cần, không whitelist.
+    - from:
+        - podSelector:
+            matchExpressions:
+              - { key: app, operator: In, values: [order-management, billing-service] }
+      ports:
+        - { protocol: TCP, port: 4566 }
