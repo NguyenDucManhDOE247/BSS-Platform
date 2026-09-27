@@ -20,6 +20,12 @@ spec:
         tier: frontend
     spec:
       serviceAccountName: web-portal
+      # Giai đoạn 7, việc 8 (trivy config KSV-0118, HIGH) — xem comment đầy đủ ở
+      # base/admin-console/deployment.yaml.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile: { type: RuntimeDefault }
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone
