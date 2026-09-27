@@ -68,20 +68,11 @@ helm upgrade --install otel-collector open-telemetry/opentelemetry-collector \
   -n observability --create-namespace \
   -f tracing/otel-collector-values.yaml
 
-# 8. Prometheus + Grafana — Giai đoạn 7 (already done for kind/local since Giai đoạn 2 — see the
-# "Local (kind)" section below; this is the same stack, pointed at AWS instead).
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
-  -n monitoring --create-namespace \
-  -f monitoring/prometheus/values.yaml
-kubectl apply -f monitoring/alerts/
-
-# Pre-load BSS dashboards as a ConfigMap so the Grafana sidecar picks them up.
-kubectl create configmap bss-dashboards \
-  --from-file=monitoring/grafana/dashboards/ \
-  -n monitoring --dry-run=client -o yaml | \
-  kubectl label --local -f - grafana_dashboard=1 --dry-run=client -o yaml | \
-  kubectl apply -f -
+# 8. Prometheus + Grafana + Alertmanager — Giai đoạn 7. Một lệnh (đã gom ~15 lệnh cũ, cùng đường đi
+# với kind — xem mục "Local (kind)" bên dưới): tạo Secret mật khẩu Grafana + webhook, cài chart đã
+# ghim version, nạp ServiceMonitor + alert + dashboard.
+ALERT_WEBHOOK_KIND=discord ALERT_WEBHOOK_URL='https://discord.com/api/webhooks/...' \
+  ./scripts/monitoring-install.sh dev
 ```
 
 > `make ENV=dev platform-install` runs `scripts/platform-install.sh`, which wraps steps 1–3 above
@@ -98,23 +89,9 @@ tương đương chạy trên kind — xem `learning/16` mục 2 bảng "điều
 ```bash
 # ingress-nginx + metrics-server: cài bởi scripts/kind-up.sh, không phải bước ở đây.
 
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo update prometheus-community
-helm --kube-context kind-bss upgrade --install monitoring prometheus-community/kube-prometheus-stack \
-  --version 91.4.0 \
-  -n monitoring --create-namespace \
-  -f monitoring/prometheus/values-local.yaml
-
-# ServiceMonitor cần CRD do chart trên vừa cài xong mới apply được (B-40).
-kubectl --context kind-bss apply -f monitoring/service-monitor.yaml
-kubectl --context kind-bss apply -f monitoring/alerts/
-
-# Dashboard: giống hệt bước AWS ở trên, đổi --context.
-kubectl --context kind-bss create configmap bss-dashboards \
-  --from-file=monitoring/grafana/dashboards/ \
-  -n monitoring --dry-run=client -o yaml | \
-  kubectl label --local -f - grafana_dashboard=1 --dry-run=client -o yaml | \
-  kubectl --context kind-bss apply -f -
+# Một lệnh (Giai đoạn 7). Bỏ ALERT_WEBHOOK_* nếu chưa có webhook — alert vẫn Firing nhưng không ai nhận
+# (script sẽ cảnh báo). Cài kênh: docs/runbooks/alerting-setup.md.
+./scripts/monitoring-install.sh kind
 
 # Xem Prometheus/Grafana/Alertmanager qua port-forward (kind không có LoadBalancer):
 kubectl --context kind-bss -n monitoring port-forward svc/monitoring-grafana 3000:80
@@ -123,7 +100,7 @@ kubectl --context kind-bss -n monitoring port-forward svc/monitoring-kube-promet
 ```
 
 Kiểm tra: Prometheus UI (`:9090`) → Status → Targets → 5 target `bss-services` phải `UP` (4
-backend + gateway). Grafana (`:3000`, user `admin`, mật khẩu xem
-`values-local.yaml`) → dashboard **BSS / BSS Microservices Overview** có số liệu thật. Webhook
-Discord/Slack cho Alertmanager: xem `docs/runbooks/bss-high-error-rate.md` và
-`docs/adr/ADR-001-alerting-channel.md`.
+backend + gateway). Grafana (`:3000`, user `admin`, mật khẩu: lệnh `kubectl … get secret grafana-admin`
+mà script in ra cuối) → dashboard **BSS / BSS Microservices Overview** có số liệu thật. Webhook
+Discord/Slack: `docs/runbooks/alerting-setup.md` và `docs/adr/ADR-001-alerting-channel.md`.
+Unit test cho alert (không cần cluster): `./scripts/test-alert-rules.sh`.
