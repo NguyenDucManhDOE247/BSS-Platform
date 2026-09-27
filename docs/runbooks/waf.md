@@ -62,14 +62,19 @@ Phân biệt request bị WAF chặn với lỗi backend thường: response WAF
 `x-amzn-waf-action` (xem bằng `curl -sD - -o /dev/null ...`) — nếu chỉ nhìn mã 403 không đủ, vì
 backend cũng có thể tự trả 403.
 
-**Kết quả đã tự chạy thật (điền sau khi verify trên cluster dev thật — xem
-`learning/nhat-ky-hoc-tap.md` mục Giai đoạn 7 việc 7):**
+**Kết quả đã tự chạy thật trên cluster `bss-dev-eks` thật, ALB thật
+(`k8s-bss-bssingre-*.ap-southeast-1.elb.amazonaws.com`), 2026-09-27:**
 
 | Kịch bản | Kỳ vọng | Kết quả thật |
 |---|---|---|
-| Request bình thường | Đi qua WAF (không có `x-amzn-waf-action`) | _điền sau_ |
-| SQLi trong query string | 403, có `x-amzn-waf-action: block` | _điền sau_ |
-| > rate limit từ 1 IP | 403 sau khi vượt ngưỡng | _điền sau_ |
+| `GET /api/tmf-api/customerManagement/v4/customer` (không payload) | Đi qua WAF, chạm app | ✅ `500` JSON thật từ Spring (app chưa có DB bootstrap — nhưng request TỚI ĐƯỢC app, chứng minh WAF cho qua) |
+| Y hệt path trên + `?id=1' OR '1'='1` | Bị `aws-sqli-rule-set` chặn | ✅ `403`, `Server: awselb/2.0`, body HTML generic — KHÔNG phải app trả 403, so sánh trực tiếp với dòng trên (cùng path, chỉ khác query string) |
+| Hạ tạm `rate_limit_per_5min` xuống 100 (mức tối thiểu AWS cho phép), gửi 160 request liên tục | 100 request đầu qua (200), rồi bắt đầu bị chặn | ⚠️ Không chặn ngay ở request nào cụ thể trong đợt 160 đầu — rate-based rule của AWS WAF tổng hợp/đánh giá theo chu kỳ ~30s-vài phút (tài liệu AWS), không chặn tức thời theo từng request. Gửi tiếp đợt 200 request ~1 phút sau: **toàn bộ 200/200 bị 403** — rule đã kịp tổng hợp và chặn |
+| Trả `rate_limit_per_5min` lại 2000, `terraform apply` | Request bình thường đi qua lại ngay | ⚠️ **Không ngay lập tức** — vẫn `403` trong ~100 giây sau khi apply (trạng thái "đang bị chặn" của rate-based rule tồn tại tới hết cửa sổ đánh giá hiện tại, không tự reset theo giới hạn mới ngay), rồi tự hết và trở lại `500` (app) bình thường |
+
+**Bài học rate-based rule (thêm vào §4 sự cố):** đừng kỳ vọng thay đổi/nâng `rate_limit_per_5min`
+có hiệu lực ngay — một client đã bị đánh dấu "vượt ngưỡng" còn bị chặn tới hết cửa sổ đánh giá hiện
+tại của AWS WAF, kể cả sau khi bạn đã sửa rule và apply xong.
 
 ## 4. Sự cố hay gặp
 

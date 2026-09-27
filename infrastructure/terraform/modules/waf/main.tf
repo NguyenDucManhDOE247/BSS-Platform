@@ -15,7 +15,7 @@
 
 resource "aws_wafv2_web_acl" "this" {
   name        = "${var.name_prefix}-waf"
-  description = "Perimeter WAF for the ${var.name_prefix} ALB — managed rule groups + rate limit"
+  description = "Perimeter WAF for the ${var.name_prefix} ALB - managed rule groups + rate limit"
   scope       = "REGIONAL"
 
   default_action {
