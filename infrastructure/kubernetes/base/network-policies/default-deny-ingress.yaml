@@ -1,0 +1,30 @@
+# Giai đoạn 7, việc 5 (B-25): mặc định KHÔNG Pod nào trong namespace `bss` nhận được traffic vào
+# (ingress), trừ khi có 1 NetworkPolicy khác cho phép rõ ràng (các file allow-*.yaml cạnh đây).
+#
+# Chỉ khóa INGRESS, KHÔNG khóa egress (`spec.policyTypes` chỉ có `Ingress`) — quyết định có chủ
+# đích, không phải làm nửa vời:
+#   - Khóa egress đúng cách cần liệt kê hết mọi đích ra ngoài cluster mà app thật sự gọi (DNS,
+#     STS/EventBridge/SQS của AWS, RDS, GitHub Packages lúc build…) — sai 1 chỗ là service chết
+#     im lặng (DNS bị chặn là lỗi kinh điển nhất khi làm NetworkPolicy lần đầu). Việc đó xứng đáng
+#     là 1 thay đổi RIÊNG, kiểm chứng kỹ hơn (liệt kê IP/DNS đích), không gộp chung PR này.
+#   - Checkpoint của Giai đoạn 7 ("Pod ngoài whitelist không gọi được billing") chỉ cần chặn
+#     INGRESS là đủ để đạt.
+#
+# ⚠️ Enforcement (thực thi luật) do CNI đảm nhiệm, NetworkPolicy chỉ là API record — object này
+# APPLY thành công trên MỌI cluster (kể cả kind mặc định), nhưng CHỈ CÓ TÁC DỤNG THẬT khi CNI hỗ
+# trợ NetworkPolicy. kind mặc định dùng `kindnet` — KHÔNG thực thi NetworkPolicy (xác nhận thật:
+# apply object này lên cluster kind-bss, `kubectl exec` vẫn gọi xuyên được — không có gì bị chặn).
+# EKS: bật bằng `network_policy_configuration { enabled = true }` trên VPC CNI (aws-node) — xem
+# comment trong infrastructure/terraform/modules/eks/main.tf khi bật (chưa bật — Terraform riêng).
+# Xác minh THẬT cơ chế deny/allow của chính các luật này (không phải khả năng của CNI) dùng 1
+# cluster kind tạm CÓ Calico — xem docs/runbooks/network-policy.md mục 2.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: bss
+spec:
+  podSelector: {} # chọn MỌI Pod trong namespace bss
+  policyTypes:
+    - Ingress
+  # Không có "ingress:" ⇒ không luật nào cho phép ⇒ deny tất cả (đúng ngữ nghĩa NetworkPolicy).

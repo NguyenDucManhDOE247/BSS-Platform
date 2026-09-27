@@ -1,0 +1,25 @@
+# Đường gọi THẬT DUY NHẤT tới 4 backend hiện nay: api-gateway (xem apps/backend/api-gateway/
+# src/main/resources/application.yml — 4 route customer/product/order/billing). Không service nào
+# khác gọi trực tiếp backend (B-13 chưa fix: order-management chưa tự gọi product-catalog qua
+# REST) — nên whitelist ngắn gọn đúng 1 nguồn. Thêm nguồn khi B-13 được fix (order → product).
+#
+# Đây chính là luật chứng minh checkpoint Giai đoạn 7: "Pod ngoài whitelist không gọi được
+# billing" — Pod bất kỳ khác (không phải api-gateway) gọi billing-service:80 sẽ bị default-deny
+# chặn; chỉ api-gateway lọt qua được luật NÀY.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-to-backends
+  namespace: bss
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: tier, operator: In, values: [backend] }
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: api-gateway }
+      ports:
+        - { protocol: TCP, port: 8080 }

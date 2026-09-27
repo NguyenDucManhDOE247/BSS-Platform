@@ -5,6 +5,7 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - otel-config.yaml
+  - network-policies
   - customer-service
   - product-catalog
   - order-management
