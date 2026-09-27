@@ -45,8 +45,6 @@ configMapGenerator:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=DEBUG
       - AWS_REGION=ap-southeast-1
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
       - AWS_ENDPOINT_URL=http://localstack.bss.svc.cluster.local:4566
       - EVENT_BUS_NAME=bss-dev-events
   - name: billing-service-config
@@ -54,8 +52,6 @@ configMapGenerator:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=DEBUG
       - AWS_REGION=ap-southeast-1
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
       - AWS_ENDPOINT_URL=http://localstack.bss.svc.cluster.local:4566
       - SQS_QUEUE_URL=http://localstack.bss.svc.cluster.local:4566/000000000000/bss-dev-billing-orders
   - name: api-gateway-config
@@ -74,6 +70,16 @@ configMapGenerator:
 # ("<svc>-db-credentials"), chỉ khác NGUỒN tạo ra Secret đó (secretGenerator ở đây, Secrets Store
 # CSI sync ở overlays/dev) — base Deployment không cần biết sự khác biệt này (ADR-004).
 secretGenerator:
+  # Giai đoạn 7, việc 8 (trivy config KSV-0109, HIGH): "test"/"test" là hằng số CÔNG KHAI của
+  # chính LocalStack (không phải bí mật thật — LocalStack chỉ chấp nhận đúng 2 chuỗi này), nhưng
+  # trivy quét theo TÊN KHÓA (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY) chứ không biết giá trị có
+  # thật hay không — và thói quen đúng vẫn là "trông giống secret thì đi qua đường Secret", không
+  # phải ConfigMap, dù giá trị vô hại. Chuyển sang đây để tự sửa đúng thói quen thay vì chỉ tắt
+  # cảnh báo bằng .trivyignore.
+  - name: order-management-aws-test-credentials
+    literals: [AWS_ACCESS_KEY_ID=test, AWS_SECRET_ACCESS_KEY=test]
+  - name: billing-service-aws-test-credentials
+    literals: [AWS_ACCESS_KEY_ID=test, AWS_SECRET_ACCESS_KEY=test]
   - name: customer-db-credentials
     literals: [username=bss, password=bss, host=postgres.bss.svc.cluster.local, port=5432, dbname=customer]
   - name: product-db-credentials
@@ -97,6 +103,19 @@ replicas:
   - { name: admin-console,     count: 1 }
 
 patches:
+  # Giai đoạn 7, việc 8 — gắn 2 Secret AWS test credentials mới (xem secretGenerator ở trên).
+  # CHỈ overlay local có Secret này (LocalStack) — vá bằng patch thay vì sửa base/deployment.yaml,
+  # để không đòi hỏi Secret không tồn tại trên dev/staging/prod (IRSA thật, không cần AWS keys).
+  - target: { kind: Deployment, name: order-management }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom/-
+        value: { secretRef: { name: order-management-aws-test-credentials } }
+  - target: { kind: Deployment, name: billing-service }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom/-
+        value: { secretRef: { name: billing-service-aws-test-credentials } }
   # B-22 (bản local): base hpa.yaml đặt minReplicas: 2 cho mọi service (api-gateway: xem patch
   # riêng bên dưới, base của nó là 2 chung với các service khác) — hạ về 1 để khớp `replicas:`
   # ở trên, tránh HPA tự ý scale-up ngay khi apply xong (đúng lab 13.3 của learning/13).
