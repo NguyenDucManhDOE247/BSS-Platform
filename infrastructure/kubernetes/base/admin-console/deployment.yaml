@@ -20,6 +20,13 @@ spec:
         tier: frontend
     spec:
       serviceAccountName: admin-console
+      # Giai đoạn 7, việc 8 (trivy config KSV-0118, HIGH): securityContext CẤP POD, bổ sung cho
+      # securityContext cấp container đã có sẵn bên dưới — phòng khi có container KHÁC (initContainer,
+      # sidecar…) được thêm sau này mà quên đặt securityContext riêng, Pod vẫn không chạy bằng root.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile: { type: RuntimeDefault }
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone

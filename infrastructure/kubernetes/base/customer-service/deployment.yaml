@@ -29,6 +29,12 @@ spec:
         prometheus.io/path: "/actuator/prometheus"
     spec:
       serviceAccountName: customer-service  # uses IRSA (annotation set in overlays)
+      # Giai đoạn 7, việc 8 (trivy config KSV-0118, HIGH) — xem comment đầy đủ ở
+      # base/admin-console/deployment.yaml.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile: { type: RuntimeDefault }
       # Spread pods across zones for resilience.
       topologySpreadConstraints:
         - maxSkew: 1
