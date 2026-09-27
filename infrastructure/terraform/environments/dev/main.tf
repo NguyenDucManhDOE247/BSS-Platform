@@ -152,6 +152,16 @@ resource "aws_eks_addon" "ebs_csi" {
   service_account_role_arn = module.platform_iam.ebs_csi_role_arn
 }
 
+# ── WAF (Giai đoạn 7 / việc 7) ───────────────────────────────────────────
+module "waf" {
+  source = "../../modules/waf"
+
+  name_prefix         = local.name_prefix
+  rate_limit_per_5min = 2000
+
+  tags = local.common_tags
+}
+
 # ── Observability ──────────────────────────────────────────────────────
 module "observability" {
   source = "../../modules/observability"

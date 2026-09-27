@@ -126,6 +126,16 @@ module "observability" {
   tags = local.common_tags
 }
 
+# ── WAF (Giai đoạn 7 / việc 7) ───────────────────────────────────────────
+module "waf" {
+  source = "../../modules/waf"
+
+  name_prefix         = local.name_prefix
+  rate_limit_per_5min = 2000
+
+  tags = local.common_tags
+}
+
 # ── Platform addon IAM (B-35) ────────────────────────────────────────────
 module "platform_iam" {
   source = "../../modules/platform-iam"

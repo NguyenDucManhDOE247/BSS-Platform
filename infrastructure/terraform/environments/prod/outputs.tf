@@ -52,3 +52,8 @@ output "github_deployer_role_arn" {
   description = "Convenience mirror of environments/shared's output — the role for the GitHub Environment `production` (variable AWS_ROLE_ARN)."
   value       = data.terraform_remote_state.shared.outputs.deployer_role_arns["prod"]
 }
+
+output "waf_web_acl_arn" {
+  description = "Feed to scripts/wire-waf.sh after `kubectl apply -k` to associate this env's ALB with its Web ACL"
+  value       = module.waf.web_acl_arn
+}
