@@ -44,6 +44,40 @@ tới khi đủ số Pod `Ready` trở lại.
 - Nếu overlay có `replicas ≥ 2` (staging/prod) — 0 request lỗi. Chạy lại lab với
   `kubectl -n bss scale deploy/order-management --replicas=2` trên dev để tự thấy sự khác biệt.
 
+⚠️ **2 điều tự bắt được khi chạy thật lần đầu (2026-09-27, kind) — đọc trước khi chạy:**
+1. **`PROBE_PATH` mặc định trỏ tới `product-catalog`**, không phải `order-management` — đúng ý đồ
+   ban đầu (chứng minh SERVICE KHÁC không bị ảnh hưởng), nhưng nếu bạn muốn thấy `order-management`
+   **tự nó** có bị gián đoạn không, phải trỏ `PROBE_PATH` sang chính endpoint của nó, có
+   `customerId` hợp lệ (lấy từ `GET /api/tmf-api/customerManagement/v4/customer`):
+   ```bash
+   PROBE_PATH="/api/tmf-api/orderManagement/v4/productOrder?customerId=<uuid-thật>" \
+     SMOKE_BASE_URL=http://bss.localtest.me ./scripts/chaos-delete-pod.sh bss order-management
+   ```
+2. **`kubectl scale --replicas=2` có thể bị HPA âm thầm trả về 1** ngay sau đó, nếu overlay đặt
+   `minReplicas: 1` (đúng trường hợp dev/local, B-22) — HPA reconcile lại theo metric, ghi đè lệnh
+   scale tay của bạn trong vài giây. Muốn scale tay "dính" thật, phải nâng luôn `minReplicas` của
+   HPA trước:
+   ```bash
+   kubectl -n bss patch hpa order-management --type=merge -p '{"spec":{"minReplicas":2}}'
+   kubectl -n bss scale deploy/order-management --replicas=2
+   # ... chạy lab xong, nhớ trả lại:
+   kubectl -n bss patch hpa order-management --type=merge -p '{"spec":{"minReplicas":1}}'
+   ```
+
+**Kết quả 1 lần chạy thật (kind, `bss-control-plane`, 2026-09-27):**
+
+| Cấu hình | Recovery time | Request lỗi / tổng |
+|---|---|---|
+| `replicas: 1` (mặc định dev/local) | 21s | **9 / 26** |
+| `replicas: 2` (HPA `minReplicas` nâng tạm) | 22s | **0 / 56** |
+
+Đúng khớp lý thuyết: cùng một thời gian hồi phục (~20s, do JVM Spring Boot khởi động, không đổi
+theo số replica), nhưng số request lỗi phụ thuộc HOÀN TOÀN vào việc còn pod nào khác phục vụ trong
+lúc đó hay không. **Bug thật tự bắt được khi viết lab này:** bản đầu của `chaos-delete-pod.sh` đo
+"0s hồi phục" (sai) vì đếm luôn container của pod VỪA bị xóa (đang ở `Terminating` nhưng
+`containerStatuses[0].ready` có thể vẫn `true` trong lúc chờ hết grace period) — đã sửa bằng cách
+loại trừ đúng tên pod nạn nhân khỏi phép đếm (xem diff script + nhật ký).
+
 Ghi lại: thời gian hồi phục (giây) + số request lỗi / tổng số request, vào nhật ký.
 
 ## 2. Thí nghiệm B — làm `product-catalog` "chết" để xem Resilience4j phản ứng
@@ -79,6 +113,19 @@ thứ 2 rơi vào Pod còn sống) — **đây là lý do B-13 chọn retry, kh�
 
 Script tự `uncordon` lại node ở cuối (kể cả khi drain fail) — kiểm lại bằng `kubectl get nodes`
 (cột `STATUS` không còn `SchedulingDisabled`).
+
+**Kết quả 1 lần chạy thật (kind 1 node, `bss-control-plane`, 2026-09-27):** đúng như dự đoán ở
+trên — `drain` cordon được node, evict thành công các pod KHÔNG có PDB chặn (Postgres, Keycloak,
+LocalStack, CoreDNS, ingress-nginx, toàn bộ addon `monitoring/`) nhưng **treo vĩnh viễn** (retry
+mỗi 5s, timeout sau 180s) ở các pod có PDB `minAvailable: 1` + chỉ 1 replica (`api-gateway`,
+`admin-console`, `billing-service`, `product-catalog`, `web-portal`, và `customer-service`/
+`order-management` khi chỉ có 1 pod) — log lặp lại đúng dòng
+`Cannot evict pod as it would violate the pod's disruption budget`. Script thoát exit 1 (đúng thiết
+kế), **nhưng trap vẫn `uncordon` được node** — xác nhận `kubectl get nodes` sau đó vẫn `Ready`,
+không `SchedulingDisabled`. Các pod không-PDB bị evict xong tự mọc lại **trên chính node đó** (vì
+là node duy nhất) — không mất dữ liệu do đều dùng `emptyDir`/dữ liệu seed lại từ Flyway lúc khởi
+động; `keycloak` mất ~30-40s để sẵn sàng lại do Quarkus rebuild config lúc boot (bình thường, không
+phải bug). **Để thấy Pod THẬT SỰ di dời sang node khác (không chỉ bị chặn), cần dev EKS 2 node.**
 
 ## 4. Ghi vào nhật ký
 
