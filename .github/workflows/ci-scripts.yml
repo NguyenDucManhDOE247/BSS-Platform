@@ -32,7 +32,7 @@ jobs:
       # shellcheck, jq, kubectl, git đều có sẵn trên ubuntu-latest — không cần cài thêm.
       # `-S warning`: chỉ fail khi có warning/error (bỏ qua mức info/style của các script cũ).
       - name: shellcheck
-        run: shellcheck -S warning scripts/release-manifest.sh scripts/smoke.sh scripts/test-alert-rules.sh scripts/monitoring-install.sh scripts/tracing-install.sh scripts/logging-install.sh scripts/tests/*.sh
+        run: shellcheck -S warning scripts/release-manifest.sh scripts/smoke.sh scripts/test-alert-rules.sh scripts/monitoring-install.sh scripts/tracing-install.sh scripts/logging-install.sh scripts/auth-install.sh scripts/tests/*.sh
 
       - name: Test release-manifest.sh
         run: ./scripts/tests/release-manifest.test.sh

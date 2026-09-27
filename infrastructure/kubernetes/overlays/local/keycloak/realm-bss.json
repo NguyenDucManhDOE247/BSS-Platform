@@ -1,0 +1,51 @@
+{
+  "realm": "bss",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": false,
+  "requiredActions": [
+    { "alias": "VERIFY_EMAIL", "enabled": false, "defaultAction": false, "providerId": "VERIFY_EMAIL", "priority": 50, "name": "Verify Email" },
+    { "alias": "VERIFY_PROFILE", "enabled": false, "defaultAction": false, "providerId": "VERIFY_PROFILE", "priority": 90, "name": "Verify Profile" },
+    { "alias": "UPDATE_PASSWORD", "enabled": true, "defaultAction": false, "providerId": "UPDATE_PASSWORD", "priority": 30, "name": "Update Password" },
+    { "alias": "UPDATE_PROFILE", "enabled": true, "defaultAction": false, "providerId": "UPDATE_PROFILE", "priority": 40, "name": "Update Profile" }
+  ],
+  "roles": {
+    "realm": [
+      { "name": "admin", "description": "Toan quyen quan tri BSS (customer, offering, ...)" },
+      { "name": "customer", "description": "Khach hang - dat hang, xem hoa don cua chinh minh" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "api-gateway",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["*"],
+      "webOrigins": ["*"]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin1",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [{ "type": "password", "value": "admin1pass", "temporary": false }],
+      "realmRoles": ["admin"]
+    },
+    {
+      "username": "customer1",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [{ "type": "password", "value": "customer1pass", "temporary": false }],
+      "realmRoles": ["customer"]
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+# Chỉ dùng bởi SecurityConfigTest (@ActiveProfiles("sectest")). Nhân bản đúng cấu trúc route của
+# application.yml nhưng trỏ URI vào cổng loopback không ai nghe (bị từ chối NGAY — RST, không
+# phải đợi DNS hết hạn) — test chỉ cần biết "security có cho request lọt qua hay không", downstream
+# thật sự trả lời gì không phải việc của test này. Ghi đè NGUYÊN cả list `routes` (không ghi đè
+# từng phần tử qua property) vì Spring không merge được property rời rạc vào 1 phần tử YAML list
+# đã tồn tại — đã tự kiểm chứng: `spring.cloud.gateway.routes[0].uri=...` làm context load LỖI
+# (property binder đòi đủ field bắt buộc của route, không chỉ uri).
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: customer
+          uri: http://127.0.0.1:1
+          predicates:
+            - Path=/api/tmf-api/customerManagement/**
+        - id: product
+          uri: http://127.0.0.1:1
+          predicates:
+            - Path=/api/tmf-api/productCatalog/**
+        - id: order
+          uri: http://127.0.0.1:1
+          predicates:
+            - Path=/api/tmf-api/orderManagement/**
+        - id: billing
+          uri: http://127.0.0.1:1
+          predicates:
+            - Path=/api/tmf-api/billingManagement/**
+      default-filters:
+        - StripPrefix=1

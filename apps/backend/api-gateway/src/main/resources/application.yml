@@ -33,6 +33,14 @@ spring:
         - StripPrefix=1 # strip "/api"
         - AddResponseHeader=X-Gateway, bss-api-gateway
 
+# Giai đoạn 7, việc 6 (B-18). Không đặt `spring.security.oauth2.resourceserver.jwt.issuer-uri` ở
+# đây (kể cả rỗng) — property đó chỉ nên TỒN TẠI khi thật sự có nơi phát hành token (biến môi
+# trường SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI, overlays/local/kustomization.yaml).
+# Xem com.bss.gateway.config.SecurityConfig để biết vì sao KHÔNG bật cho mọi môi trường.
+bss:
+  auth:
+    enabled: ${BSS_AUTH_ENABLED:false}
+
 server:
   port: 8080
   shutdown: graceful
