@@ -6,21 +6,30 @@ Spring Cloud Gateway (api-gateway) does not aggregate downstream health
 answers "is everything up". This script hits each backend's own actuator
 endpoint directly and reports UP/DOWN/TIMEOUT for all of them at once.
 
-Run it from your machine against port-forwarded services:
+Run it from your machine against port-forwarded services. NOTE: the Service objects in this repo
+expose port **80** (mapping to the container's 8080) — `port-forward svc/X local:8080` fails with
+"does not have a service port 8080"; use `local:80` (caught running this for real, 2026-09-27):
 
-    kubectl -n bss port-forward svc/customer-service 18081:8080 &
-    kubectl -n bss port-forward svc/product-catalog  18082:8080 &
-    kubectl -n bss port-forward svc/order-management 18083:8080 &
-    kubectl -n bss port-forward svc/billing-service   18084:8080 &
-    kubectl -n bss port-forward svc/api-gateway        18080:8080 &
+    kubectl -n bss port-forward svc/customer-service 18081:80 &
+    kubectl -n bss port-forward svc/product-catalog  18082:80 &
+    kubectl -n bss port-forward svc/order-management 18083:80 &
+    kubectl -n bss port-forward svc/billing-service   18084:80 &
+    kubectl -n bss port-forward svc/api-gateway        18080:80 &
     python tools/ops/health_check.py --mode local
 
-Or run it as a one-off pod *inside* the cluster (no port-forward needed),
-where the default `--mode cluster` Kubernetes Service DNS names resolve:
+Or run it as a one-off pod *inside* the cluster (no port-forward needed), where the default
+`--mode cluster` Kubernetes Service DNS names resolve. Namespace `bss` enforces Pod Security
+`restricted` (Giai đoạn 2/7, B-25) — a bare `kubectl run` is rejected; the pod needs an explicit
+non-root `securityContext` (caught running this for real, 2026-09-27; the port-forward method
+above is simpler and faster — `pip install` inside the pod adds real wall-clock time):
 
-    kubectl -n bss run health-check --rm -it --restart=Never \\
-      --image=python:3.12-slim -- sh -c \\
-      "pip install requests -q && python -c \\"$(cat tools/ops/health_check.py)\\" --mode cluster"
+    kubectl -n bss run health-check --rm -i --restart=Never --image=python:3.12-slim --overrides='
+    {"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":1000,"seccompProfile":{"type":"RuntimeDefault"}},
+    "containers":[{"name":"health-check","image":"python:3.12-slim","stdin":true,
+    "securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}' \\
+      -- sh -c "pip install --user -q requests && python3 - <<'PYEOF'
+    $(cat tools/ops/health_check.py)
+    PYEOF"
 
 Exit code is 0 only if every target reports UP.
 """
@@ -87,6 +96,9 @@ def check_one(name: str, url: str, timeout: float) -> tuple[str, str]:
 
 
 def main() -> int:
+    # Windows' legacy console codepage (cp1252) crashes on emoji instead of just mangling them —
+    # force UTF-8 stdout so this never hard-fails regardless of the terminal's codepage.
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     args = parse_args()
     targets = build_targets(args)
 
