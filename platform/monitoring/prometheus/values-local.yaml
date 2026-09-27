@@ -7,13 +7,14 @@
 #     "kind chạy static Pod thật, phải scrape được, khác EKS managed") nhưng kiểm chứng thật cho
 #     kết quả NGƯỢC LẠI — giữ tắt như AWS, lý do đầy đủ ở comment cạnh `kubeControllerManager:`
 #     bên dưới (kubeadm bind các cổng này vào 127.0.0.1, không phải node IP).
-#   - grafana.adminPassword: KHÔNG hardcode ở đây (khác values.yaml AWS đang có CHANGE_ME) — mật
-#     khẩu Grafana dù chỉ chạy local vẫn không nên nằm trong git; truyền lúc cài:
-#       helm upgrade --install monitoring ... --set grafana.adminPassword=<mật khẩu bạn chọn>
-#     Không set gì thì Helm tự sinh 1 chuỗi ngẫu nhiên, lấy lại bằng:
-#       kubectl -n monitoring get secret monitoring-grafana -o jsonpath='{.data.admin-password}' | base64 -d
+#   - Mật khẩu Grafana KHÔNG hardcode (dù chỉ chạy local vẫn không nên nằm trong git): từ Giai đoạn 7 cả
+#     local lẫn AWS cùng đọc từ Secret `grafana-admin` do scripts/monitoring-install.sh tạo (mật khẩu
+#     ngẫu nhiên; cách lấy lại được script in ra cuối). Trước đó local dùng `--set grafana.adminPassword=`,
+#     AWS lại có `CHANGE_ME` — hai đường khác nhau nên dễ lệch.
+#   - Receiver Alertmanager: script thêm discord/slack/webhook qua file values tạm khi có ALERT_WEBHOOK_URL
+#     (xem comment ở receiver "default" bên dưới + docs/runbooks/alerting-setup.md).
 #
-# Install: xem platform/README.md mục "Local (kind)".
+# Install: ./scripts/monitoring-install.sh kind   (xem thêm platform/README.md mục "Local (kind)").
 
 prometheus:
   prometheusSpec:
@@ -38,6 +39,10 @@ prometheus:
     enabled: false
 
 grafana:
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
   persistence:
     enabled: true
     size: 1Gi
@@ -102,22 +107,11 @@ alertmanager:
       # sẵn trong values.yaml (bản AWS) — chưa lộ ra vì chưa từng cài thật (đúng nhận định gốc
       # của B-42: "chưa có đường thu metric/trace thực sự", nay biết thêm nguyên nhân cụ thể).
       - name: "null"
+      # Receiver "default" cố tình trống ở đây (đã đổi ở Giai đoạn 7 — trước đó là 2 khối comment
+      # "bỏ comment rồi dán URL vào file", dễ lỡ commit URL thật): scripts/monitoring-install.sh thêm
+      # discord/slack/webhook_configs với URL đọc từ FILE trong Secret `alertmanager-webhook` khi bạn
+      # đặt ALERT_WEBHOOK_URL. Xem docs/runbooks/alerting-setup.md + ADR-001.
       - name: "default"
-        # B-42: chưa có webhook thật (xem docs/adr/ADR-001-alerting-channel.md) — bỏ comment
-        # ĐÚNG 1 trong 2 khối dưới đây và điền URL thật khi bạn đã tạo webhook (hướng dẫn từng
-        # bước trong docs/runbooks/bss-high-error-rate.md). Không commit URL thật lên git — sửa
-        # trực tiếp values-local.yaml cục bộ (không track) hoặc truyền qua:
-        #   helm upgrade --install monitoring ... --set-string 'alertmanager.config.receivers[0].discord_configs[0].webhook_url=...'
-        #
-        # --- Discord ---
-        # discord_configs:
-        #   - webhook_url: "https://discord.com/api/webhooks/XXXXXXXX/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-        #
-        # --- Slack ---
-        # slack_configs:
-        #   - api_url: "https://hooks.slack.com/services/XXXXXXX/XXXXXXX/XXXXXXXXXXXXXXXXXXXXXXXX"
-        #     channel: "#bss-alerts"
-        #     send_resolved: true
 
 # Tắt hẳn ServiceMonitor của 4 thành phần control-plane này (không chỉ tắt RULE cảnh báo bên
 # dưới) — đây mới là cấu hình thật sự dừng việc scrape (defaultRules.rules chỉ tắt các alert

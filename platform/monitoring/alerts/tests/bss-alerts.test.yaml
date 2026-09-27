@@ -1,0 +1,163 @@
+# Test đơn vị cho bss-alerts.yaml — chạy bằng `./scripts/test-alert-rules.sh` (promtool test rules).
+#
+# Cách promtool test hoạt động: KHÔNG có Prometheus thật nào chạy. Bạn "bơm" các chuỗi số liệu giả
+# (input_series) theo từng khoảng `interval`, rồi hỏi "tới phút X, alert nào đang Firing?"
+# (alert_rule_test). Nhờ vậy kiểm chứng được cả `for:` (phải kéo dài đủ lâu mới bắn) lẫn việc
+# alert KHÔNG bắn khi hệ thống khỏe — thứ rất khó kiểm bằng cách "phá thử trên cluster thật".
+#
+# Cú pháp `values`:  'a+bxN' = bắt đầu a, cộng b mỗi bước, N bước (a+b*0 … a+b*N) — '0x10' = mười một
+# mẫu bằng 0;  '_' = thiếu mẫu (series không tồn tại ở thời điểm đó — đúng kịch bản "target biến mất").
+rule_files:
+  - bss-alerts.rules.yaml
+
+evaluation_interval: 30s
+
+tests:
+  # ── 1. LỖ HỔNG CỦA BssServiceDown ────────────────────────────────────────────────────────────
+  # Service bị scale về 0: Prometheus không còn target → KHÔNG có series `up` nào cả. Chỉ
+  # kube-state-metrics còn báo "0 replica sẵn sàng". BssServiceDown im lặng, BssDeploymentUnavailable
+  # phải bắn. Đây là bằng chứng bằng số cho lý do alert thứ hai tồn tại.
+  - name: scale-to-zero — service biến mất hẳn khỏi scrape
+    interval: 30s
+    input_series:
+      - series: 'kube_deployment_status_replicas_available{namespace="bss",deployment="billing-service"}'
+        values: '1x4 0x20'
+      - series: 'kube_deployment_spec_replicas{namespace="bss",deployment="billing-service"}'
+        values: '1x4 0x20'
+    alert_rule_test:
+      # Phút 1 vẫn còn 1 replica → chưa có gì.
+      - eval_time: 1m
+        alertname: BssDeploymentUnavailable
+        exp_alerts: []
+      # Về 0 từ phút 2.5; `for: 1m` → phải đang Firing trước phút 5 (đây chính là checkpoint ≤ 5 phút).
+      - eval_time: 4m
+        alertname: BssDeploymentUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              team: platform
+              namespace: bss
+              deployment: billing-service
+            exp_annotations:
+              summary: "Deployment billing-service has 0 available replicas"
+              description: "billing-service không có Pod nào sẵn sàng phục vụ trong 1 phút (scale về 0, ImagePullBackOff, readiness fail…)."
+              runbook_url: "https://github.com/NguyenDucManhDOE247/BSS-Platform/blob/main/docs/runbooks/bss-service-down.md"
+      # …và BssServiceDown thì hoàn toàn im lặng, dù service đã chết.
+      - eval_time: 10m
+        alertname: BssServiceDown
+        exp_alerts: []
+
+  # ── 2. BssServiceDown — target còn nhưng scrape thất bại ──────────────────────────────────────
+  - name: up==0 kéo dài 2 phút
+    interval: 30s
+    input_series:
+      - series: 'up{namespace="bss",job="customer-service",pod="customer-service-abc"}'
+        values: '1x4 0x20'
+    alert_rule_test:
+      - eval_time: 3m        # mới ~30 giây down (< for: 2m)
+        alertname: BssServiceDown
+        exp_alerts: []
+      - eval_time: 6m        # đã down > 2 phút
+        alertname: BssServiceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              team: platform
+              namespace: bss
+              job: customer-service
+              pod: customer-service-abc
+            exp_annotations:
+              summary: "Service customer-service is down"
+              description: "Prometheus không scrape được customer-service (customer-service-abc) trong 2 phút."
+              runbook_url: "https://github.com/NguyenDucManhDOE247/BSS-Platform/blob/main/docs/runbooks/bss-service-down.md"
+
+  # ── 3. Hệ thống khỏe → không alert nào bắn (chặn báo động giả) ────────────────────────────────
+  - name: khỏe mạnh thì im lặng
+    interval: 30s
+    input_series:
+      - series: 'up{namespace="bss",job="customer-service"}'
+        values: '1x40'
+      - series: 'kube_deployment_status_replicas_available{namespace="bss",deployment="customer-service"}'
+        values: '2x40'
+      - series: 'kube_deployment_spec_replicas{namespace="bss",deployment="customer-service"}'
+        values: '2x40'
+    alert_rule_test:
+      - { eval_time: 15m, alertname: BssServiceDown,           exp_alerts: [] }
+      - { eval_time: 15m, alertname: BssDeploymentUnavailable, exp_alerts: [] }
+      - { eval_time: 15m, alertname: BssDeploymentDegraded,    exp_alerts: [] }
+
+  # ── 4. Thiếu replica nhưng chưa về 0 (Pod Pending vì hết CPU node) ────────────────────────────
+  - name: 2/3 replica sẵn sàng suốt 10 phút
+    interval: 30s
+    input_series:
+      - series: 'kube_deployment_status_replicas_available{namespace="bss",deployment="order-management"}'
+        values: '2x40'
+      - series: 'kube_deployment_spec_replicas{namespace="bss",deployment="order-management"}'
+        values: '3x40'
+    alert_rule_test:
+      - { eval_time: 5m,  alertname: BssDeploymentDegraded, exp_alerts: [] }   # chưa đủ 10 phút (rolling update bình thường)
+      - eval_time: 12m
+        alertname: BssDeploymentDegraded
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: platform
+              namespace: bss
+              deployment: order-management
+            exp_annotations:
+              summary: "Deployment order-management thiếu replica"
+              description: "order-management có ít replica sẵn sàng hơn số mong muốn suốt 10 phút."
+              runbook_url: "https://github.com/NguyenDucManhDOE247/BSS-Platform/blob/main/docs/runbooks/bss-service-down.md#3-thiếu-replica-bssdeploymentdegraded"
+      # Đang thiếu replica nhưng KHÔNG phải về 0 → alert "critical" không được bắn chồng.
+      - { eval_time: 12m, alertname: BssDeploymentUnavailable, exp_alerts: [] }
+
+  # ── 5. Tỉ lệ 5xx ───────────────────────────────────────────────────────────────────────────────
+  # Counter tăng đều: 10 request/phút thành công + 2 request/phút lỗi 5xx ⇒ ~16,7% > 5%.
+  - name: 5xx > 5% trong 5 phút
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{namespace="bss",application="order-management",status="200"}'
+        values: '0+10x20'
+      - series: 'http_server_requests_seconds_count{namespace="bss",application="order-management",status="500"}'
+        values: '0+2x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: BssHighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              team: platform
+              application: order-management
+            exp_annotations:
+              summary: "order-management 5xx rate above 5%"
+              runbook_url: "https://github.com/NguyenDucManhDOE247/BSS-Platform/blob/main/docs/runbooks/bss-high-error-rate.md"
+
+  - name: 5xx chỉ 1% thì không báo
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{namespace="bss",application="order-management",status="200"}'
+        values: '0+99x20'
+      - series: 'http_server_requests_seconds_count{namespace="bss",application="order-management",status="500"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - { eval_time: 15m, alertname: BssHighErrorRate, exp_alerts: [] }
+
+  # ── 6. Crash loop ──────────────────────────────────────────────────────────────────────────────
+  - name: pod restart liên tục
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="bss",pod="billing-service-x",container="app"}'
+        values: '0+1x30'      # thêm 1 restart mỗi phút
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: BssPodCrashLooping
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: platform
+              namespace: bss
+              pod: billing-service-x
+              container: app
+            exp_annotations:
+              summary: "Pod billing-service-x restarting repeatedly"
+              runbook_url: "https://github.com/NguyenDucManhDOE247/BSS-Platform/blob/main/docs/runbooks/bss-pod-crash-looping.md"

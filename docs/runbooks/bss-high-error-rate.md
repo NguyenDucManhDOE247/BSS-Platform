@@ -1,15 +1,14 @@
-# Runbook: BSS — tỉ lệ lỗi 5xx cao / service down / latency cao / pod crash loop / JVM heap cao
+# Runbook: tỉ lệ lỗi 5xx cao (`BssHighErrorRate`)
 
-> Runbook dùng chung cho cả 5 alert trong `platform/monitoring/alerts/bss-alerts.yaml`
-> (`BssServiceDown`, `BssHighRequestLatency`, `BssHighErrorRate`, `BssPodCrashLooping`,
-> `BssJvmHeapHigh`) — mỗi alert trỏ `runbook_url` về đúng file này. Runbook đầu tiên của dự án
-> (CLAUDE.md §10: "Mọi alert có `runbook_url` annotation").
+> Alert: 5xx / tổng request của một `application` > 5% suốt 5 phút (`platform/monitoring/alerts/bss-alerts.yaml`).
+> Mức **critical** — người dùng đang nhận lỗi. Các alert khác có runbook riêng:
+> `bss-service-down.md`, `bss-high-latency.md`, `bss-pod-crash-looping.md`, `bss-jvm-heap-high.md`.
+> Cài kênh nhận thông báo + kiểm tra đường ống: `alerting-setup.md`.
 
-## 1. Xác nhận alert là thật (không phải false positive)
+## 1. Xác nhận alert là thật
 
-Mở Prometheus UI (`kubectl -n monitoring port-forward svc/monitoring-kube-prometheus-prometheus 9090:9090`
-rồi vào `localhost:9090`), chạy đúng PromQL của alert đang Firing (copy từ
-`platform/monitoring/alerts/bss-alerts.yaml`, ví dụ với `BssHighErrorRate`):
+Mở Prometheus (`kubectl -n monitoring port-forward svc/monitoring-kube-prometheus-prometheus 9090:9090`,
+vào `localhost:9090`) và chạy đúng PromQL của alert:
 
 ```promql
 sum by (application) (rate(http_server_requests_seconds_count{namespace="bss",status=~"5.."}[5m]))
@@ -17,78 +16,54 @@ sum by (application) (rate(http_server_requests_seconds_count{namespace="bss",st
 sum by (application) (rate(http_server_requests_seconds_count{namespace="bss"}[5m]))
 ```
 
-Nếu số ra khớp ngưỡng trong `expr` của alert (> 0.05 cho lỗi, > 1.0s cho latency...) → alert
-đúng, sang bước 2. Nếu Prometheus không trả về series nào → khả năng cao ServiceMonitor chưa
-scrape được (xem mục 4).
+- Ra số khớp ngưỡng → alert đúng, sang mục 2.
+- Không ra series nào → ServiceMonitor chưa scrape được (`alerting-setup.md` mục 4).
+- Tỉ lệ cao nhưng **lưu lượng cực thấp** (vd. 1 lỗi/20 request lúc nửa đêm) → có thể là nhiễu; xem SLO
+  (`docs/SLO.md`) để biết có đang đốt error budget thật không.
 
-## 2. Xử lý ngay theo từng alert
+## 2. Lỗi nằm ở đâu — theo `uri` và `status`
 
-| Alert | Lệnh chẩn đoán đầu tiên | Xử lý ngay |
-|---|---|---|
-| `BssServiceDown` | `kubectl -n bss get pods -l app=<service>` | Pod `CrashLoopBackOff`/`Pending` → xem `learning/13` mục 7 bảng triệu chứng. Pod `Running` nhưng vẫn Down → `kubectl -n bss get endpoints <service>` rỗng thường là readiness fail. |
-| `BssHighErrorRate` | `kubectl -n bss logs deploy/<service> --tail=100 \| grep ERROR` | Tìm exception lặp lại; nếu liên quan DB/AWS phụ thuộc ngoài (Postgres/LocalStack) — kiểm tra Pod đó trước. |
-| `BssHighRequestLatency` | Prometheus: `histogram_quantile(0.95, sum by (le,uri)(rate(http_server_requests_seconds_bucket{application="<svc>"}[5m])))` theo từng `uri` | Endpoint cụ thể nào chậm? Có phải đang gọi service khác đang chậm (order-management → product-catalog, xem B-13)? |
-| `BssPodCrashLooping` | `kubectl -n bss describe pod <pod>` (đọc `Last State` + `Exit Code`), `kubectl -n bss logs <pod> --previous` | Exit code 1 thường là lỗi khởi động (xem log); 137 là bị OOMKilled → xem alert JVM heap. |
-| `BssJvmHeapHigh` | `kubectl -n bss top pod <pod>` (cần metrics-server) | Heap liên tục cao là dấu hiệu memory leak hoặc `limits.memory` đặt quá sát `-XX:MaxRAMPercentage=75` của JVM — xem `learning/13` mục 2.1 "Tính memory cho JVM". |
-
-## 3. Tạo webhook Discord hoặc Slack (nếu chưa có — xem `docs/adr/ADR-001-alerting-channel.md`)
-
-### Discord
-
-1. Server Settings → **Integrations** → **Webhooks** → **New Webhook**.
-2. Chọn kênh nhận (vd. `#bss-alerts`), đặt tên, **Copy Webhook URL**.
-3. Trong `platform/monitoring/prometheus/values-local.yaml`, bỏ comment khối `discord_configs`
-   dưới `alertmanager.config.receivers`, dán URL vào `webhook_url`.
-4. `helm upgrade monitoring prometheus-community/kube-prometheus-stack -n monitoring -f platform/monitoring/prometheus/values-local.yaml --version 91.4.0` (giữ đúng version đã cài).
-
-### Slack
-
-1. Vào [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From scratch**.
-2. **Incoming Webhooks** → bật **Activate Incoming Webhooks** → **Add New Webhook to Workspace**
-   → chọn kênh → **Copy** URL (dạng `https://hooks.slack.com/services/T.../B.../...`).
-3. Bỏ comment khối `slack_configs` trong `values-local.yaml`, dán vào `api_url`.
-4. `helm upgrade` như trên.
-
-### Kiểm tra webhook hoạt động (không cần đợi alert thật)
-
-```bash
-kubectl -n monitoring port-forward svc/monitoring-kube-prometheus-alertmanager 9093:9093
-# Alertmanager UI → New Silence / hoặc gửi alert test qua amtool:
-amtool alert add alertname="Test" --alertmanager.url=http://localhost:9093
+```promql
+sum by (uri, status) (rate(http_server_requests_seconds_count{namespace="bss",application="<service>",status=~"5.."}[5m]))
 ```
 
-Thấy tin nhắn xuất hiện trong Discord/Slack trong vài giây → webhook đúng.
+| Status | Thường nghĩa là |
+|---|---|
+| 500 | Exception chưa xử lý trong app → đọc log |
+| 502/503/504 (qua gateway) | Service phía sau chết/quá tải/timeout → `bss-service-down.md` |
+| 500 từ endpoint phụ thuộc DB/AWS | Phụ thuộc ngoài hỏng: Postgres/RDS, SQS/EventBridge |
 
-## 4. ServiceMonitor không scrape được (Prometheus Targets không thấy service)
+## 3. Đọc log
 
 ```bash
-kubectl -n monitoring port-forward svc/monitoring-kube-prometheus-prometheus 9090:9090
-# Status → Targets → tìm job "bss-services"
+kubectl -n bss logs deploy/<service> --tail=200 | grep -i -E "ERROR|Exception"
+# Từ GĐ7 log là JSON (có trường trace_id): lọc theo một request cụ thể
+kubectl -n bss logs deploy/<service> --tail=500 | jq -c 'select(.level=="ERROR")'
 ```
 
-Không thấy target nào:
-- `kubectl -n bss get servicemonitor bss-services -o yaml` — kiểm tra `spec.selector` có khớp
-  nhãn `tier` trên Service thật không (`kubectl -n bss get svc --show-labels`).
-- `kubectl -n monitoring get prometheus -o jsonpath='{.items[0].spec.serviceMonitorSelector}'` —
-  nếu không rỗng, có thể chart giới hạn ServiceMonitor theo nhãn cụ thể (values đã set
-  `serviceMonitorSelectorNilUsesHelmValues: false` để chọn hết, kiểm tra values đang dùng đúng
-  file `values-local.yaml` không).
+Trên AWS: CloudWatch Logs Insights → `fields @timestamp, level, message, trace_id | filter level = "ERROR" | sort @timestamp desc`.
 
-## 5. Ép lỗi 500 để tự kiểm tra toàn bộ chuỗi (metric → alert → Alertmanager)
+Có `trace_id` → tìm cùng `trace_id` ở service khác (gateway → order → …) để ráp lại đường đi của một request lỗi.
 
-Không có endpoint "cố tình lỗi" sẵn trong repo — cách nhanh nhất để tạo tải lỗi thật: gọi order
-với `productOfferingId` không tồn tại lặp lại nhiều lần trong vòng 5 phút (ngưỡng `for` của
-`BssHighErrorRate`):
+## 4. Ép lỗi 500 để tự kiểm tra toàn chuỗi (metric → alert → Alertmanager → kênh chat)
+
+Không có endpoint "cố tình lỗi" — tạo tải lỗi thật bằng order tham chiếu offering không tồn tại, trong
+vòng 5 phút (ngưỡng `for` của alert):
 
 ```bash
 for i in $(seq 1 50); do
   curl -s -o /dev/null -w "%{http_code}\n" -X POST http://bss.localtest.me/api/tmf-api/orderManagement/v4/productOrder \
-    -H 'Content-Type: application/json' \
+    -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
     -d '{"customerId":"00000000-0000-0000-0000-000000000000","category":"new","items":[{"productOfferingId":"00000000-0000-0000-0000-000000000000","quantity":1}]}'
   sleep 2
 done
 ```
 
-Theo dõi Alertmanager UI (`:9093`) — `BssHighErrorRate` phải chuyển `Firing` trong ≤ 10 phút
-(alert có `for: 5m` + tối đa 30s scrape interval + thời gian Alertmanager `group_wait`/
-`group_interval`). Nếu đã cấu hình webhook, tin nhắn phải tới kênh trong khoảng thời gian đó.
+(`$TOKEN`: từ GĐ7 gateway yêu cầu JWT — xem `docs/runbooks/auth.md` mục "Lấy token".) Theo dõi Alertmanager
+(`:9093`): `BssHighErrorRate` chuyển `Firing` trong ≤ 10 phút (`for: 5m` + scrape 30 giây + `group_wait`).
+
+## 5. Giảm nhẹ
+
+- Lỗi bắt đầu ngay sau deploy → rollback (chạy lại cd-dev từ commit tốt, `docs/runbooks/cd-dev.md`).
+- Do phụ thuộc chết → khắc phục phụ thuộc; cân nhắc circuit breaker (Resilience4j — Giai đoạn 8).
+- Do quá tải → scale ngang (`kubectl -n bss scale deploy/<service> --replicas=<n>`), xem `bss-high-latency.md`.
