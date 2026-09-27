@@ -107,6 +107,14 @@
             <artifactId>postgresql</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Giai đoạn 7 (B-17): JSON structured logging. Not managed by spring-boot-dependencies
+             BOM — version pinned explicitly. 7.4 is the latest release compatible with the
+             Logback 1.4.x line that Boot 3.2.12 brings in (8.x needs Logback 1.5+ / Boot 3.4+). -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>7.4</version>
+        </dependency>
     </dependencies>
 
     <build>

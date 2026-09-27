@@ -4,6 +4,7 @@ kind: Kustomization
 # Root base — every service that ships in BSS Platform. Overlays consume this.
 resources:
   - namespace.yaml
+  - otel-config.yaml
   - customer-service
   - product-catalog
   - order-management

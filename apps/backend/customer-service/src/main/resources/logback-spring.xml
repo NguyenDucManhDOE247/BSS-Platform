@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Giai đoạn 7 (B-17): log dạng JSON thay vì text — CloudWatch Logs Insights (và mọi công cụ đọc
+  log tập trung) truy vấn theo TRƯỜNG (`fields level, trace_id | filter level = "ERROR"`), không
+  parse chuỗi tự do. File tên "logback-spring.xml" (không phải "logback.xml") để Spring Boot cho
+  phép dùng <springProperty> bên dưới — đọc kỹ: có file này thì Boot KHÔNG tự nạp cấu hình mặc
+  định của nó nữa (org/springframework/boot/logging/logback/base.xml), file này phải tự đủ.
+
+  trace_id/span_id KHÔNG được set tay ở đây — chúng tới từ MDC do OpenTelemetry Java agent tự
+  bơm vào (xem infrastructure/kubernetes/base/otel-config.yaml:
+  OTEL_INSTRUMENTATION_LOGBACK_MDC_ENABLED=true, và initContainer "otel-agent-init" trong mỗi
+  deployment.yaml). LogstashEncoder mặc định đã in MỌI khóa MDC ra thành trường JSON cấp cao nhất
+  — không cần liệt kê tên trường ở đây. Nếu chạy `mvn spring-boot:run` cục bộ (không có agent),
+  log vẫn ra JSON hợp lệ, chỉ là không có trace_id/span_id (đúng dự kiến — chưa có request nào
+  được trace).
+-->
+<configuration>
+    <springProperty scope="context" name="appName" source="spring.application.name"/>
+
+    <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <!-- Trường cố định, có ích khi log của nhiều service trộn chung 1 luồng (CloudWatch
+                 Logs Insights `fields service, level, message`). application/service_name là 2
+                 tên hay gặp — đặt cả hai để khớp cả Micrometer (`application`, xem B-16) lẫn quy
+                 ước OTel (`service.name`), tránh phải nhớ 2 câu query khác nhau. -->
+            <customFields>{"service":"${appName}"}</customFields>
+        </encoder>
+    </appender>
+
+    <!-- logging.level.* (env LOGGING_LEVEL_ROOT=DEBUG ở overlays/local, v.v.) vẫn override được
+         mức log ở đây — Spring Boot áp property đó SAU khi nạp file này (LoggingSystem gọi
+         context.getLogger(name).setLevel(...) độc lập với những gì <root>/<logger> khai báo). -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE_JSON"/>
+    </root>
+</configuration>
