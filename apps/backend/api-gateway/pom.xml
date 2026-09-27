@@ -35,6 +35,17 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+            <!-- Giai đoạn 7: CVE-2026-8763 (CRITICAL) + CVE-2026-13506 (HIGH) mới xuất hiện trong
+                 CVE DB của Trivy nhắm vào bcprov-jdk18on:1.78 (kéo vào transitive bởi
+                 spring-security-rsa, dùng cho JWK RSA — `mvn dependency:tree` xác nhận, không
+                 phải do dependency nào Giai đoạn 7 thêm). Khác các CVE khác trong .trivyignore
+                 (cần nâng cả dòng Spring Boot mới có bản vá) — bcprov là 1 lá riêng biệt, nâng
+                 thẳng lên 1.85 (bản đã vá theo advisory) không đụng gì tới Spring/Spring Cloud. -->
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>1.85</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -55,6 +66,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
+        </dependency>
+        <!-- Giai đoạn 7 (B-17): JSON structured logging — xem comment đầy đủ ở customer-service/pom.xml. -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>7.4</version>
         </dependency>
     </dependencies>
 

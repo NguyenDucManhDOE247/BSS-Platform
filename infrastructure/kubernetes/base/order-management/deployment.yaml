@@ -33,6 +33,20 @@ spec:
           labelSelector:
             matchLabels:
               app: order-management
+      # Giai đoạn 7 — xem comment đầy đủ ở customer-service/deployment.yaml.
+      initContainers:
+        - name: otel-agent-init
+          image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:1.33.5
+          command: ["cp", "/javaagent.jar", "/otel/javaagent.jar"]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+            seccompProfile: { type: RuntimeDefault }
+          volumeMounts:
+            - { name: otel-agent, mountPath: /otel }
       containers:
         - name: app
           image: order-management:latest
@@ -44,7 +58,11 @@ spec:
           envFrom:
             - configMapRef:
                 name: order-management-config
+            - configMapRef:
+                name: otel-common-config
           env:
+            - name: OTEL_SERVICE_NAME
+              value: "order-management"
             # Giai đoạn 5 / B-20 — see the identical comment in customer-service/deployment.yaml.
             - name: DB_HOST
               valueFrom:
@@ -83,5 +101,7 @@ spec:
             seccompProfile: { type: RuntimeDefault }
           volumeMounts:
             - { name: tmp, mountPath: /tmp }
+            - { name: otel-agent, mountPath: /otel, readOnly: true }
       volumes:
         - { name: tmp, emptyDir: {} }
+        - { name: otel-agent, emptyDir: {} }

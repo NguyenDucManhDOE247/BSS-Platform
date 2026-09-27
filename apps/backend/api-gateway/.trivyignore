@@ -6,6 +6,13 @@
 # bump applied to the other services (pom.xml). Same follow-up applies: a Boot 3.3/3.4 +
 # matching Spring Cloud release train migration is the real fix, out of scope for Giai đoạn 1.
 
+# CVE-2026-40984 (Giai doan 7, phat hien khi rebase PR #153 len main sau khi #152 merge -- CI
+# chay lai voi CVE DB moi, khong lien quan gi toi thay doi cua #153): micrometer-core 1.12.13
+# (keo vao boi micrometer-registry-prometheus, quan ly boi Boot 3.2.x BOM). Ban va chi co o
+# 1.15.12/1.16.6 -- khac bcprov-jdk18on (da sua thang trong pom.xml), micrometer-core khong tach
+# bump rieng duoc an toan (nhay 3 minor version, doi API tracing tu dong cua Boot) -- cung loai
+# no ky thuat "can nang ca dong Spring Boot" nhu cac CVE ben duoi.
+CVE-2026-40984
 CVE-2025-14813
 CVE-2025-22228
 CVE-2025-22235

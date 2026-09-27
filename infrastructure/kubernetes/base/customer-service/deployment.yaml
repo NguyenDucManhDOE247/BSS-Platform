@@ -37,6 +37,23 @@ spec:
           labelSelector:
             matchLabels:
               app: customer-service
+      # Giai đoạn 7: chép opentelemetry-javaagent.jar vào volume dùng chung — KHÔNG sửa code Java
+      # nào, KHÔNG rebuild base image. Cùng kỹ thuật OTel Operator dùng để "auto-instrument", làm
+      # tay ở đây vì cài cả Operator chỉ cho 5 Pod là quá nặng. Ghim version cùng lúc với
+      # infrastructure/kubernetes/base/otel-config.yaml (đọc comment ở đó).
+      initContainers:
+        - name: otel-agent-init
+          image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:1.33.5
+          command: ["cp", "/javaagent.jar", "/otel/javaagent.jar"]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+            seccompProfile: { type: RuntimeDefault }
+          volumeMounts:
+            - { name: otel-agent, mountPath: /otel }
       containers:
         - name: app
           image: customer-service:latest  # overridden by kustomize per env
@@ -53,7 +70,15 @@ spec:
           envFrom:
             - configMapRef:
                 name: customer-service-config
+            # Giai đoạn 7: biến chung cho OTel Java agent (endpoint collector, propagator, tắt
+            # exporter trùng…) — xem infrastructure/kubernetes/base/otel-config.yaml.
+            - configMapRef:
+                name: otel-common-config
           env:
+            # OTEL_SERVICE_NAME là biến DUY NHẤT khác nhau giữa 5 service — mọi biến OTel còn lại
+            # nằm trong otel-common-config (envFrom ở trên).
+            - name: OTEL_SERVICE_NAME
+              value: "customer-service"
             # Giai đoạn 5 / B-20: DB_HOST/DB_PORT/DB_NAME now travel the same path as
             # DB_USER/DB_PASSWORD — read from whatever produced the `customer-db-credentials`
             # Secret (Kustomize secretGenerator in overlays/local, AWS Secrets Store CSI sync in
@@ -118,6 +143,11 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: otel-agent
+              mountPath: /otel
+              readOnly: true
       volumes:
         - name: tmp
+          emptyDir: {}
+        - name: otel-agent
           emptyDir: {}

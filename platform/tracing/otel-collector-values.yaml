@@ -1,12 +1,23 @@
 # OpenTelemetry Collector — receives OTLP traces from services, exports to AWS X-Ray.
-# Install:
-#   helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
-#   helm upgrade --install otel-collector open-telemetry/opentelemetry-collector \
-#     -n observability --create-namespace \
-#     -f platform/tracing/otel-collector-values.yaml \
-#     --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::ACCOUNT_ID:role/bss-dev-otel
+# Install: ./scripts/tracing-install.sh dev|staging|prod (tự lấy role ARN từ Terraform output).
+# Bản dùng cho kind (không cần AWS, exporter "debug" thay "awsxray"): otel-collector-values-local.yaml.
+#
+# ⚠️ Chưa kiểm chứng trên X-Ray thật (cần tài khoản AWS + tốn một khoản rất nhỏ, hỏi trước khi
+# bật — CLAUDE.md §9). Điều CHƯA làm, ghi rõ để không tưởng nhầm là xong: X-Ray yêu cầu trace ID
+# theo định dạng riêng của nó (8 ký tự đầu = Unix timestamp dạng hex) — OTel Java agent mặc định
+# sinh trace ID ngẫu nhiên theo chuẩn W3C, KHÔNG khớp định dạng đó. Cần thêm
+# `io.opentelemetry.contrib:opentelemetry-aws-xray` (autoconfigure customizer, đặt qua
+# `OTEL_TRACES_SAMPLER`/`otel.javaagent.extensions` trỏ tới jar đó) để agent dùng
+# `AwsXrayIdGenerator`. Việc đã làm (kiểm chứng thật trên kind, xem PR): trace THẬT chảy được từ
+# app → agent → OTLP/HTTP → collector (dùng exporter `debug` ở bản local) — chỉ còn thiếu bước
+# "định dạng ID cho đúng X-Ray" + IAM `xray:PutTraceSegments` khi nối AWS thật.
 
 mode: deployment
+
+# Cố định tên Service = "otel-collector" (khớp OTEL_EXPORTER_OTLP_ENDPOINT trong otel-config.yaml)
+# bất kể tên bản Helm release — xem bug thật gặp khi kiểm chứng trên kind, comment đầy đủ ở
+# otel-collector-values-local.yaml.
+fullnameOverride: otel-collector
 
 image:
   repository: otel/opentelemetry-collector-contrib

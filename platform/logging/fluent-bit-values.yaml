@@ -1,13 +1,22 @@
 # Helm values for Fluent Bit shipping pod logs to CloudWatch Logs.
 # Log group naming matches the Terraform observability module output.
+# Install: ./scripts/logging-install.sh dev|staging|prod
 #
-# Install:
-#   helm repo add eks https://aws.github.io/eks-charts
-#   helm upgrade --install fluent-bit eks/aws-for-fluent-bit -n amazon-cloudwatch \
-#     -f platform/logging/fluent-bit-values.yaml \
-#     --create-namespace \
-#     --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::ACCOUNT_ID:role/bss-dev-fluent-bit
-
+# ⚠️ B-17/B-42, ĐÃ SỬA THẬT (Giai đoạn 7) — không chỉ đổi giá trị "docker" → "cri" như ghi chú cũ:
+# schema của bản file NÀY (trước PR này) SAI HOÀN TOÀN so với chart `eks/aws-for-fluent-bit`.
+# Chart này KHÔNG có field `input.tail.*` hay `filter.kubernetes.*` — nó dùng field PHẲNG
+# (`input.path`, `input.multilineParser`, `filter.mergeLog`, …). Helm không báo lỗi khi một key
+# không tồn tại trong chart (nó chỉ đơn giản không được template dùng tới) — nên suốt từ lúc file
+# này được viết, TOÀN BỘ khối `input.tail`/`filter.kubernetes` bị ÂM THẦM BỎ QUA, không phải chỉ
+# riêng `parser: docker`. Đã kiểm chứng thật bằng `helm template` (xem PR): với schema cũ, DaemonSet
+# vẫn chạy 100% giá trị MẶC ĐỊNH của chart (may mắn là mặc định `multilineParser: "docker, cri"` đã
+# ĐỦ để đọc được log containerd — parse không sai, chỉ tốn hơn vì luôn thử "docker" trước; nhưng
+# `Keep_Log` mặc định là `On` → mọi Pod TỪNG ghi CẢ log gốc lẫn log đã tách trường vào CloudWatch,
+# tốn gấp đôi dung lượng — B-42's "chưa có đường thu log thực sự" đúng còn sâu hơn cả nhận định gốc).
+# Đã kiểm chứng lại bằng `helm template` với schema mới (file này): `multiline.parser cri`,
+# `Exclude_Path`, `Keep_Log Off` đều xuất hiện đúng trong ConfigMap sinh ra. Version chart ghim ở
+# scripts/logging-install.sh — không đặt số version ngay trong file values vì đó không phải field
+# thật của values.yaml (đặt vào đây sẽ lặp lại đúng lỗi vừa mô tả ở trên).
 cloudWatchLogs:
   enabled: true
   region: ap-southeast-1
@@ -17,18 +26,22 @@ cloudWatchLogs:
   logRetentionDays: 7
 
 input:
-  tail:
-    enabled: true
-    path: /var/log/containers/*.log
-    excludePath: /var/log/containers/*kube-system*.log,/var/log/containers/*amazon-cloudwatch*.log
-    parser: docker
+  path: /var/log/containers/*.log
+  # Chỉ containerd (cri) — EKS/kind đều dùng containerd, không cần chart tự thử "docker" trước
+  # cho mỗi dòng log (mặc định của chart là "docker, cri").
+  multilineParser: "cri"
+  # `input.excludePath` KHÔNG phải field thật của chart (xem cảnh báo ở trên) — Fluent Bit's tail
+  # plugin có tham số `Exclude_Path`, chèn thẳng qua extraInputs (nối vào CÙNG khối [INPUT]). Tên
+  # file log của containerd là `<pod>_<namespace>_<container>-<id>.log` (xác nhận bằng
+  # `docker exec <control-plane> ls /var/log/containers/`) — bọc namespace bằng `_..._` để khớp
+  # ĐÚNG namespace đó, không khớp nhầm pod nào có chuỗi này trong TÊN.
+  extraInputs: |
+    Exclude_Path /var/log/containers/*_kube-system_*.log,/var/log/containers/*_amazon-cloudwatch_*.log
 
-# Drop noisy debug logs in dev; keep everything in prod.
 filter:
-  kubernetes:
-    enabled: true
-    mergeLog: true
-    keepLog: false # drop original "log" field after parsing
+  mergeLog: "On"      # log JSON của app (B-17: logback-spring.xml) được tách thành trường riêng
+  mergeLogKey: "data"
+  keepLog: "Off"       # KHÔNG giữ lại trường "log" gốc (chuỗi thô) sau khi đã tách — tiết kiệm CloudWatch
 
 serviceAccount:
   create: true
