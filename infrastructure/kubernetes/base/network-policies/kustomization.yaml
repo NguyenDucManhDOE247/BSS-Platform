@@ -5,3 +5,4 @@ resources:
   - allow-monitoring-scrape.yaml
   - allow-public-ingress.yaml
   - allow-gateway-to-backends.yaml
+  - allow-order-to-dependencies.yaml # GĐ9 — order-management → product-catalog (B-13), customer-service (/me)

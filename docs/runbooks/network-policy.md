@@ -11,6 +11,7 @@
 | `allow-monitoring-scrape.yaml` | `tier in (backend, edge)` | Namespace `monitoring` (Prometheus), cổng 8080 |
 | `allow-public-ingress.yaml` | `tier in (edge, frontend)` | Mọi nguồn (đây là cửa vào công khai), cổng 8080 |
 | `allow-gateway-to-backends.yaml` | `tier: backend` | Pod `app: api-gateway`, cổng 8080 |
+| `allow-order-to-dependencies.yaml` *(GĐ9)* | `product-catalog`, `customer-service` | Pod `app: order-management`, cổng 8080 — lấy giá (B-13) + hồ sơ khách `/me` (ADR-008) |
 | `overlays/local/network-policies-local.yaml` | `postgres`, `localstack` | 4 backend (Postgres), `order-management`+`billing-service` (LocalStack) |
 
 **Chỉ khóa INGRESS, không khóa EGRESS** — quyết định có chủ đích (xem comment đầy đủ trong
@@ -20,10 +21,29 @@ AWS STS/SQS/EventBridge, RDS, GitHub Packages…) — để dành cho 1 thay đ�
 ## 2. Enforcement — vì sao PHẢI tự kiểm chứng, không tin `kubectl apply` thành công
 
 `kubectl apply` một NetworkPolicy **luôn thành công** trên mọi cluster (nó chỉ là 1 object lưu
-vào etcd) — **CNI mới là thứ thật sự chặn traffic**. kind mặc định dùng `kindnet`, **không thực
-thi NetworkPolicy** — `kubectl apply -k overlays/local` trên `kind-bss` áp cả 6 policy thành công,
-nhưng `curl` xuyên namespace vẫn thông bình thường (đã tự kiểm chứng — B-25 gốc từng ghi đúng
-điều này: "cần CNI hỗ trợ").
+vào etcd) — **CNI mới là thứ thật sự chặn traffic**.
+
+> ⚠️ **Cập nhật Giai đoạn 9 (2026-09-28) — điều ghi ở GĐ7 đã KHÔNG còn đúng:** GĐ7 ghi "kindnet không
+> thực thi NetworkPolicy". `kindnetd` bản hiện tại của cluster `kind-bss`
+> (`kindest/kindnetd:v20260820-…`) **CÓ enforce**. Hệ quả thật: từ khi áp policy của GĐ7, mọi lần đặt
+> hàng trên kind đều hỏng — order-management gọi product-catalog để lấy giá (B-13) bị **"Connect timed
+> out"** → circuit breaker mở → **503**. Ma trận GĐ7 dưới đây chỉ dùng **Pod giả**, không có luồng
+> service-gọi-service thật nào, nên bỏ lọt. Sửa: `allow-order-to-dependencies.yaml`. Bài học: ma trận
+> kiểm NetworkPolicy phải gồm **mọi luồng gọi thật giữa các service**, không chỉ "kẻ lạ bị chặn".
+
+### Ma trận với Pod service THẬT trên `kind-bss` (Giai đoạn 9, đã chạy 2026-09-28)
+
+Pod "kẻ lạ" phải khai `securityContext` chuẩn `restricted`, vì namespace `bss` enforce Pod Security
+Standards (GĐ2). Nếu thiếu, admission từ chối tạo Pod, và mọi dòng "bị chặn" sẽ là kết quả giả (lệnh
+exec lỗi chứ không phải bị chặn — đã tự dính lỗi này 1 lần).
+
+| Kịch bản | Kỳ vọng | Kết quả thật |
+|---|---|---|
+| `order-management` → `product-catalog` | Đi qua | ✅ OPEN |
+| `order-management` → `customer-service` | Đi qua | ✅ OPEN |
+| `billing-service` → `product-catalog` (không cần) | Bị chặn | ✅ BLOCKED |
+| Pod lạ → `product-catalog` / `customer-service` | Bị chặn | ✅ timeout |
+| Pod lạ → `api-gateway` (cửa công khai) | Đi qua | ✅ 200 |
 
 ### Tự kiểm chứng THẬT bằng 1 cluster kind tạm có Calico (đã làm, xem PR Giai đoạn 7 việc 5)
 

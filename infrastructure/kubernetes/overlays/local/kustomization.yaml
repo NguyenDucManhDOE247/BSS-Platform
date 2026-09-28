@@ -47,6 +47,10 @@ configMapGenerator:
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=DEBUG
+      # Giai đoạn 9 việc 3b — xem customer-service-config.
+      - BSS_AUTH_ENABLED=true
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://bss.localtest.me/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: order-management-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
