@@ -84,13 +84,14 @@ module "eks" {
   public_subnet_ids          = module.vpc.public_subnet_ids
   public_access_cidrs        = var.public_access_cidrs # MUST be restricted
   system_node_instance_types = ["t3.large"]
-  # 7 services x 3 replicas request ~6850m CPU, + ~1300m for system pods = ~8.5 vCPU; a t3.large has
-  # ~1.93 vCPU allocatable => at least 5 nodes (10 vCPU) or pods stay Pending — there is no cluster
-  # autoscaler/Karpenter yet. NOTE this needs an EC2 "Running On-Demand Standard" vCPU quota >= 10
-  # (a fresh account has 8): request it BEFORE the session (docs/runbooks/cd-staging-prod-demo.md §1).
-  system_node_desired_size = 5
+  # 7 services x 3 replicas (CPU requests 250m/backend, see overlays/prod) request ~3850m CPU, + ~1300m
+  # for system pods = ~5.15 vCPU; a t3.large has ~1.93 vCPU allocatable => 4 nodes (7.72 allocatable,
+  # ~33% headroom for maxSurge rolling updates) = 8 vCPU = the default EC2 "Running On-Demand Standard"
+  # quota. There is no cluster autoscaler/Karpenter, so max_size must not exceed what the quota allows
+  # (a 5th node would fail with VcpuLimitExceeded). Raise quota + these numbers together if needed.
+  system_node_desired_size = 4
   system_node_min_size     = 3
-  system_node_max_size     = 6
+  system_node_max_size     = 4
 
   # B-39: full audit trail for prod, unlike dev's trimmed-down default (see modules/eks/variables.tf).
   cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
