@@ -1,6 +1,6 @@
 # ADR-008 — Mô hình danh tính & quyền sở hữu dữ liệu cho 2 website
 
-- **Trạng thái:** Đề xuất (Proposed) — chờ chủ repo đọc và xác nhận
+- **Trạng thái:** Chấp nhận (Accepted) — chủ repo xác nhận 2026-09-28 (đặc biệt quyết định 3 "admin duyệt" và 6 "Keycloak trên EKS")
 - **Ngày:** 2026-09-28
 - **Giai đoạn:** 9 — Sản phẩm hoàn chỉnh (việc 1)
 
