@@ -62,16 +62,47 @@ Read the test count. Full writeup: [`docs/POSTMORTEMS.md`](POSTMORTEMS.md).
 
 ### Finding the actual capacity limit
 
-TODO: sau khi chạy xong Lab 07 (`docs/labs/07-load-test-dev.md`), điền:
-- Ngưỡng rps đo được (số thật, kèm điều kiện: overlay dev, `maxReplicas` hiện tại, instance type).
-- 1 câu về bottleneck (service nào chạm CPU limit / `maxReplicas` trước).
-- 1 ảnh chụp bảng `kubectl get hpa` lúc REPLICAS tăng theo tải.
+I ran `tests/load/dev-threshold.js` against the real dev ALB expecting to find a smooth CPU-bound
+curve. The first pass (10→150 req/s) never broke: p95 stayed at 431.9ms with 0% errors across the
+whole run — my guessed range was too conservative. Pushing further (150→700 req/s) broke it hard:
+p95 jumped to 8.55s and 5.47% of requests failed outright.
+
+The interesting part is *why*. `kubectl describe pod` on the stuck replicas told the real story:
+
+```
+0/2 nodes are available: 1 Insufficient cpu, 2 Insufficient memory.
+```
+
+`api-gateway` had hit its HPA ceiling (`maxReplicas: 12`) and wanted more pods, but the two
+`t3.medium` nodes (1930m CPU / ~3.2GiB allocatable each) had nowhere to put them. New replicas sat
+`Pending` forever — there's no Cluster Autoscaler or Karpenter here (see below) to add a node. The
+existing pods absorbed all the excess traffic, queued it, and latency went non-linear instead of
+degrading gracefully.
+
+So the honest answer to "what's the capacity ceiling" isn't a fixed number baked into the code —
+it's a function of **how many nodes are running right now**. Stable to at least 150 req/s; falls
+over in the 200+ req/s range on this exact dev sizing. Add a node (or let something auto-add one)
+and the ceiling moves without touching a line of application code.
 
 ### Proving it recovers, not just assuming it
 
-TODO: sau khi chạy xong Lab 08 (`docs/labs/08-chaos-engineering.md`), điền:
-- Thời gian hồi phục thật khi xóa 1 Pod (giây), số request lỗi/tổng số request bắn song song.
-- Kết quả drain node: PASS/FAIL trên cluster nào, và vì sao (PodDisruptionBudget, số node).
+Deleting a single `order-management` pod recovers in ~21-22 seconds regardless of replica count
+(that's JVM startup time, not something scaling changes) — but whether requests actually *fail*
+during that window depends entirely on whether another pod was there to serve them: 9 failed out of
+26 concurrent requests at 1 replica, 0 out of 56 at 2 replicas. Same recovery time, completely
+different user experience.
+
+Draining a node taught me something I got wrong in my own first draft of the runbook. My assumption
+was "with enough spare nodes, pods just migrate." On a real 2-node EKS cluster, drain still got
+stuck — not because there was nowhere to put the pods (there was), but because every service here
+runs exactly 1 replica with `PodDisruptionBudget.minAvailable: 1`. Eviction refuses to drop
+available capacity below that budget *at the moment of eviction*, and there's no "spin up the
+replacement first" surge behavior in the eviction API the way a rolling update has `maxSurge`. So a
+1-replica service can never be drained gracefully — no matter how many idle nodes are sitting
+right next to it. The one service that *did* migrate cleanly (`api-gateway`, which happened to
+still have 2 replicas left over from the load test) landed its replacement pod on the other real
+node, confirmed by node name in `kubectl get pods -o wide`. That's the actual, load-bearing reason
+staging and prod run ≥2 replicas — it's not about raw capacity, it's about disruption math.
 
 ### What I decided *not* to build
 

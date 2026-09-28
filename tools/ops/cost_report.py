@@ -61,7 +61,10 @@ def sum_by_group(response: dict) -> dict[str, float]:
     totals: dict[str, float] = {}
     for day in response["ResultsByTime"]:
         for group in day["Groups"]:
-            key = " / ".join(k for k in group["Keys"] if k) or "(untagged)"
+            # A TAG group key comes back as "TagKey$value" (or "TagKey$" with no value for
+            # untagged resources) — strip the "TagKey$" prefix so the table shows just the value.
+            keys = [k.split("$", 1)[-1] for k in group["Keys"] if k]
+            key = " / ".join(k for k in keys if k) or "(untagged / chưa gắn tag)"
             amount = float(group["Metrics"]["UnblendedCost"]["Amount"])
             totals[key] = totals.get(key, 0.0) + amount
     return totals
@@ -79,6 +82,11 @@ def print_table(title: str, totals: dict[str, float]) -> None:
 
 
 def main() -> int:
+    # Windows' legacy console codepage (cp1252) crashes outright on Vietnamese diacritics or
+    # emoji instead of just mangling them — force UTF-8 stdout so this never hard-fails on
+    # Windows regardless of the terminal's codepage (no-op on Linux/macOS, already UTF-8 there).
+    # Caught for real running this script on Windows (2026-09-27) — see nhat-ky-hoc-tap.md.
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     args = parse_args()
     session = boto3.Session(profile_name=args.profile, region_name=CE_REGION)
     client = session.client("ce")
@@ -120,7 +128,7 @@ def main() -> int:
         )
         return 0
 
-    print(f"BSS Platform — cost report {start_s} .. {end_s} ({args.days}d)")
+    print(f"BSS Platform - cost report {start_s} .. {end_s} ({args.days}d)")
     print_table("By AWS service", by_service)
     print_table(f"By tag '{args.tag_key}'", by_tag)
 

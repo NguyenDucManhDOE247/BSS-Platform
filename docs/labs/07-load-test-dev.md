@@ -63,6 +63,46 @@ Cách này chậm hơn nhưng cho số chính xác theo từng mức tải — �
 (overlay dev, `maxReplicas` hiện tại, instance type node group) vì đây KHÔNG phải hằng số của code,
 mà là hằng số của **cấu hình hạ tầng lúc đo**.
 
+## 2b. Kết quả chạy thật (dev EKS, 2× t3.medium, 2026-09-27)
+
+**Lần 1 — đúng 5 bậc trong script gốc (10→150 rps, mỗi bậc 90s):**
+
+| rps | p95 | Pass (<500ms)? |
+|---|---|---|
+| 10–150 (toàn bài) | **431.9ms** | ✅ (0% request lỗi trên 26.360 request) |
+
+Script gốc chọn dải 10-150 rps **quá thấp** — không tìm ra được ngưỡng thật, chỉ chứng minh hệ
+thống chịu được TỐI THIỂU 150 rps. Đây là bài học capacity-planning kinh điển: đoán sai dải cần đo
+ở lần thử đầu là chuyện bình thường — phải đo rồi mới biết đẩy tiếp lên đâu, không đoán suông.
+
+**Lần 2 — đẩy tiếp 150→700 rps (script tạm, không commit, xem nhật ký) để tìm điểm vỡ thật:**
+
+| rps | p95 | http_req_failed | Ghi chú |
+|---|---|---|---|
+| 200–700 (toàn bài, 5 bậc tăng dần) | **8.55s** | **5.47%** (3.226/58.926) | `dropped_iterations`: 57.948 — k6 không tài nào giữ đúng rps mục tiêu, dấu hiệu bão hòa rõ ràng |
+
+**Nguyên nhân gốc — KHÔNG phải CPU mỗi request chậm đi, mà là hết chỗ trên node:**
+```
+kubectl describe pod api-gateway-...  →
+  Warning  FailedScheduling  0/2 nodes are available: 1 Insufficient cpu, 2 Insufficient memory.
+```
+`api-gateway` chạm trần `maxReplicas: 12` (HPA báo `cpu: 107%/60%` — vượt xa target vì không đủ
+pod để chia tải), nhưng **2 node t3.medium chỉ có 1930m CPU / ~3.2GiB allocatable MỖI node** — khi
+`api-gateway` + `product-catalog` cùng cần scale lên tổng cộng ~17 pod, node hết chỗ, pod mới kẹt
+`Pending` **vĩnh viễn** (managed node group không tự thêm node — đúng ADR-007: đây chính xác là
+tình huống mà Karpenter được sinh ra để giải quyết, nhưng dự án đã quyết định không dùng Karpenter
+ở giai đoạn này). Số Pod `Ready` không tăng thêm được nữa → toàn bộ tải dư dồn lên số Pod đang có →
+hàng đợi tại TCP/ứng dụng phình to → latency tăng phi tuyến (có request tới 34.85s trước khi client
+timeout), không phải tăng tuyến tính như CPU throttling thông thường.
+
+**Kết luận (số thật để trả lời slide 10c):** trên cấu hình dev hiện tại (2× t3.medium, HPA
+`maxReplicas` như đã cấu hình trong `infrastructure/kubernetes/base/*/hpa.yaml`), hệ thống phục vụ
+**ổn định tới ít nhất 150 req/s** (p95 431.9ms, 0% lỗi) và **sụp đổ rõ rệt khi vượt ngưỡng đó lên
+vùng 200+ req/s** — nhưng nguyên nhân sụp đổ là **giới hạn số node**, không phải giới hạn CPU per-
+pod. Nói cách khác: câu trả lời đúng cho "hệ thống chịu được bao nhiêu rps" không phải một con số
+cố định của code, mà là **hàm số của số node đang chạy** — thêm node (hoặc Karpenter tự thêm) sẽ
+đẩy ngưỡng này lên, không cần đổi 1 dòng code nào.
+
 ## 3. (Tùy chọn) Tìm nút thắt cổ chai
 
 Nếu `order-management` chạm `maxReplicas` trước khi p95 vỡ ngưỡng ở `api-gateway`, đó là nút thắt.

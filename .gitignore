@@ -81,3 +81,9 @@ course/
 learning/
 # ─── CD: kustomization tạm sinh bởi scripts/release-manifest.sh render (ADR-005) ─────
 infrastructure/kubernetes/rendered/
+
+# ─── Terraform plan file lưu tay để review trước khi apply (không phải *.tfplan) ─────
+infrastructure/terraform/environments/*/tfplan.*
+
+# ─── Kết quả cá nhân của Lab 07 (docs/labs/07-load-test-dev.md mục 4) ────────────────
+tests/load/results/

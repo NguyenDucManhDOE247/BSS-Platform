@@ -111,6 +111,9 @@ def cmd_purge(client, args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    # Windows' legacy console codepage (cp1252) crashes on emoji/diacritics instead of just
+    # mangling them — force UTF-8 stdout so this never hard-fails regardless of the terminal.
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--profile", default=None, help="AWS CLI profile name")
     sub = parser.add_subparsers(dest="command", required=True)
