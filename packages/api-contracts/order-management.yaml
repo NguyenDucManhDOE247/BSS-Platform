@@ -1,8 +1,16 @@
 openapi: 3.1.0
 info:
   title: BSS Product Order Management API
-  description: TM Forum TMF622 Product Order Management (subset)
-  version: 4.0.0
+  description: |
+    TM Forum TMF622 Product Order Management (subset).
+
+    **Xác thực (Giai đoạn 9, ADR-008) khi `bss.auth.enabled=true`** — Bearer JWT Keycloak:
+    - `POST` — chỉ role `customer`. `customerId` lấy từ hồ sơ của CHÍNH người đăng nhập
+      (customer-service `GET /customer/me`, chuyển tiếp token); trường `customerId` trong body bị bỏ qua.
+      Khách phải ở trạng thái `Active` (admin đã duyệt), nếu không → 422.
+    - `GET` — role `customer` chỉ thấy đơn của mình (đơn người khác → 404); role `admin` thấy tất cả.
+    Khi `bss.auth.enabled=false`: hành vi trước GĐ9 (`customerId` bắt buộc ở body và ở query list).
+  version: 4.1.0
 
 servers:
   - url: https://api.bss.example.com/api/tmf-api/orderManagement/v4
@@ -23,11 +31,17 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ProductOrder' }
-        '422': { description: Validation error. }
+        '401': { description: Thiếu/sai token. }
+        '403': { description: Không phải role customer. }
+        '422': { description: Validation error / gói không bán / khách chưa có hồ sơ / khách chưa được duyệt. }
+        '503': { description: product-catalog hoặc customer-service tạm thời không khả dụng. }
     get:
-      summary: List orders for a customer
+      summary: List orders (khách — của chính mình; admin — tất cả, lọc theo customerId)
       parameters:
-        - { in: query, name: customerId, required: true, schema: { type: string, format: uuid } }
+        - in: query
+          name: customerId
+          description: Admin — lọc theo khách. Khách — bị bỏ qua. Auth tắt — bắt buộc.
+          schema: { type: string, format: uuid }
         - { in: query, name: offset,     schema: { type: integer, default: 0 } }
         - { in: query, name: limit,      schema: { type: integer, default: 20, maximum: 100 } }
       responses:
@@ -48,9 +62,12 @@ paths:
         - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
       responses:
         '200': { description: An order., content: { application/json: { schema: { $ref: '#/components/schemas/ProductOrder' } } } }
-        '404': { description: Not found. }
+        '404': { description: Not found — hoặc đơn của người khác (khách không được biết id đó tồn tại). }
 
 components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+
   schemas:
     OrderState:
       type: string
@@ -98,9 +115,13 @@ components:
 
     CreateOrder:
       type: object
-      required: [customerId, items]
+      required: [items]
       properties:
-        customerId:  { type: string, format: uuid }
+        customerId:
+          type: string
+          format: uuid
+          deprecated: true
+          description: Chỉ dùng khi auth tắt. Khi bật auth bị bỏ qua (lấy từ hồ sơ người đăng nhập). Xóa cùng công tắc bss.auth.enabled.
         category:    { type: string }
         description: { type: string }
         items:
