@@ -19,7 +19,7 @@ kept by the maintainer while working through this project as a learning exercise
 | 5 — Deploy dev to EKS | All 7 services running on real EKS, real RDS, real EventBridge/SQS | ✅ Done |
 | 6 — CD: dev → staging → prod | Merge-to-dev automation, tag-based promotion, automatic rollback | ✅ Done |
 | 7 — Observability + security on AWS | Dashboards/alerts/SLO, NetworkPolicy, OAuth2, WAF, Trivy gate | ✅ Done |
-| 8 — Reliability, load test, docs, demo | k6 capacity threshold, chaos engineering, ops tooling, this README/CLAUDE.md refresh, `v1.0.0` | 🚧 In progress |
+| 8 — Reliability, load test, docs, demo | k6 capacity threshold, chaos engineering, ops tooling, this README/CLAUDE.md refresh, `v1.0.0` | ✅ Done |
 
 Each phase above was executed and **verified against real infrastructure** (not just "code written")
 before being marked done — see the architecture decisions in [`docs/adr/`](adr/) and the

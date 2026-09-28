@@ -12,7 +12,7 @@
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.34-326CE5?logo=kubernetes)](https://kubernetes.io/)
 [![AWS](https://img.shields.io/badge/AWS-EKS-FF9900?logo=amazon-aws)](https://aws.amazon.com/eks/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Phase%207%20done%20%E2%80%94%20Phase%208%20in%20progress-blue)](docs/ROADMAP.md)
+[![Status](https://img.shields.io/badge/Status-v1.0.0%20%E2%80%94%20Phases%200--8%20done-brightgreen)](docs/ROADMAP.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 ## Table of contents
@@ -154,7 +154,7 @@ Phase-by-phase tracking lives in [docs/ROADMAP.md](docs/ROADMAP.md). Today:
 | 5 — Deploy dev to real EKS (RDS, EventBridge/SQS, ALB) | ✅ Done |
 | 6 — CD: dev auto-deploy → staging/prod tag-based promotion + rollback | ✅ Done |
 | 7 — Observability + security on AWS (dashboards, OAuth2, WAF, Trivy gate) | ✅ Done |
-| 8 — Reliability, load test, ops tooling, docs, `v1.0.0` demo | 🚧 In progress |
+| 8 — Reliability, load test, ops tooling, docs, `v1.0.0` | ✅ Done |
 
 Every ✅ above was verified against **real infrastructure**, not just written and assumed working —
 see [`docs/adr/`](docs/adr/) for the decisions and [`docs/runbooks/`](docs/runbooks/) for the

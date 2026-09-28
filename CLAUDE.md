@@ -520,7 +520,7 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 - **Ngày tiếp nhận:** repo được người maintain hiện tại (không phải người dựng scaffold ban đầu)
   tiếp nhận, kiểm chứng lại toàn bộ từ đầu, và tách hẳn khỏi repo gốc — xem
   `learning/01-hien-trang-va-danh-sach-loi.md` cho danh sách đầy đủ lỗi phát hiện lúc tiếp nhận.
-- **Phase hiện tại: 8 — Reliability, load test, tài liệu, demo (đang làm).** Phase 0 → 7 đã
+- **Phase hiện tại: 8 hoàn thành → `v1.0.0`. Video demo + bài blog là việc của maintainer (khung ở `docs/demo-script.md`, `docs/blog-post-draft.md`).** Phase 0 → 8 đã
   **hoàn thành và kiểm chứng thật** trên hạ tầng thật (không chỉ code) — xem
   [docs/ROADMAP.md](docs/ROADMAP.md) cho bảng trạng thái public, và bảng dưới đây cho tóm tắt bằng
   chứng của từng phase.
@@ -543,7 +543,7 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 | 5 — Deploy dev EKS | ✅ | 7 Pod `Running` trên EKS thật; hóa đơn thật qua ALB → EventBridge → SQS → billing (IRSA thật, B-19) |
 | 6 — CD dev/staging/prod | ✅ | 3 lần merge liên tiếp → dev tự deploy đúng; rollback tự động có log thật (2 kịch bản) |
 | 7 — Observability + security | ✅ | Dashboard/alert/SLO thật trên `kind`; WAF chặn SQLi + rate-limit thật trên EKS dev (dựng + phá + destroy trong 1 buổi) |
-| 8 — Reliability, docs, demo | 🚧 | k6 threshold, chaos (pod delete/drain node), `tools/ops/`, ADR-007 (Karpenter — không áp dụng), tài liệu này — xem `learning/20` mục Giai đoạn 8 cho checklist đang chạy |
+| 8 — Reliability, docs, demo | ✅ | k6 threshold, chaos (pod delete/drain node), `tools/ops/`, ADR-007 (Karpenter — không áp dụng), tài liệu này — xem `learning/20` mục Giai đoạn 8 cho checklist đang chạy |
 
 ### Quyết định kiến trúc đã chốt kể từ scaffold ban đầu (ADR đầy đủ ở `docs/adr/`)
 
