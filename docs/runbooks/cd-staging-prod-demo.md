@@ -32,7 +32,7 @@ aws service-quotas request-service-quota-increase --service-code ec2 --quota-cod
 aws service-quotas list-requested-service-quota-change-history-by-quota --service-code ec2 --quota-code L-1216C47A --region ap-southeast-1 --query 'RequestedQuotas[].[Status,DesiredValue]'
 ```
 
-Kiểm quota **đang có** (không phải quota đã xin) — prod cần **≥ 8** (4 node chạy = 8 vCPU; `system_node_max_size = 4`, đúng bằng quota mặc định — 2026-09-28 AWS đã từ chối tăng lên 32 nên prod được dimension vừa 8 vCPU; xem ADR-006):
+Kiểm quota **đang có** (không phải quota đã xin) — prod cần **≥ 8** (4 node chạy = 8 vCPU; `system_node_max_size = 4`, đúng bằng quota mặc định — 2026-09-28 AWS đã từ chối tăng lên 32 nên prod được dimension vừa 8 vCPU; xem mục quota trong [ADR-006](../adr/ADR-006-staging-prod-ephemeral.md)):
 
 ```bash
 aws service-quotas get-service-quota --service-code ec2 --quota-code L-1216C47A --region ap-southeast-1 --query 'Quota.Value'
@@ -53,13 +53,15 @@ Làm theo thứ tự; mục nào không đạt thì **dừng, chưa `tf-apply`**
 5. 7 image của bản rc vẫn còn trong ECR (lifecycle policy có thể xóa image cũ): digest tag `rc-v0.1.1` phải tồn tại cho cả 7 repo `bss/*`.
 6. Không còn cluster nào đang chạy ngoài ý muốn: `aws eks list-clusters --region ap-southeast-1` (với quota 8: dev 4 + prod 8 = 12 > 8 ⇒ **phải destroy dev trước khi dựng prod**).
 7. `terraform.tfvars` của prod: `ephemeral = true`; `public_access_cidrs` đúng lựa chọn A ở §4 (runner GitHub cần vào API server).
-8. `make ENV=prod tf-plan` ⇒ kỳ vọng `Plan: 85 to add, 0 to change, 0 to destroy`, node group `desired = 4`.
+8. `make ENV=prod tf-plan` ⇒ kỳ vọng `Plan: 86 to add, 0 to change, 0 to destroy` (đo 2026-09-28), node group `desired = 4`.
 
 Tag prod đặt trên **đúng commit của rc**, không phải HEAD của `main` (gate `gate-prod` so `source.sha`):
 
 ```bash
 git tag v0.1.1 <sha-của-rc-v0.1.1> && git push origin v0.1.1     # → cd-prod: check ✓ → dừng chờ Approve
 ```
+
+Prod dùng ~91–93% CPU requests trên 2 node (đo 2026-09-28) — không còn chỗ scale thêm; đừng dựng thêm workload lên prod trong buổi này.
 
 Sau khi bấm **Approve** (Actions → run → Review deployments → `production`): xem job `deploy` tới smoke PASS, kiểm `kubectl -n bss get pods` (7 service × replicas, tất cả `Running`), rồi **destroy ngay** (§5). `releases/v0.1.1.json` được ghi trên nhánh `deploy-state` — đó là kết quả của buổi prod.
 
@@ -73,7 +75,7 @@ cp terraform.tfvars.example terraform.tfvars      # sửa owner_email, public_ac
 cd -
 
 make ENV=<env> tf-init
-make ENV=<env> tf-plan            # ĐỌC plan. staging và prod đều 85 tài nguyên (prod: RDS multi-AZ, 4 node)
+make ENV=<env> tf-plan            # ĐỌC plan. staging và prod đều 86 tài nguyên (prod: RDS multi-AZ, 4 node)
 make ENV=<env> tf-apply           # ~20–25 phút (EKS chiếm phần lớn)
 make ENV=<env> kube-config
 kubectl get nodes                 # 3 node t3.large (staging) / 4 node t3.large (prod) — Ready hết mới đi tiếp
