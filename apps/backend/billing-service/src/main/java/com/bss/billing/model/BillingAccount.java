@@ -23,6 +23,13 @@ public class BillingAccount {
     @Column(nullable = false)
     private String name;
 
+    /**
+     * Giai đoạn 9 (ADR-008 quyết định 5): {@code sub} Keycloak của khách sở hữu account (và mọi hóa
+     * đơn trong đó). NULL = chưa biết chủ (account từ đơn lúc auth tắt / trước GĐ9) → chỉ admin thấy.
+     */
+    @Column(name = "owner_sub", length = 64)
+    private String ownerSub;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private State state = State.Active;
@@ -61,6 +68,8 @@ public class BillingAccount {
     public void setCustomerId(UUID customerId) { this.customerId = customerId; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
+    public String getOwnerSub() { return ownerSub; }
+    public void setOwnerSub(String ownerSub) { this.ownerSub = ownerSub; }
     public State getState() { return state; }
     public void setState(State state) { this.state = state; }
     public PaymentMethod getPaymentMethod() { return paymentMethod; }

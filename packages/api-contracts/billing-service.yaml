@@ -1,8 +1,16 @@
 openapi: 3.1.0
 info:
   title: BSS Customer Bill Management API
-  description: TM Forum TMF678 Customer Bill / Billing Account (subset)
-  version: 4.0.0
+  description: |
+    TM Forum TMF678 Customer Bill / Billing Account (subset).
+
+    **Xác thực (Giai đoạn 9, ADR-008) khi `bss.auth.enabled=true`** — Bearer JWT Keycloak:
+    - `GET` — role `customer` chỉ thấy hóa đơn / billing account của CHÍNH mình (chủ sở hữu lấy từ
+      `customerSub` trong event OrderCompleted, gắn ở cấp billing account); đọc của người khác → 404.
+      Role `admin` thấy tất cả, lọc theo `customerId`.
+    - `POST /billingAccount` — chỉ `admin` (bình thường account tự mở khi có hóa đơn đầu tiên).
+    Khi `bss.auth.enabled=false`: hành vi trước GĐ9 (`customerId` bắt buộc ở `GET /customerBill`).
+  version: 4.1.0
 
 servers:
   - url: https://api.bss.example.com/api/tmf-api/billingManagement/v4
@@ -51,7 +59,7 @@ paths:
     get:
       summary: List invoices for a customer
       parameters:
-        - { in: query, name: customerId, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: customerId, description: 'Admin — lọc theo khách. Khách — bị bỏ qua. Auth tắt — bắt buộc.', schema: { type: string, format: uuid } }
         - { in: query, name: offset,     schema: { type: integer, default: 0 } }
         - { in: query, name: limit,      schema: { type: integer, default: 20, maximum: 100 } }
       responses:
@@ -75,6 +83,9 @@ paths:
         '404': { description: Not found. }
 
 components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+
   schemas:
     BillingAccount:
       type: object

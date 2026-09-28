@@ -10,6 +10,11 @@ import com.bss.billing.model.InvoiceItem;
 import com.bss.billing.paging.OffsetPageRequest;
 import com.bss.billing.repository.BillingAccountRepository;
 import com.bss.billing.repository.InvoiceRepository;
+import com.bss.billing.security.CurrentCaller;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -27,12 +32,16 @@ public class BillingService {
     /** Vietnamese VAT rate (10%). */
     private static final BigDecimal VAT_RATE = new BigDecimal("0.10");
 
+    private static final Logger log = LoggerFactory.getLogger(BillingService.class);
+
     private final BillingAccountRepository accounts;
     private final InvoiceRepository invoices;
+    private final CurrentCaller caller;
 
-    public BillingService(BillingAccountRepository accounts, InvoiceRepository invoices) {
+    public BillingService(BillingAccountRepository accounts, InvoiceRepository invoices, CurrentCaller caller) {
         this.accounts = accounts;
         this.invoices = invoices;
+        this.caller = caller;
     }
 
     public BillingAccountDto openAccount(CreateAccountRequest req) {
@@ -48,9 +57,14 @@ public class BillingService {
         return BillingAccountDto.from(accounts.save(account));
     }
 
+    /**
+     * Giai đoạn 9 (ADR-008 quyết định 5): khách đọc account của NGƯỜI KHÁC → 404 (không phải 403, để
+     * không xác nhận việc id đó tồn tại). Account chưa có chủ → chỉ admin thấy.
+     */
     @Transactional(readOnly = true)
     public BillingAccountDto getAccount(UUID id) {
         return accounts.findById(id)
+                .filter(a -> caller.seesEverything() || caller.subject().equals(a.getOwnerSub()))
                 .map(BillingAccountDto::from)
                 .orElseThrow(() -> new NotFoundException("BillingAccount", id.toString()));
     }
@@ -59,28 +73,62 @@ public class BillingService {
     public Page<BillingAccountDto> listAccounts(int offset, int limit) {
         // B-15 fix: OffsetPageRequest, not PageRequest.of(offset/limit,...) — see its javadoc.
         var pageable = OffsetPageRequest.of(offset, limit, Sort.by("createdAt").descending());
+        if (!caller.seesEverything()) {
+            return accounts.findByOwnerSub(caller.subject(), pageable).map(BillingAccountDto::from);
+        }
         return accounts.findAll(pageable).map(BillingAccountDto::from);
     }
 
+    /**
+     * Khách: luôn chỉ hóa đơn của CHÍNH mình ({@code customerId} bị bỏ qua). Admin: tất cả, lọc theo
+     * khách nếu có {@code customerId}. Auth tắt: như trước GĐ9 ({@code customerId} bắt buộc).
+     */
+    @Transactional(readOnly = true)
+    public Page<InvoiceDto> listInvoices(UUID customerId, int offset, int limit) {
+        var pageable = OffsetPageRequest.of(offset, limit, Sort.by("invoiceDate").descending());
+        if (!caller.seesEverything()) {
+            return invoices.findByBillingAccount_OwnerSub(caller.subject(), pageable).map(InvoiceDto::from);
+        }
+        if (customerId != null) {
+            return invoices.findByBillingAccount_CustomerId(customerId, pageable).map(InvoiceDto::from);
+        }
+        if (!caller.authEnabled()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "customerId is required");
+        }
+        return invoices.findAll(pageable).map(InvoiceDto::from);
+    }
+
+    /** Giữ cho code/test cũ — tương đương {@link #listInvoices} khi auth tắt. */
     @Transactional(readOnly = true)
     public Page<InvoiceDto> listInvoicesForCustomer(UUID customerId, int offset, int limit) {
-        var pageable = OffsetPageRequest.of(offset, limit, Sort.by("invoiceDate").descending());
-        return invoices.findByBillingAccount_CustomerId(customerId, pageable)
-                .map(InvoiceDto::from);
+        return listInvoices(customerId, offset, limit);
     }
 
     @Transactional(readOnly = true)
     public InvoiceDto getInvoice(UUID id) {
         return invoices.findById(id)
+                .filter(i -> caller.seesEverything()
+                        || caller.subject().equals(i.getBillingAccount().getOwnerSub()))
                 .map(InvoiceDto::from)
                 .orElseThrow(() -> new NotFoundException("Invoice", id.toString()));
+    }
+
+    /** Giữ chữ ký cũ (trước GĐ9) — đơn không có chủ sở hữu. */
+    public InvoiceDto invoiceFromOrder(UUID customerId, UUID orderId,
+                                       String description, BigDecimal amount) {
+        return invoiceFromOrder(customerId, null, orderId, description, amount);
     }
 
     /**
      * Create an invoice from a completed order. Caller (event listener) is responsible
      * for idempotency via processed_event log.
+     *
+     * @param customerSub Giai đoạn 9: {@code sub} Keycloak của khách (từ event), null nếu đơn tạo lúc
+     *                    auth tắt. Gắn cho account nếu account CHƯA có chủ — không bao giờ ghi đè chủ
+     *                    cũ bằng 1 giá trị khác (1 khách ↔ 1 tài khoản web, đổi chủ là dấu hiệu bất
+     *                    thường → log cảnh báo, giữ nguyên).
      */
-    public InvoiceDto invoiceFromOrder(UUID customerId, UUID orderId,
+    public InvoiceDto invoiceFromOrder(UUID customerId, String customerSub, UUID orderId,
                                        String description, BigDecimal amount) {
         var account = accounts.findByCustomerId(customerId)
                 .orElseGet(() -> {
@@ -90,6 +138,14 @@ public class BillingService {
                     fresh.setName("Account for " + customerId);
                     return accounts.save(fresh);
                 });
+        if (customerSub != null) {
+            if (account.getOwnerSub() == null) {
+                account.setOwnerSub(customerSub);
+            } else if (!account.getOwnerSub().equals(customerSub)) {
+                log.warn("Billing account {} đã có chủ khác với customerSub của event — giữ nguyên chủ cũ",
+                        account.getId());
+            }
+        }
 
         var tax = amount.multiply(VAT_RATE).setScale(2, RoundingMode.HALF_UP);
         var total = amount.add(tax);

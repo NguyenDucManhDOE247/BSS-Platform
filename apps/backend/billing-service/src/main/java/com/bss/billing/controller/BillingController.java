@@ -53,12 +53,16 @@ public class BillingController {
         return service.getAccount(id);
     }
 
+    /**
+     * Giai đoạn 9 (ADR-008): khách → chỉ hóa đơn của CHÍNH mình ({@code customerId} bị bỏ qua); admin
+     * → tất cả, lọc theo {@code customerId} nếu có. Auth tắt → {@code customerId} bắt buộc như trước.
+     */
     @GetMapping("/customerBill")
     public ResponseEntity<List<InvoiceDto>> listBills(
-            @RequestParam UUID customerId,
+            @RequestParam(required = false) UUID customerId,
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "20") int limit) {
-        var page = service.listInvoicesForCustomer(customerId, offset, Math.min(limit, 100));
+        var page = service.listInvoices(customerId, offset, Math.min(limit, 100));
         return ResponseEntity.ok()
                 .header("X-Total-Count", String.valueOf(page.getTotalElements()))
                 .body(page.getContent());
