@@ -125,7 +125,31 @@ kế), **nhưng trap vẫn `uncordon` được node** — xác nhận `kubectl g
 không `SchedulingDisabled`. Các pod không-PDB bị evict xong tự mọc lại **trên chính node đó** (vì
 là node duy nhất) — không mất dữ liệu do đều dùng `emptyDir`/dữ liệu seed lại từ Flyway lúc khởi
 động; `keycloak` mất ~30-40s để sẵn sàng lại do Quarkus rebuild config lúc boot (bình thường, không
-phải bug). **Để thấy Pod THẬT SỰ di dời sang node khác (không chỉ bị chặn), cần dev EKS 2 node.**
+phải bug).
+
+**Kết quả chạy thật lần 2 — dev EKS THẬT, 2 node, sau khi Lab 07 vừa chạy xong (2026-09-27) —
+⚠️ SỬA LẠI dự đoán ban đầu, đây là phát hiện quan trọng nhất của cả buổi:** dự đoán ở trên ("có ≥2
+node thì Pod sẽ di dời sang node còn lại nếu không vi phạm PDB") **chỉ đúng một nửa**. Chạy thật
+`./scripts/chaos-drain-node.sh` nhắm đúng node đang có 6/7 pod ứng dụng: **drain vẫn treo và fail
+sau 3 phút**, `kubectl get pdb` cho thấy lý do — `admin-console`, `billing-service`,
+`customer-service`, `order-management`, `product-catalog`, `web-portal` đều có `ALLOWED
+DISRUPTIONS: 0` vì **đúng 1 replica + `minAvailable: 1`**. Đây KHÔNG phải vấn đề "hết chỗ trên
+node" (2 node dev EKS có `~1930m CPU`/`~3.2GiB` mỗi node, dư sức nhận thêm 1 pod nhỏ) — mà là toán
+học của chính PodDisruptionBudget: **evict đòi hỏi số pod khả dụng KHÔNG ĐƯỢC GIẢM tại đúng thời
+điểm evict**, nhưng với đúng 1 pod + `minAvailable:1`, evict bất kỳ lúc nào cũng lập tức đưa số khả
+dụng về 0 → luôn bị chặn — **bất kể cluster có bao nhiêu node trống**. Khác với rolling update của
+Deployment (tạo pod mới TRƯỚC khi xóa pod cũ, nhờ `maxSurge`), API evict dùng cho `drain` không có
+cơ chế "tạo trước" này.
+
+**Ca ngoại lệ tự quan sát được — bằng chứng THẬT cho việc Pod di chuyển sang node khác:**
+`api-gateway` lúc đó còn 2 replica (dư lại từ lúc HPA scale-up cho Lab 07, chưa kịp scale về 1) →
+PDB báo `ALLOWED DISRUPTIONS: 1` → drain evict THÀNH CÔNG 1 trong 2 pod `api-gateway` trên node bị
+drain, và `kubectl get pods -o wide` xác nhận pod thay thế xuất hiện **trên node CÒN LẠI**
+(`api-gateway-...-fc89s`, mới 3m31s tuổi, `NODE=ip-10-10-10-118...`, khác hẳn node bị drain
+`ip-10-10-11-196...`). **Kết luận đúng:** Pod chỉ thực sự "di chuyển" được qua `drain` khi service
+đó có **> 1 replica đang chạy tại thời điểm drain** — với dev sizing mặc định (`minReplicas: 1`
+mọi service, B-22), **không service nghiệp vụ nào của dev có thể được drain an toàn**, kể cả trên
+cluster nhiều node — đây chính là lý do CLAUDE.md §4 quy định staging/prod phải có `replicas ≥ 2`.
 
 ## 4. Ghi vào nhật ký
 

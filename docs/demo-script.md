@@ -30,8 +30,12 @@ cảnh sang khi cần, không cần chia đôi màn hình suốt video).
 - Cắt sang terminal đã chạy sẵn `k6 run tests/load/dev-threshold.js` (chạy trước, tua nhanh phần
   chờ) — cho thấy bảng tổng kết k6 (p95, checks) + terminal `get hpa -w` bên cạnh với `REPLICAS`
   tăng dần.
-- 1 câu thoại: "ở mức X req/s, p95 vượt 500ms — đây là ngưỡng đo được, không phải áng chừng" (điền
-  X từ Lab 07 mục 2 sau khi đã đo thật).
+- 1 câu thoại (số thật, đo 2026-09-27 trên dev EKS 2×t3.medium — xem `docs/labs/07-load-test-dev.md`
+  mục 2b): "hệ thống ổn định tới ít nhất 150 req/s (p95=431.9ms, 0% lỗi); đẩy lên 200-700 req/s thì
+  vỡ hẳn (p95=8.55s, 5.47% lỗi) — nhưng KHÔNG PHẢI vì CPU mỗi request chậm đi, mà vì hết chỗ trên 2
+  node — `kubectl describe pod` báo thẳng `Insufficient cpu/memory`". Cân nhắc quay cả đoạn
+  `kubectl describe pod <pod-pending>` để khán giả thấy dòng `FailedScheduling` thật, thay vì chỉ
+  đọc số — đây là điểm khác biệt của video này so với một bài blog chỉ có bảng số.
 
 ## Cảnh 4 — Phá (2:40 – 3:50)
 
@@ -45,13 +49,19 @@ Quay song song: terminal `get pods -w` (thấy Pod cũ `Terminating`, Pod mới 
 terminal script (đang bắn request nền, in số liệu recovery cuối cùng). Nói rõ: "Pod bị xóa, nhưng
 vì có ≥2 replica + PodDisruptionBudget, 0 request bị mất" (đọc số thật từ output script).
 
-**B — Drain node (ấn tượng hơn về quy mô, chậm hơn ~3 phút):**
+**B — Drain node (bài học sâu hơn, nhưng kết quả "thất bại" cần giải thích rõ mới hay):**
 ```bash
-./scripts/chaos-drain-node.sh
+./scripts/chaos-drain-node.sh <node-có-nhiều-pod>
 ```
-Quay `get pods -o wide -w` — thấy TOÀN BỘ Pod trên 1 node chuyển `Terminating` rồi mọc lại ở node
-còn lại. Nói rõ: "đây mô phỏng AWS thu hồi node hoặc bảo trì — PodDisruptionBudget đảm bảo không
-xuống dưới số Pod tối thiểu trong lúc di dời."
+⚠️ Kết quả thật (2026-09-27, dev EKS 2 node): drain **KHÔNG di dời hết** như trực giác — mọi
+service dev chỉ có 1 replica nên PDB chặn evict hoàn toàn (`ALLOWED DISRUPTIONS: 0`), **bất kể còn
+node trống**. Nói thẳng điều này trong video, đừng né: "PodDisruptionBudget chặn dựa trên số Pod
+khả dụng ngay lúc evict, không quan tâm cluster còn bao nhiêu node rảnh — với 1 replica, Pod không
+bao giờ được di dời an toàn, đây chính là lý do staging/prod bắt buộc ≥2 replica." Nếu muốn quay
+cảnh Pod THẬT SỰ di dời sang node khác để minh hoạ trực quan, scale tạm 1 service lên 2 replica
+trước khi quay (`kubectl -n bss patch hpa order-management -p '{"spec":{"minReplicas":2}}'` rồi
+`kubectl scale`) — xem `docs/labs/08-chaos-engineering.md` ca `api-gateway` để biết chính xác cách
+làm và cách đọc `kubectl get pods -o wide` để thấy tên node đổi.
 
 ## Cảnh 5 — Hồi phục & xác nhận (3:50 – 4:40)
 
