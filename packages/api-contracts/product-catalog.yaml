@@ -1,8 +1,16 @@
 openapi: 3.1.0
 info:
   title: BSS Product Catalog Management API
-  description: TM Forum TMF620 Product Catalog Management (subset)
-  version: 4.0.0
+  description: |
+    TM Forum TMF620 Product Catalog Management (subset).
+
+    **Xác thực (Giai đoạn 9, ADR-008) khi `bss.auth.enabled=true`:**
+    - `GET` — công khai (khách chưa đăng nhập vẫn duyệt gói). Người không phải admin **chỉ thấy gói
+      đang bán** (`Active`, `Launched`): danh sách lọc bỏ gói khác (kể cả khi cố truyền
+      `lifecycleStatus=Retired`), còn `GET /{id}` của gói đã ngừng bán → 404.
+    - `POST`/`PATCH`/`DELETE` — Bearer JWT role `admin`.
+    Khi `bss.auth.enabled=false`: mọi endpoint mở, không lọc gì (hành vi trước GĐ9).
+  version: 4.1.0
 
 servers:
   - url: https://api.bss.example.com/api/tmf-api/productCatalog/v4
@@ -27,7 +35,8 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/ProductOffering' }
     post:
-      summary: Create a product offering
+      summary: Create a product offering (admin)
+      security: [ { bearerAuth: [] } ]
       requestBody:
         required: true
         content:
@@ -47,9 +56,29 @@ paths:
         - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
       responses:
         '200': { description: A product offering., content: { application/json: { schema: { $ref: '#/components/schemas/ProductOffering' } } } }
+        '404': { description: Not found — hoặc gói không còn bán và người gọi không phải admin. }
+    patch:
+      summary: Sửa gói (giá, mô tả) / ngừng bán (`lifecycleStatus=Retired`) — admin
+      description: |
+        Merge-patch: trường không gửi = giữ nguyên. Đổi giá KHÔNG ảnh hưởng đơn hàng cũ — order-management
+        lưu giá tại thời điểm mua (B-13). "Ngừng bán" nên dùng PATCH thay vì DELETE để giữ lịch sử.
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema: { $ref: '#/components/schemas/PatchOffering' }
+      responses:
+        '200': { description: Updated., content: { application/json: { schema: { $ref: '#/components/schemas/ProductOffering' } } } }
+        '401': { description: Thiếu/sai token. }
+        '403': { description: Không phải admin. }
         '404': { description: Not found. }
+        '422': { description: Dữ liệu không hợp lệ (vd. giá âm). }
     delete:
-      summary: Delete a product offering
+      summary: Delete a product offering (admin)
+      security: [ { bearerAuth: [] } ]
       parameters:
         - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
       responses:
@@ -78,7 +107,20 @@ paths:
         '404': { description: Not found. }
 
 components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+
   schemas:
+    PatchOffering:
+      type: object
+      properties:
+        name:              { type: string, minLength: 1 }
+        description:       { type: string }
+        priceAmount:       { type: number, minimum: 0 }
+        lifecycleStatus:   { $ref: '#/components/schemas/LifecycleStatus' }
+        validForStart:     { type: string, format: date-time }
+        validForEnd:       { type: string, format: date-time }
+
     LifecycleStatus:
       type: string
       enum: [InStudy, InDesign, InTest, Active, Launched, Retired, Obsolete]
