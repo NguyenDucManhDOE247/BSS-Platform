@@ -117,7 +117,7 @@ customer-service ở mỗi request:
   `GET /customer/me` chứ **không lấy từ body request** (body cũ mang `customerId`/`unitPrice` là
   chỗ để giả mạo).
 - Event `OrderCompleted` có thêm trường `customerSub`. Đây là thay đổi **chỉ thêm trường**, tương
-  thích ngược với schema trong `packages/api-contracts`. Billing đóng dấu trường này lên hóa đơn.
+  thích ngược với schema trong `packages/api-contracts`. Billing gắn chủ sở hữu này vào **billing account** chứa hóa đơn (mỗi khách có đúng 1 account, hóa đơn thuộc account — gắn ở cấp account để không lặp dữ liệu lên từng hóa đơn; hiện thực ở GĐ9 việc 3d).
 - Quy tắc đọc:
 
 | Role | Đơn hàng / hóa đơn / billing account | Hồ sơ khách |
