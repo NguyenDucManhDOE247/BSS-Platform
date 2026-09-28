@@ -1,7 +1,10 @@
 package com.bss.order.exception;
 
+import com.bss.order.client.CustomerServiceUnavailableException;
+import com.bss.order.client.NoCustomerProfileException;
 import com.bss.order.client.OfferingNotOrderableException;
 import com.bss.order.client.UnknownOfferingException;
+import com.bss.order.service.CustomerNotActiveException;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -29,15 +32,39 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * B-13: product-catalog is down/slow and Resilience4j has either exhausted retries or
-     * opened the circuit breaker (CallNotPermittedException, thrown instead of even trying
-     * once the circuit is OPEN). Either way this is "try again shortly", not "your request is
-     * broken" — 503, not 500.
+     * B-13: product-catalog is down/slow and Resilience4j has exhausted retries (RestClientException).
+     * This is "try again shortly", not "your request is broken" — 503, not 500.
      */
-    @ExceptionHandler({CallNotPermittedException.class, RestClientException.class})
+    @ExceptionHandler(RestClientException.class)
     public ProblemDetail handleCatalogUnavailable(Exception ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE,
                 "product-catalog is temporarily unavailable — please retry shortly");
+    }
+
+    /**
+     * Circuit breaker đang OPEN — không gọi thử nữa. GĐ9 có 2 circuit breaker (productCatalog,
+     * customerService): nói đúng TÊN cái đang mở, trước đây luôn báo "product-catalog" dù cái mở có
+     * thể là customer-service → debug sai hướng.
+     */
+    @ExceptionHandler(CallNotPermittedException.class)
+    public ProblemDetail handleCircuitOpen(CallNotPermittedException ex) {
+        String which = "customerService".equals(ex.getCausingCircuitBreakerName())
+                ? "customer-service" : "product-catalog";
+        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE,
+                which + " is temporarily unavailable — please retry shortly");
+    }
+
+    // ---------- Giai đoạn 9 (ADR-008) ----------
+
+    @ExceptionHandler(CustomerServiceUnavailableException.class)
+    public ProblemDetail handleCustomerServiceUnavailable(CustomerServiceUnavailableException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE,
+                "customer-service is temporarily unavailable — please retry shortly");
+    }
+
+    @ExceptionHandler({NoCustomerProfileException.class, CustomerNotActiveException.class})
+    public ProblemDetail handleCustomerNotReady(RuntimeException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

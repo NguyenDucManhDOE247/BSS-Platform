@@ -30,6 +30,10 @@ bss:
   clients:
     product-catalog:
       base-url: ${PRODUCT_CATALOG_URL:http://product-catalog.bss.svc.cluster.local}
+    # Giai đoạn 9 (ADR-008): GET /customer/me bằng token của chính khách — xem CustomerClient.
+    # Cần NetworkPolicy allow-order-to-dependencies (base) để đi qua được trên CNI có enforce.
+    customer-service:
+      base-url: ${CUSTOMER_SERVICE_URL:http://customer-service.bss.svc.cluster.local}
   # B-14: lets tests turn the @Scheduled outbox drainer off instead of it NPE-ing every 2s
   # against a @MockBean EventBridgeClient that returns null.
   outbox:
@@ -47,8 +51,24 @@ resilience4j:
         permitted-number-of-calls-in-half-open-state: 3
         ignore-exceptions:
           - com.bss.order.client.UnknownOfferingException
+      # Giai đoạn 9: "chưa có hồ sơ" (404) là lỗi NGƯỜI DÙNG, không phải customer-service hỏng —
+      # không được tính vào circuit breaker (nếu tính, vài khách chưa hoàn tất hồ sơ bấm mua là đủ
+      # làm mở mạch, chặn luôn khách hợp lệ).
+      customerService:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        ignore-exceptions:
+          - com.bss.order.client.NoCustomerProfileException
   retry:
     instances:
+      customerService:
+        max-attempts: 3
+        wait-duration: 200ms
+        ignore-exceptions:
+          - com.bss.order.client.NoCustomerProfileException
       productCatalog:
         max-attempts: 3
         wait-duration: 200ms

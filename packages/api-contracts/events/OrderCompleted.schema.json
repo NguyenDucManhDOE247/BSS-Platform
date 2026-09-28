@@ -2,11 +2,21 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://api.bss.example.com/events/OrderCompleted",
   "title": "OrderCompleted",
+  "description": "Phát bởi order-management (outbox) qua EventBridge → SQS → billing-service. Chỉ được THÊM trường (tương thích ngược): consumer phải bỏ qua trường lạ.",
   "type": "object",
-  "required": ["orderId", "customerId", "amount", "completedAt"],
+  "required": ["eventId", "orderId", "customerId", "amount", "completedAt"],
   "properties": {
+    "eventId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "B-11: id dòng outbox — khóa chống trùng ỔN ĐỊNH mà billing dùng (không dùng id phong bì EventBridge, vốn đổi mỗi lần PutEvents)."
+    },
     "orderId": { "type": "string", "format": "uuid" },
     "customerId": { "type": "string", "format": "uuid" },
+    "customerSub": {
+      "type": "string",
+      "description": "Giai đoạn 9 (ADR-008 quyết định 5): claim `sub` Keycloak của khách đã đặt đơn — billing đóng dấu lên hóa đơn để khách chỉ xem hóa đơn của mình. Vắng mặt khi đơn tạo lúc auth tắt."
+    },
     "amount": { "type": "string", "description": "Decimal as string (avoid float)" },
     "currency": { "type": "string", "default": "VND" },
     "completedAt": { "type": "string", "format": "date-time" }

@@ -40,12 +40,17 @@ public class OrderController {
         return service.get(id);
     }
 
+    /**
+     * Giai đoạn 9 (ADR-008): khách → luôn chỉ đơn của CHÍNH mình ({@code customerId} bị bỏ qua);
+     * admin → mọi đơn, lọc theo {@code customerId} nếu có. Auth tắt → {@code customerId} bắt buộc
+     * như trước GĐ9.
+     */
     @GetMapping
-    public ResponseEntity<List<OrderDto>> listForCustomer(
-            @RequestParam UUID customerId,
+    public ResponseEntity<List<OrderDto>> list(
+            @RequestParam(required = false) UUID customerId,
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "20") int limit) {
-        var page = service.listForCustomer(customerId, offset, Math.min(limit, 100));
+        var page = service.list(customerId, offset, Math.min(limit, 100));
         return ResponseEntity.ok()
                 .header("X-Total-Count", String.valueOf(page.getTotalElements()))
                 .body(page.getContent());
