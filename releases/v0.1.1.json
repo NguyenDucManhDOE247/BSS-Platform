@@ -1,0 +1,24 @@
+{
+  "deployed_at": "2026-09-28T05:08:09Z",
+  "environment": "prod",
+  "release": "v0.1.1",
+  "schema": 1,
+  "services": {
+    "admin-console": "05ba49d9ad20cd898bd042b2ae7c22d1b788508b",
+    "api-gateway": "ceeaf8369c27955ec7acd6b6616eb90879820239",
+    "billing-service": "b13fe20d69f2612ceb6112b0ae6f4080a2ffa688",
+    "customer-service": "b13fe20d69f2612ceb6112b0ae6f4080a2ffa688",
+    "order-management": "b13fe20d69f2612ceb6112b0ae6f4080a2ffa688",
+    "product-catalog": "b13fe20d69f2612ceb6112b0ae6f4080a2ffa688",
+    "web-portal": "fe3939b6ddd975af2a5623888c63605a81315c31"
+  },
+  "source": {
+    "ref": "refs/tags/rc-v0.1.1",
+    "run_url": "https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/runs/36380564248",
+    "sha": "4087186e68a2fa3316a6608b04ab2b06442790d6"
+  },
+  "verified_in": [
+    "prod",
+    "staging"
+  ]
+}
