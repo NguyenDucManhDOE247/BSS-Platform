@@ -35,7 +35,7 @@ fi
 ok "Sẵn sàng — chạy tiếp: kubectl apply -k infrastructure/kubernetes/overlays/local"
 cat <<'EOF'
 
-Mật khẩu admin Keycloak (đăng nhập http://bss.localtest.me/auth/admin):
+Mật khẩu admin Keycloak (đăng nhập http://bss.localhost/auth/admin):
   kubectl -n bss get secret keycloak-admin -o jsonpath='{.data.password}' | base64 -d; echo
 
 2 user thử sẵn (realm "bss", khai trong overlays/local/keycloak/realm-bss.json — KHÔNG phải mật

@@ -31,8 +31,9 @@ kubectl --context kind-bss -n bss get pods -w
 # 7. Kiểm tra end-to-end qua Ingress thật (giống hệt scripts/e2e-local.sh nhưng qua kind)
 ./scripts/e2e-kind.sh
 
-# 8. Web-portal: http://bss.localtest.me/       Admin-console: http://bss.localtest.me/admin/
-#    (*.localtest.me luôn phân giải về 127.0.0.1 — không cần sửa /etc/hosts)
+# 8. Web-portal: http://bss.localhost/       Admin-console: http://bss.localhost/admin/
+#    (trình duyệt + curl tự phân giải *.localhost về 127.0.0.1 — không cần sửa /etc/hosts.
+#    Giai đoạn 9: đổi từ bss.localtest.me vì đăng nhập PKCE cần "secure context" — xem ADR-008 QĐ 7)
 
 # Dọn dẹp hoàn toàn khi xong (xoá luôn cluster + mọi dữ liệu Postgres/LocalStack)
 ./scripts/kind-down.sh
@@ -46,7 +47,7 @@ kubectl --context kind-bss -n bss get pods -w
 | Event bus / queue | EventBridge + SQS thật | Deployment `localstack` giả lập cùng API |
 | Secret DB | Secrets Store CSI (chưa hoàn thiện — B-20) | `secretGenerator` của Kustomize (Secret thật, tạo ngay lúc `apply`) |
 | Danh tính AWS của Pod | IRSA (`eks.amazonaws.com/role-arn`) | Không cần — LocalStack không kiểm tra IAM thật, dùng credential tĩnh `test/test` |
-| Ingress | `ingressClassName: alb`, cần ACM + Route 53 | `ingressClassName: nginx`, host `bss.localtest.me` (không cần domain thật) |
+| Ingress | `ingressClassName: alb`, cần ACM + Route 53 | `ingressClassName: nginx`, host `bss.localhost` (không cần domain thật) |
 | Thay đổi state khi restart Pod | RDS/EventBridge sống độc lập với cluster | `postgres-0` có PVC riêng (sống qua Pod restart); `localstack` **không** có PVC bền (Pod restart → toàn bộ bus/queue/secret bị tạo lại từ đầu bởi init script — chấp nhận được vì mục đích là học K8s, không phải để dữ liệu lâu dài) |
 
 ## Vì sao 4 backend restart vài lần khi mới `apply` lần đầu

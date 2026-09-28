@@ -24,7 +24,7 @@ di dời sang node khác, cần EKS dev (2 node, xem `learning/20-lo-trinh-hoan-
   ```bash
   kubectl -n bss port-forward svc/api-gateway 8080:8080
   ```
-  (không cần nếu bạn đang chạy trên `kind` với ingress — đặt `SMOKE_BASE_URL=http://bss.localtest.me`).
+  (không cần nếu bạn đang chạy trên `kind` với ingress — đặt `SMOKE_BASE_URL=http://bss.localhost`).
 
 ## 1. Thí nghiệm A — xóa 1 Pod của `order-management`
 
@@ -51,7 +51,7 @@ tới khi đủ số Pod `Ready` trở lại.
    `customerId` hợp lệ (lấy từ `GET /api/tmf-api/customerManagement/v4/customer`):
    ```bash
    PROBE_PATH="/api/tmf-api/orderManagement/v4/productOrder?customerId=<uuid-thật>" \
-     SMOKE_BASE_URL=http://bss.localtest.me ./scripts/chaos-delete-pod.sh bss order-management
+     SMOKE_BASE_URL=http://bss.localhost ./scripts/chaos-delete-pod.sh bss order-management
    ```
 2. **`kubectl scale --replicas=2` có thể bị HPA âm thầm trả về 1** ngay sau đó, nếu overlay đặt
    `minReplicas: 1` (đúng trường hợp dev/local, B-22) — HPA reconcile lại theo metric, ghi đè lệnh
