@@ -63,11 +63,14 @@ public class OrderCompletedHandler {
         UUID customerId = UUID.fromString(detail.get("customerId").asText());
         BigDecimal amount = new BigDecimal(detail.get("amount").asText());
         String description = "Order " + orderId;
+        // Giai đoạn 9 (ADR-008 quyết định 5): chủ sở hữu (sub Keycloak) của khách — vắng mặt với đơn
+        // tạo lúc auth tắt / trước GĐ9 → hasNonNull thay vì get() để không đọc nhầm chuỗi "null".
+        String customerSub = detail.hasNonNull("customerSub") ? detail.get("customerSub").asText() : null;
 
         // If invoiceFromOrder throws, this whole method rolls back — including the
         // processed_event insert above — so a redelivery of the same message tries again
         // instead of being skipped as a false duplicate. This is the crux of the B-10 fix.
-        var invoice = billing.invoiceFromOrder(customerId, orderId, description, amount);
+        var invoice = billing.invoiceFromOrder(customerId, customerSub, orderId, description, amount);
         log.info("Issued invoice {} for order {}", invoice.invoiceNumber(), orderId);
     }
 

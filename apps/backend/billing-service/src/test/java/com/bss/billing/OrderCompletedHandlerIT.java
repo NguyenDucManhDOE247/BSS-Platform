@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.reset;
 
@@ -80,8 +81,12 @@ class OrderCompletedHandlerIT {
         // Simulate the downstream failure the bug report describes (e.g. a transient DB
         // hiccup while creating the invoice) — NOT calling the real method, exactly like a
         // real failure wouldn't either.
+        // Giai đoạn 9: handler giờ gọi bản 5 tham số (thêm customerSub — null ở event này vì không có
+        // trường customerSub). Stub bản 4 tham số cũ KHÔNG còn kích hoạt → lỗi giả lập không xảy ra →
+        // test mất tác dụng (đã tự thấy test đỏ đúng vì lý do này). Stub đúng hàm handler thật sự gọi.
         doThrow(new RuntimeException("simulated downstream failure"))
-                .when(billing).invoiceFromOrder(any(UUID.class), any(UUID.class), anyString(), any(BigDecimal.class));
+                .when(billing).invoiceFromOrder(any(UUID.class), nullable(String.class), any(UUID.class),
+                        anyString(), any(BigDecimal.class));
 
         assertThatThrownBy(() -> handler.handle(eventId, "OrderCompleted", detail))
                 .isInstanceOf(RuntimeException.class)
