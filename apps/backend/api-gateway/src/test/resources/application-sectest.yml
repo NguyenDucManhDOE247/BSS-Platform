@@ -5,9 +5,17 @@
 # từng phần tử qua property) vì Spring không merge được property rời rạc vào 1 phần tử YAML list
 # đã tồn tại — đã tự kiểm chứng: `spring.cloud.gateway.routes[0].uri=...` làm context load LỖI
 # (property binder đòi đủ field bắt buộc của route, không chỉ uri).
+#
+# Giai đoạn 9: "bị từ chối NGAY" đúng trên Linux (CI), nhưng trong WSL2 cổng 1 đóng KHÔNG trả RST mà
+# treo tới khi hết giờ → WebTestClient báo "Timeout on blocking read" sau 5s, test đỏ oan dù security
+# đúng. Timeout ngắn dưới đây làm downstream hỏng NHANH (5xx) ở mọi máy — test chỉ quan tâm "có bị
+# 401/403 hay không".
 spring:
   cloud:
     gateway:
+      httpclient:
+        connect-timeout: 300   # ms
+        response-timeout: 1s
       routes:
         - id: customer
           uri: http://127.0.0.1:1

@@ -1,34 +1,51 @@
 openapi: 3.1.0
 info:
   title: BSS Customer Management API
-  description: TM Forum TMF629 Customer Management
-  version: 4.0.0
+  description: |
+    TM Forum TMF629 Customer Management (tập con).
+
+    **Xác thực (Giai đoạn 9, ADR-008):** Bearer JWT do Keycloak realm `bss` phát hành. Khi
+    `bss.auth.enabled=true`, mọi endpoint cần token:
+    - `/customer/me` — role `customer` (khách tự quản lý hồ sơ của CHÍNH mình);
+    - mọi endpoint khác — role `admin`.
+    Khi `bss.auth.enabled=false` (dev/staging/prod cho tới GĐ9 việc 7): mọi endpoint cũ mở như
+    trước, riêng `/customer/me` luôn trả 401 (không có danh tính).
+  version: 4.1.0
 
 servers:
   - url: https://api.bss.example.com/api/tmf-api/customerManagement/v4
 
+security:
+  - bearerAuth: []
+
 paths:
   /customer:
     get:
-      summary: List customers
+      summary: List customers (admin)
       parameters:
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+        - { in: query, name: limit, schema: { type: integer, default: 20, maximum: 100 } }
         - in: query
-          name: offset
-          schema: { type: integer, default: 0 }
+          name: status
+          description: Lọc theo trạng thái — vd. `Initialized` = danh sách chờ duyệt.
+          schema: { $ref: '#/components/schemas/CustomerStatus' }
         - in: query
-          name: limit
-          schema: { type: integer, default: 20, maximum: 100 }
+          name: q
+          description: Tìm theo tên HOẶC email, không phân biệt hoa thường.
+          schema: { type: string }
       responses:
         '200':
           description: A list of customers.
+          headers:
+            X-Total-Count: { schema: { type: integer }, description: Tổng số bản ghi khớp bộ lọc }
           content:
             application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/Customer' }
+              schema: { type: array, items: { $ref: '#/components/schemas/Customer' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
     post:
-      summary: Create a customer
+      summary: Create a customer (admin — khách tại quầy, không có tài khoản web)
       requestBody:
         required: true
         content:
@@ -36,43 +53,144 @@ paths:
             schema: { $ref: '#/components/schemas/CustomerCreate' }
       responses:
         '201':
+          description: Created. Luôn bắt đầu ở `Initialized`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '400': { description: Có trường không được phép (vd. `status`). }
+        '409': { description: Email đã tồn tại. }
+        '422': { description: Dữ liệu không hợp lệ. }
+
+  /customer/me:
+    get:
+      summary: Hồ sơ khách hàng của người đang đăng nhập (role customer)
+      responses:
+        '200':
+          description: Hồ sơ.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Tài khoản chưa có hồ sơ — web-portal hiện form "hoàn tất hồ sơ". }
+    post:
+      summary: Khách tự tạo hồ sơ lần đầu (email lấy từ token, trạng thái Initialized — chờ admin duyệt)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MyProfile' }
+      responses:
+        '201':
           description: Created.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Customer' }
+        '400': { description: Gửi kèm trường không được phép (`email`, `status`...). }
+        '409': { description: Tài khoản đã có hồ sơ, hoặc email đã thuộc 1 khách khác. }
+        '422': { description: Thiếu `name`, hoặc token không có claim `email`. }
+    patch:
+      summary: Khách tự sửa tên/SĐT (không đổi được email, trạng thái)
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema: { $ref: '#/components/schemas/MyProfile' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '400': { description: Gửi kèm trường không được phép (`status`...). }
+        '404': { description: Chưa có hồ sơ. }
 
   /customer/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
     get:
-      summary: Get a customer
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string, format: uuid }
+      summary: Get a customer (admin)
       responses:
         '200':
           description: A customer.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Customer' }
-        '404':
-          description: Not found.
+        '404': { description: Not found. }
+    patch:
+      summary: Sửa khách hàng / duyệt (`status` → Active) / khóa (`status` → Suspended) — admin
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema: { $ref: '#/components/schemas/CustomerPatch' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '404': { description: Not found. }
+    delete:
+      summary: Delete a customer (admin)
+      responses:
+        '204': { description: Deleted. }
+        '404': { description: Not found. }
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    Unauthorized: { description: Thiếu token / token không hợp lệ (sai chữ ký, sai `iss`, hết hạn). }
+    Forbidden: { description: Token hợp lệ nhưng thiếu role cần thiết. }
+
   schemas:
+    CustomerStatus:
+      type: string
+      description: Vòng đời TMF629. Chỉ khách `Active` mới đặt hàng được (ADR-008 quyết định 3).
+      enum: [Initialized, Validated, Active, Suspended, Terminated]
+
     Customer:
       type: object
-      required: [id, name, status]
+      required: [id, name, email, status, selfRegistered]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         email: { type: string, format: email }
-        status: { type: string, enum: [active, suspended, closed] }
+        phoneNumber: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/CustomerStatus' }
+        selfRegistered:
+          type: boolean
+          readOnly: true
+          description: true = khách tự đăng ký qua web (có tài khoản Keycloak); false = admin tạo tay.
         createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
 
     CustomerCreate:
       type: object
-      required: [name]
+      additionalProperties: false
+      required: [name, email]
       properties:
         name: { type: string, minLength: 1 }
         email: { type: string, format: email }
+        phoneNumber: { type: string }
+
+    CustomerPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        phoneNumber: { type: string }
+        status: { $ref: '#/components/schemas/CustomerStatus' }
+
+    MyProfile:
+      type: object
+      additionalProperties: false
+      description: POST bắt buộc `name`; PATCH bỏ trống trường nào = giữ nguyên trường đó.
+      properties:
+        name: { type: string, minLength: 1 }
+        phoneNumber: { type: string }
