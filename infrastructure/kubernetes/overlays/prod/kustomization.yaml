@@ -199,20 +199,20 @@ patches:
     patch: |-
       - { op: replace, path: /spec/minAvailable, value: 2 }
 
-  # Bump backend resources for prod traffic.
+  # Prod nâng MEMORY requests của backend, nhưng KHÔNG nâng CPU requests: CPU giữ nguyên base (250m).
+  # Trước đây prod đặt 500m (đoán lúc scaffold) ⇒ app 6850m + hệ thống ~1300m ≈ 8.15 vCPU ⇒ 5 node, vượt
+  # quota EC2 mặc định 8 vCPU (AWS từ chối tăng 2026-09-28). Đo thật ở staging/dev: tải ~4% CPU với 250m.
+  # Giữ 3 replica + PDB minAvailable 2; app ≈ 3850m + hệ thống ≈ 1300m ≈ 5.15 vCPU ⇒ vừa 4 node t3.large.
+  # Nếu sau này đo tải prod thật cao, nâng lại CPU requests cùng số node/quota.
   - target: { kind: Deployment, name: customer-service }
     patch: |-
-      - { op: replace, path: /spec/template/spec/containers/0/resources/requests/cpu, value: "500m" }
       - { op: replace, path: /spec/template/spec/containers/0/resources/requests/memory, value: "768Mi" }
   - target: { kind: Deployment, name: product-catalog }
     patch: |-
-      - { op: replace, path: /spec/template/spec/containers/0/resources/requests/cpu, value: "500m" }
       - { op: replace, path: /spec/template/spec/containers/0/resources/requests/memory, value: "768Mi" }
   - target: { kind: Deployment, name: order-management }
     patch: |-
-      - { op: replace, path: /spec/template/spec/containers/0/resources/requests/cpu, value: "500m" }
       - { op: replace, path: /spec/template/spec/containers/0/resources/requests/memory, value: "768Mi" }
   - target: { kind: Deployment, name: billing-service }
     patch: |-
-      - { op: replace, path: /spec/template/spec/containers/0/resources/requests/cpu, value: "500m" }
       - { op: replace, path: /spec/template/spec/containers/0/resources/requests/memory, value: "768Mi" }
