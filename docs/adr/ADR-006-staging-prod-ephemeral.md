@@ -78,9 +78,28 @@ sách chặt, `kubectl` trong Actions **timeout**. Không có lựa chọn "vừ
 **ngoại lệ có chủ đích, do chủ repo tự bật** trong `terraform.tfvars` cho buổi ephemeral và phải được nêu rõ trong
 tài liệu đề tài. Với prod chạy thật, dùng B. Chi tiết và lệnh: `docs/runbooks/cd-staging-prod-demo.md` §4.
 
+## Ràng buộc kèm theo: quota vCPU EC2 (8) quyết định cỡ prod
+
+Tài khoản mới có quota EC2 "Running On-Demand Standard" = **8 vCPU** (tính cộng dồn mọi cluster). AWS **từ chối**
+tăng lên 32 (2026-09-28, case `CASE_CLOSED`: chưa đủ lịch sử sử dụng; xin lại được sau chu kỳ billing kế tiếp).
+Thiết kế prod cũ (CPU requests backend 500m ⇒ ~8.15 vCPU ⇒ 5 node = 10 vCPU) vì vậy không dựng được.
+
+| Lựa chọn | Đánh đổi |
+|---|---|
+| A. Chờ quota | Không đổi thiết kế, nhưng phụ thuộc AWS (ngày → tuần), prod chưa được kiểm chứng |
+| B. Hạ replicas | Lệch thiết kế HA (3 replica, PDB `minAvailable: 2`) |
+| C. **Hạ CPU `requests` backend 500m → 250m (base), prod 4 node** | Giữ 3 replica/PDB/3 AZ; 500m là số đoán lúc scaffold, staging/dev đo thật ~4% CPU. Đổi lại: 2 node chạm 91–93% requests, HPA scale-out sớm hơn nhưng không còn chỗ (max 4 = đúng quota) |
+| D. Thêm node Spot (quota Spot riêng, 8 vCPU) | Phải sửa Terraform; Spot có thể bị thu hồi giữa buổi |
+
+**Quyết định (PR #162): C.** Kiểm chứng thật ngày 2026-09-28: `rc-v0.1.1` qua staging (14 Pod) → `v0.1.1` lên prod
+(20 Pod `Running`, smoke PASS, 4 node `Ready`) rồi destroy. Vì đổi manifest nên phải tag rc mới và chạy lại staging
+(cd-prod đòi cùng commit với rc). Bài học vận hành: quota chỉ bị kiểm khi EC2 *khởi chạy* nên `terraform plan` không báo trước;
+mọi đợt tăng số node/CPU requests phải kiểm quota trước (runbook §1b/§1c).
+
 ## Điều kiện xem lại
 
 - Ngân sách bị siết mạnh ⇒ hướng 1 (namespace) kèm ADR mới về cách nhân bản IRSA/DB/bus theo
   namespace và nâng node group (hoặc Karpenter) cho đủ pod.
 - Có nhu cầu demo prod liên tục nhiều ngày (vd. bảo vệ đề tài) ⇒ bật `ephemeral = false` đúng trong
   khoảng đó rồi destroy sau.
+- Quota vCPU EC2 được nâng (≥ 12) ⇒ cân nhắc trả CPU requests prod về mức dư địa hơn và `max_size` 5–6 (xem mục quota ở trên).
