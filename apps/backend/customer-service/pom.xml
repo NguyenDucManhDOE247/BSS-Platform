@@ -53,6 +53,13 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- Giai đoạn 9 (ADR-008 quyết định 4): service TỰ kiểm JWT của Keycloak (zero-trust),
+             không tin header do gateway chèn. Bật/tắt bằng bss.auth.enabled — xem SecurityConfig. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+
         <!-- Persistence -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -90,6 +97,13 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- jwt() của MockMvc: giả lập token đã kiểm xong, KHÔNG mock framework (CLAUDE.md §9) —
+             bộ lọc Spring Security thật vẫn chạy và áp luật phân quyền thật. -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

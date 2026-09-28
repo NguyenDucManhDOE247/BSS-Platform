@@ -80,6 +80,17 @@ class CustomerControllerIT {
                 .andExpect(status().isNotFound());
     }
 
+    /**
+     * Giai đoạn 9 (ADR-008): khi TẮT auth (dev/staging/prod cho tới GĐ9 việc 7) mọi endpoint cũ giữ
+     * nguyên hành vi mở như trước — nhưng "/me" không có danh tính nào để trả, phải 401 chứ không
+     * được đoán bừa là khách nào.
+     */
+    @Test
+    void me_is_401_when_auth_disabled() throws Exception {
+        mvc.perform(get("/tmf-api/customerManagement/v4/customer/me"))
+                .andExpect(status().isUnauthorized());
+    }
+
     @Test
     void create_rejects_invalid_email() throws Exception {
         ObjectNode body = json.createObjectNode()

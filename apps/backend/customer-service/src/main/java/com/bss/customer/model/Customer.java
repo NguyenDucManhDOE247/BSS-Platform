@@ -1,5 +1,7 @@
 package com.bss.customer.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -34,6 +36,15 @@ public class Customer {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private CustomerStatus status = CustomerStatus.Initialized;
+
+    /**
+     * Giai đoạn 9 (ADR-008 quyết định 3): claim {@code sub} của tài khoản Keycloak đã tự tạo hồ sơ
+     * này qua {@code POST /customer/me}. NULL = khách do admin tạo tay (không có tài khoản web).
+     * Không đưa ra API (định danh nội bộ, client không cần) — thay bằng {@link #isSelfRegistered()}.
+     */
+    @JsonIgnore
+    @Column(name = "keycloak_user_id", unique = true, updatable = false)
+    private String keycloakUserId;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -71,4 +82,13 @@ public class Customer {
     public void setStatus(CustomerStatus status) { this.status = status; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public String getKeycloakUserId() { return keycloakUserId; }
+    public void setKeycloakUserId(String keycloakUserId) { this.keycloakUserId = keycloakUserId; }
+
+    /**
+     * Cho admin-console biết khách này có tài khoản web (tự đăng ký) hay do admin tạo tay.
+     * READ_ONLY: chỉ xuất ra JSON; client gửi ngược trường này lên sẽ bị bỏ qua thay vì 400.
+     */
+    @JsonProperty(value = "selfRegistered", access = JsonProperty.Access.READ_ONLY)
+    public boolean isSelfRegistered() { return keycloakUserId != null; }
 }
