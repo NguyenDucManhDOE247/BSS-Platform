@@ -58,6 +58,10 @@ configMapGenerator:
       - AWS_REGION=ap-southeast-1
       - AWS_ENDPOINT_URL=http://localstack.bss.svc.cluster.local:4566
       - EVENT_BUS_NAME=bss-dev-events
+      # Giai đoạn 9 việc 3c — xem customer-service-config.
+      - BSS_AUTH_ENABLED=true
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://bss.localtest.me/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: billing-service-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws

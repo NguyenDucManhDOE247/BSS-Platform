@@ -21,6 +21,13 @@ public class ProductOrder {
     @Column(name = "customer_id", nullable = false)
     private UUID customerId;
 
+    /**
+     * Giai đoạn 9 (ADR-008 quyết định 5): {@code sub} Keycloak của khách đã đặt đơn này. NULL = đơn
+     * tạo khi auth tắt, hoặc trước GĐ9 → chỉ admin thấy. Không đưa ra API (định danh nội bộ).
+     */
+    @Column(name = "owner_sub", updatable = false, length = 64)
+    private String ownerSub;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private State state = State.Acknowledged;
@@ -82,6 +89,8 @@ public class ProductOrder {
     public UUID getId() { return id; }
     public UUID getCustomerId() { return customerId; }
     public void setCustomerId(UUID customerId) { this.customerId = customerId; }
+    public String getOwnerSub() { return ownerSub; }
+    public void setOwnerSub(String ownerSub) { this.ownerSub = ownerSub; }
     public State getState() { return state; }
     public void setState(State state) { this.state = state; }
     public String getCategory() { return category; }

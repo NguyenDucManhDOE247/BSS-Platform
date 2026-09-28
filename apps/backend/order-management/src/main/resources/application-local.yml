@@ -10,6 +10,8 @@ bss:
   clients:
     product-catalog:
       base-url: http://localhost:8082
+    customer-service: # Giai đoạn 9 — GET /customer/me (xem CustomerClient)
+      base-url: http://localhost:8081
 
 logging:
   level:
