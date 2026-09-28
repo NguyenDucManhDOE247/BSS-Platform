@@ -1,0 +1,25 @@
+# Giai đoạn 9 việc 3b — bug thật lộ ra khi chạy trên kind (kindnetd bản mới CÓ enforce NetworkPolicy):
+# từ B-13 (GĐ1), order-management GỌI TRỰC TIẾP product-catalog để lấy giá do server quyết định,
+# nhưng `allow-gateway-to-backends` (GĐ7) chỉ cho api-gateway vào tier backend → mọi lần đặt hàng
+# bị "Connect timed out" → circuit breaker mở → 503. Không lộ ra trên EKS chỉ vì NetworkPolicy ở đó
+# CHƯA được enforce (xem docs/runbooks/network-policy.md "Trên EKS thật") — bật lên là gãy ngay.
+#
+# customer-service: GĐ9 việc 3c — order-management gọi `GET /customer/me` (chuyển tiếp token của
+# chính khách hàng) để lấy customerId + kiểm khách đã được duyệt (ADR-008 quyết định 4, 5).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-order-to-dependencies
+  namespace: bss
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app, operator: In, values: [product-catalog, customer-service] }
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: order-management }
+      ports:
+        - { protocol: TCP, port: 8080 }

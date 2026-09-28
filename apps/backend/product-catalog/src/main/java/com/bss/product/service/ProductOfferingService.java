@@ -1,6 +1,7 @@
 package com.bss.product.service;
 
 import com.bss.product.dto.CreateOfferingRequest;
+import com.bss.product.dto.PatchOfferingRequest;
 import com.bss.product.dto.ProductOfferingDto;
 import com.bss.product.exception.NotFoundException;
 import com.bss.product.model.LifecycleStatus;
@@ -25,32 +26,45 @@ public class ProductOfferingService {
         this.repo = repo;
     }
 
+    /**
+     * @param onSaleOnly Giai đoạn 9: true = người gọi là khách (đăng nhập hay chưa) → chỉ gói đang
+     *                   bán; false = admin hoặc auth tắt → toàn bộ danh mục như trước.
+     */
     @Transactional(readOnly = true)
     public Page<ProductOfferingDto> list(UUID categoryId,
                                          LifecycleStatus status,
                                          int offset,
-                                         int limit) {
+                                         int limit,
+                                         boolean onSaleOnly) {
         // B-15 fix: OffsetPageRequest, not PageRequest.of(offset/limit,...) — see its javadoc.
         var pageable = OffsetPageRequest.of(offset, limit, Sort.by("createdAt").descending());
-
-        Page<ProductOffering> page;
-        if (categoryId != null && status != null) {
-            page = repo.findByCategoryIdAndLifecycleStatus(categoryId, status, pageable);
-        } else if (categoryId != null) {
-            page = repo.findByCategoryId(categoryId, pageable);
-        } else if (status != null) {
-            page = repo.findByLifecycleStatus(status, pageable);
-        } else {
-            page = repo.findAll(pageable);
-        }
-        return page.map(ProductOfferingDto::from);
+        return repo.findAll(ProductOfferingRepository.filter(categoryId, status, onSaleOnly), pageable)
+                .map(ProductOfferingDto::from);
     }
 
+    /**
+     * Gói đã ngừng bán trả 404 với khách: web-portal không hiện được trang mua, và order-management
+     * (gọi GET này để lấy giá — B-13) từ chối đặt gói đó.
+     */
     @Transactional(readOnly = true)
-    public ProductOfferingDto get(UUID id) {
+    public ProductOfferingDto get(UUID id, boolean onSaleOnly) {
         return repo.findById(id)
+                .filter(o -> !onSaleOnly || ProductOfferingRepository.ON_SALE.contains(o.getLifecycleStatus()))
                 .map(ProductOfferingDto::from)
                 .orElseThrow(() -> new NotFoundException("ProductOffering", id.toString()));
+    }
+
+    /** Giai đoạn 9: admin sửa giá / mô tả / ngừng bán. Trường null = giữ nguyên (merge-patch). */
+    public ProductOfferingDto patch(UUID id, PatchOfferingRequest req) {
+        var o = repo.findById(id)
+                .orElseThrow(() -> new NotFoundException("ProductOffering", id.toString()));
+        if (req.name() != null && !req.name().isBlank()) o.setName(req.name().trim());
+        if (req.description() != null) o.setDescription(req.description());
+        if (req.priceAmount() != null) o.setPriceAmount(req.priceAmount());
+        if (req.lifecycleStatus() != null) o.setLifecycleStatus(req.lifecycleStatus());
+        if (req.validForStart() != null) o.setValidForStart(req.validForStart());
+        if (req.validForEnd() != null) o.setValidForEnd(req.validForEnd());
+        return ProductOfferingDto.from(repo.save(o));
     }
 
     public ProductOfferingDto create(CreateOfferingRequest req) {
