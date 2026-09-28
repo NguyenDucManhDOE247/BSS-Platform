@@ -46,13 +46,17 @@ public class SecurityConfig {
                         // kubelet/Prometheus không có cách nào xin token, và lộ /actuator/health không
                         // phải rủi ro bảo mật thật.
                         .pathMatchers("/actuator/**").permitAll()
-                        // Đọc (GET) công khai — duyệt gói cước, xem chi tiết đơn hàng qua link... đúng mô
-                        // hình "đọc công khai, ghi cần đăng nhập" của phần lớn ứng dụng thương mại.
-                        .pathMatchers(HttpMethod.GET, "/**").permitAll()
-                        // B-18: quản lý khách hàng (tạo/sửa/xóa) CHỈ admin — đây chính là lỗ hổng gốc
-                        // ("admin-console ai vào cũng xóa được khách hàng").
+                        // Giai đoạn 9 (ADR-008): CHỈ duyệt gói cước là công khai (khách chưa đăng nhập vẫn
+                        // xem được gói). GĐ7 từng để MỌI GET công khai → ai cũng đọc được đơn/hóa đơn/hồ sơ
+                        // của người khác qua gateway.
+                        .pathMatchers(HttpMethod.GET, "/api/tmf-api/productCatalog/**").permitAll()
+                        // Khách tự quản lý hồ sơ của chính mình — phải khai TRƯỚC luật admin bên dưới.
+                        .pathMatchers("/api/tmf-api/customerManagement/v4/customer/me").authenticated()
+                        // B-18: quản lý khách hàng CHỈ admin (lỗ hổng gốc: "admin-console ai vào cũng xóa
+                        // được khách hàng").
                         .pathMatchers("/api/tmf-api/customerManagement/**").hasRole("admin")
-                        // Mọi ghi khác (đặt hàng, v.v.) — cần đăng nhập, không cần role cụ thể.
+                        // Còn lại: cần đăng nhập. Gateway chỉ chặn THÔ để trả 401 sớm — luật sở hữu chi
+                        // tiết ("chỉ xem đơn/hóa đơn của mình") nằm ở từng service (ADR-008 quyết định 4).
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(keycloakAuthoritiesConverter())));
         return http.build();

@@ -76,6 +76,42 @@ class SecurityConfigTest {
                         .isNotIn(HttpStatus.UNAUTHORIZED.value(), HttpStatus.FORBIDDEN.value()));
     }
 
+    // ---------- Giai đoạn 9 (ADR-008) ----------
+
+    @Test
+    void GET_donHang_hoaDon_khachHang_khongToken_bi401() {
+        // GĐ7 để MỌI GET công khai → ai cũng đọc được đơn/hóa đơn của người khác qua gateway.
+        // GĐ9: chỉ duyệt gói cước (productCatalog) là công khai.
+        for (String uri : new String[] {
+                "/api/tmf-api/orderManagement/v4/productOrder",
+                "/api/tmf-api/billingManagement/v4/customerBill",
+                "/api/tmf-api/customerManagement/v4/customer",
+                "/api/tmf-api/customerManagement/v4/customer/me"}) {
+            webTestClient.get().uri(uri).exchange().expectStatus().isUnauthorized();
+        }
+    }
+
+    @Test
+    void khachHang_tuQuanLyHoSo_me_khongBiGatewayChan() {
+        // POST/PATCH /customer/me là việc của CHÍNH khách hàng — luật GĐ7 "mọi ghi vào
+        // customerManagement cần admin" chặn oan khách tự tạo hồ sơ.
+        var asCustomer = webTestClient.mutateWith(SecurityMockServerConfigurers.mockJwt().authorities(() -> "ROLE_customer"));
+        asCustomer.post().uri("/api/tmf-api/customerManagement/v4/customer/me").exchange()
+                .expectStatus().value(s -> assertThat(s).isNotIn(401, 403));
+        asCustomer.patch().uri("/api/tmf-api/customerManagement/v4/customer/me").exchange()
+                .expectStatus().value(s -> assertThat(s).isNotIn(401, 403));
+        asCustomer.get().uri("/api/tmf-api/customerManagement/v4/customer/me").exchange()
+                .expectStatus().value(s -> assertThat(s).isNotIn(401, 403));
+    }
+
+    @Test
+    void khachHang_khongDocDuocDanhSachKhachHang_403() {
+        webTestClient.mutateWith(SecurityMockServerConfigurers.mockJwt().authorities(() -> "ROLE_customer"))
+                .get().uri("/api/tmf-api/customerManagement/v4/customer")
+                .exchange()
+                .expectStatus().isForbidden();
+    }
+
     @Test
     void POST_order_coTokenBatKyRole_khongBiChan() {
         // orderManagement chỉ cần "đã đăng nhập" (authenticated()), không cần role cụ thể.

@@ -47,3 +47,14 @@ CVE-2026-65182
 CVE-2026-65905
 CVE-2026-68525
 GHSA-r7wm-3cxj-wff9
+
+# Giai doan 9 viec 3 (ADR-008 quyet dinh 4) -- service nay gio TU kiem JWT (spring-boot-starter-
+# oauth2-resource-server), keo theo Spring Security 6.2.8 do Boot 3.2.x BOM quan ly. 2 CVE duoi
+# day y het api-gateway da gap o Giai doan 7 (xem ly do day du trong apps/backend/api-gateway/
+# .trivyignore): ban va chi co tu dong 6.5.x/7.0.x (hoac ban thuong mai 6.2.10) -- nang rieng le
+# module Spring Security se lech version giua cac module cung bo khung. Xu ly that = nang Spring
+# Boot co chu dich (no Giai doan 3 trong learning/20, muc Don no). CVE-2025-22228 chi anh huong
+# BCryptPasswordEncoder voi mat khau > 72 byte -- service nay KHONG bam mat khau nao (mat khau
+# nam o Keycloak), nen khong khai thac duoc o day.
+CVE-2026-22732
+CVE-2025-22228
