@@ -1,10 +1,15 @@
 {
   "realm": "bss",
+  "displayName": "BSS Platform",
   "enabled": true,
   "sslRequired": "none",
-  "registrationAllowed": false,
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": false,
   "verifyEmail": false,
-  "loginWithEmailAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
   "requiredActions": [
     { "alias": "VERIFY_EMAIL", "enabled": false, "defaultAction": false, "providerId": "VERIFY_EMAIL", "priority": 50, "name": "Verify Email" },
     { "alias": "VERIFY_PROFILE", "enabled": false, "defaultAction": false, "providerId": "VERIFY_PROFILE", "priority": 90, "name": "Verify Profile" },
@@ -14,25 +19,77 @@
   "roles": {
     "realm": [
       { "name": "admin", "description": "Toan quyen quan tri BSS (customer, offering, ...)" },
-      { "name": "customer", "description": "Khach hang - dat hang, xem hoa don cua chinh minh" }
+      { "name": "customer", "description": "Khach hang - dat hang, xem hoa don cua chinh minh" },
+      {
+        "name": "default-roles-bss",
+        "description": "Role tu gan cho MOI user moi (ke ca tu dang ky). Composite PHAI khai o day (khong o defaultRole.composites: Keycloak dung cai do TRUOC khi tao role customer -> bo qua im lang). Keycloak tu them offline_access/uma_authorization luc tao realm - vo hai, SPA khong xin scope offline_access",
+        "composite": true,
+        "composites": {
+          "realm": ["customer"],
+          "client": { "account": ["view-profile", "manage-account"] }
+        }
+      }
     ]
   },
+  "defaultRole": { "name": "default-roles-bss" },
   "clients": [
     {
       "clientId": "api-gateway",
+      "name": "CHI DUNG CHO SCRIPT TEST (password grant) - khong dung cho website",
       "enabled": true,
       "publicClient": true,
       "protocol": "openid-connect",
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
-      "redirectUris": ["*"],
-      "webOrigins": ["*"]
+      "redirectUris": [],
+      "webOrigins": []
+    },
+    {
+      "clientId": "web-portal",
+      "name": "BSS Web Portal (khach hang)",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "rootUrl": "http://bss.localtest.me",
+      "baseUrl": "/",
+      "redirectUris": ["http://bss.localtest.me/*", "http://localhost:3000/*"],
+      "webOrigins": ["http://bss.localtest.me", "http://localhost:3000"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://bss.localtest.me/*##http://localhost:3000/*"
+      }
+    },
+    {
+      "clientId": "admin-console",
+      "name": "BSS Admin Console (nhan vien)",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "rootUrl": "http://bss.localtest.me",
+      "baseUrl": "/admin/",
+      "redirectUris": ["http://bss.localtest.me/admin/*", "http://localhost:3001/*"],
+      "webOrigins": ["http://bss.localtest.me", "http://localhost:3001"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://bss.localtest.me/admin/*##http://localhost:3001/*"
+      }
     }
   ],
   "users": [
     {
       "username": "admin1",
+      "email": "admin1@bss.local",
+      "firstName": "Quan tri",
+      "lastName": "Vien",
       "enabled": true,
       "emailVerified": true,
       "requiredActions": [],
@@ -41,6 +98,9 @@
     },
     {
       "username": "customer1",
+      "email": "customer1@bss.local",
+      "firstName": "Khach",
+      "lastName": "Mot",
       "enabled": true,
       "emailVerified": true,
       "requiredActions": [],

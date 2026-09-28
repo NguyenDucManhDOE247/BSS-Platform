@@ -64,12 +64,14 @@ configMapGenerator:
       # dev/staging/prod cố tình KHÔNG có 2 dòng này (xem SecurityConfig.java) cho tới khi có
       # Keycloak/Cognito thật trên AWS — việc riêng.
       - BSS_AUTH_ENABLED=true
-      # Bug thật gặp khi kiểm chứng: KC_HTTP_RELATIVE_PATH (đường HTTP thật) và KC_HOSTNAME (chuỗi
-      # "iss" bên trong token) là 2 thứ ĐỘC LẬP — token thật vẫn có iss KHÔNG mang "/auth" dù
-      # Keycloak phục vụ dưới path "/auth" (xem overlays/local/keycloak/deployment.yaml). Đặt
-      # "/auth/realms/bss" ở đây ban đầu làm gateway từ chối MỌI token hợp lệ (iss không khớp) —
-      # đã tự kiểm chứng bằng token thật, không đoán.
-      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/realms/bss
+      # Giai đoạn 9 việc 2 (ADR-008 quyết định 2) — 2 giá trị TÁCH BIỆT:
+      #   ISSUER_URI  = địa chỉ CÔNG KHAI, chỉ để so khớp claim `iss` (trùng KC_HOSTNAME của Keycloak);
+      #   JWK_SET_URI = địa chỉ NỘI BỘ cluster, để tải khóa công khai.
+      # Khi có JWK_SET_URI, Spring Boot tải khóa trực tiếp từ đó và KHÔNG gọi discovery
+      # "{issuer-uri}/.well-known/openid-configuration" — Pod không cần resolve bss.localtest.me
+      # (trong Pod, tên đó trỏ 127.0.0.1 = chính Pod). Thiếu JWK_SET_URI → gateway 500 khi có token.
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://bss.localtest.me/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
 
 # B-20 (bản local): dùng Kustomize secretGenerator thay Secrets Store CSI (AWS-only — bản AWS
 # giờ đã xong ở Giai đoạn 5, xem overlays/dev/secrets/ + ADR-004). Cùng 1 tài khoản Postgres
@@ -162,24 +164,14 @@ patches:
       - { op: replace, path: /spec/ingressClassName, value: nginx }
       - { op: replace, path: /metadata/annotations, value: {} }
       - { op: replace, path: /spec/rules/0/host, value: bss.localtest.me }
-      # Giai đoạn 7, việc 6 (B-18) — Keycloak trên SUBDOMAIN riêng, không phải path phụ của
-      # bss.localtest.me. "*.localtest.me" là domain công khai thật, trỏ về 127.0.0.1 cho MỌI
-      # subdomain — không cần sửa /etc/hosts, không cần domain riêng. Lý do không dùng path
-      # "/auth" (thử trước, bỏ — xem nhật ký): Spring Security tự ghép
-      # "{issuer-uri}/.well-known/openid-configuration" để tìm JWKS — issuer-uri PHẢI trùng khớp
-      # tuyệt đối với đường HTTP thật Keycloak lắng nghe; dùng path prefix buộc phải chỉnh
-      # KC_HTTP_RELATIVE_PATH, kéo theo phải sửa CẢ đường probe /health (cổng 9000) lẫn giá trị
-      # "iss" thật sự nằm trong token (2 thứ hóa ra ĐỘC LẬP nhau — KC_HOSTNAME quyết định "iss",
-      # KC_HTTP_RELATIVE_PATH quyết định đường HTTP, sửa 1 mà quên cái kia thì vênh nhau ngay).
-      # Subdomain riêng né được toàn bộ vướng mắc đó: Keycloak vẫn phục vụ ở "/", issuer khớp
-      # ngay từ đầu.
+      # Giai đoạn 9 việc 2 (ADR-008 quyết định 2): Keycloak dưới PATH `/auth` của cùng host, thay
+      # subdomain `auth.bss.localtest.me` của Giai đoạn 7. Keycloak tự phục vụ dưới `/auth`
+      # (KC_HTTP_RELATIVE_PATH), nên Ingress chuyển nguyên path, KHÔNG rewrite. Chèn vào ĐẦU danh
+      # sách cho dễ đọc — nginx chọn prefix dài nhất nên `/auth` không bị `/` (web-portal) nuốt.
       - op: add
-        path: /spec/rules/-
+        path: /spec/rules/0/http/paths/0
         value:
-          host: auth.bss.localtest.me
-          http:
-            paths:
-              - path: /
-                pathType: Prefix
-                backend:
-                  service: { name: keycloak, port: { number: 8080 } }
+          path: /auth
+          pathType: Prefix
+          backend:
+            service: { name: keycloak, port: { number: 8080 } }

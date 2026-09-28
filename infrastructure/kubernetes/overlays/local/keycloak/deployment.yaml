@@ -1,14 +1,21 @@
-# Giai đoạn 7, việc 6 (B-18): Keycloak — CHỈ ở overlay `local` (kind), phục vụ kiểm chứng auth mà
-# không cần AWS. dev/staging/prod dùng AWS Cognito hoặc Keycloak Terraform-hóa riêng — chưa làm,
-# xem docs/runbooks/auth.md mục "Còn lại".
+# Giai đoạn 7, việc 6 (B-18) dựng Keycloak ở overlay `local` (kind). Giai đoạn 9 việc 2 sửa lại
+# địa chỉ theo ADR-008 quyết định 2. dev/staging/prod: Giai đoạn 9 việc 7.
 #
-# `KC_HOSTNAME` cố định = DNS nội bộ cluster: Keycloak stamp CHÍNH XÁC chuỗi này vào claim `iss`
-# của mọi token nó phát hành, BẤT KỂ client gọi tới nó qua đường nào (Service nội bộ, Ingress từ
-# host, port-forward…) — api-gateway (chạy TRONG cluster) luôn resolve được DNS này để lấy JWKS +
-# so khớp `iss`. Không có dòng này, Keycloak mặc định lấy `iss` từ Host header của chính request
-# xin token — 2 client gọi qua 2 đường khác nhau (host qua Ingress vs Pod nội bộ) sẽ NHẬN token
-# với `iss` KHÁC NHAU, token bên này gateway không validate được token bên kia (đã tự kiểm chứng
-# lỗi này trước khi thêm dòng KC_HOSTNAME — xem nhật ký học tập).
+# `KC_HOSTNAME` = ĐỊA CHỈ CÔNG KHAI mà trình duyệt thấy (`http://bss.localtest.me/auth`), không phải
+# DNS nội bộ cluster. Keycloak ghi đúng chuỗi này vào claim `iss` của MỌI token, bất kể client gọi
+# tới qua đường nào — nên `iss` vẫn là 1 giá trị duy nhất.
+# Giai đoạn 7 từng đặt `KC_HOSTNAME` = DNS nội bộ (`keycloak.bss.svc.cluster.local`) để gateway khớp
+# `iss`. Cách đó chạy được với `curl` + password grant, nhưng HỎNG với luồng đăng nhập của trình
+# duyệt: Keycloak chuyển hướng người dùng tới chính địa chỉ nội bộ đó, trình duyệt không mở được.
+# Gateway/service giờ tách 2 việc: so khớp `iss` với địa chỉ công khai, nhưng TẢI KHÓA (JWKS) qua
+# DNS nội bộ (xem api-gateway-config trong ../kustomization.yaml). Pod không bao giờ phải tự
+# resolve `bss.localtest.me` (trong Pod tên đó trỏ về 127.0.0.1 = chính Pod).
+#
+# Path `/auth` cùng origin với 2 website, không dùng subdomain `auth.bss.localtest.me` như GĐ7:
+# trên AWS chưa có domain nên không tạo được subdomain trên DNS của ALB; path chạy y hệt ở kind
+# lẫn AWS, và cùng origin thì không cần CORS cho lời gọi token. Lần thử path ở GĐ7 hỏng vì chỉ đặt
+# 1 trong 2 biến — `KC_HOSTNAME` (quyết định `iss`) và `KC_HTTP_RELATIVE_PATH` (quyết định đường
+# HTTP thật) PHẢI cùng mang `/auth`.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -37,7 +44,17 @@ spec:
             - name: KC_HTTP_ENABLED
               value: "true"
             - name: KC_HOSTNAME
-              value: "http://keycloak.bss.svc.cluster.local:8080"
+              value: "http://bss.localtest.me/auth"
+            - name: KC_HTTP_RELATIVE_PATH
+              value: "/auth"
+            # Nếu không đặt, cổng quản trị 9000 THỪA KẾ `/auth` từ KC_HTTP_RELATIVE_PATH → probe
+            # `/health/ready` sẽ 404. Giữ `/` để probe bên dưới không phải đổi.
+            - name: KC_HTTP_MANAGEMENT_RELATIVE_PATH
+              value: "/"
+            # Cho phép lời gọi từ TRONG cluster (script E2E lấy token, tải JWKS) dùng địa chỉ nội bộ
+            # cho các URL backchannel. Claim `iss` vẫn luôn là KC_HOSTNAME công khai.
+            - name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC
+              value: "true"
             - name: KC_HOSTNAME_STRICT
               value: "true"
             - name: KC_HEALTH_ENABLED

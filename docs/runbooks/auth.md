@@ -28,22 +28,29 @@ kubectl apply -k infrastructure/kubernetes/overlays/local
 kubectl -n bss rollout status deploy/keycloak
 ```
 
-Keycloak lên **subdomain riêng** `auth.bss.localtest.me` (không phải path `/auth` của
-`bss.localtest.me`) — lý do kỹ thuật (bug thật gặp phải khi thử path trước, xem
-`overlays/local/kustomization.yaml` patch Ingress): Spring Security tự ghép
-`{issuer-uri}/.well-known/openid-configuration` để tìm JWKS — issuer-uri phải khớp TUYỆT ĐỐI với
-đường HTTP thật Keycloak lắng nghe. Dùng subdomain né được việc phải đồng bộ 2 biến độc lập nhau
-(`KC_HOSTNAME` quyết định `iss` trong token, `KC_HTTP_RELATIVE_PATH` quyết định đường HTTP thật —
-sửa 1 mà quên cái kia là vênh ngay, đã tự gặp lỗi này khi thử path prefix).
+Keycloak nằm dưới **path `/auth` của cùng host** `http://bss.localtest.me/auth` (Giai đoạn 9 việc
+2, [ADR-008](../adr/ADR-008-danh-tinh-va-quyen-so-huu.md) quyết định 2). Giai đoạn 7 từng dùng
+subdomain `auth.bss.localtest.me` với `KC_HOSTNAME` = DNS nội bộ cluster. Cách đó hỏng luồng đăng
+nhập của trình duyệt, vì Keycloak chuyển hướng trình duyệt tới địa chỉ nội bộ mà trình duyệt không
+mở được. Hiện tại:
+
+| Giá trị | Ở đâu | Là gì |
+|---|---|---|
+| `KC_HOSTNAME=http://bss.localtest.me/auth` + `KC_HTTP_RELATIVE_PATH=/auth` | `overlays/local/keycloak/deployment.yaml` | `iss` trong token = địa chỉ công khai; 2 biến phải cùng mang `/auth` |
+| `…JWT_ISSUER_URI=http://bss.localtest.me/auth/realms/bss` | `api-gateway-config` | Chỉ để **so khớp** `iss` |
+| `…JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs` | `api-gateway-config` | Tải khóa qua DNS **nội bộ**. Có giá trị này thì Spring không gọi discovery, nên Pod không phải resolve `bss.localtest.me` (trong Pod tên đó trỏ 127.0.0.1) |
+
+docker-compose (`deploy/`) chạy Keycloak ở `http://localhost:8180/auth`, **mount chung** file
+`realm-bss.json` với kind.
 
 ## 3. Lấy token thật + gọi thử API
 
 ```bash
-ADMIN_TOK=$(curl -s -X POST http://auth.bss.localtest.me/realms/bss/protocol/openid-connect/token \
+ADMIN_TOK=$(curl -s -X POST http://bss.localtest.me/auth/realms/bss/protocol/openid-connect/token \
   -d grant_type=password -d client_id=api-gateway -d username=admin1 -d password=admin1pass \
   | sed -E 's/.*"access_token":"([^"]+)".*/\1/')
 
-CUST_TOK=$(curl -s -X POST http://auth.bss.localtest.me/realms/bss/protocol/openid-connect/token \
+CUST_TOK=$(curl -s -X POST http://bss.localtest.me/auth/realms/bss/protocol/openid-connect/token \
   -d grant_type=password -d client_id=api-gateway -d username=customer1 -d password=customer1pass \
   | sed -E 's/.*"access_token":"([^"]+)".*/\1/')
 
@@ -77,7 +84,9 @@ curl -s -X DELETE http://bss.localtest.me/api/tmf-api/customerManagement/v4/cust
 | `Account is not fully set up` khi xin token | Keycloak realm mặc định bật `VERIFY_PROFILE` — kiểm tra động lúc đăng nhập, không đọc `requiredActions` của user | `requiredActions` cấp REALM đặt `VERIFY_EMAIL`/`VERIFY_PROFILE` = `enabled: false` (không đủ chỉ set `emailVerified: true` ở user) |
 | Keycloak Pod CrashLoop, log `ReadOnlyFileSystemException` | `start-dev --import-realm` build Quarkus JIT lúc khởi động, ghi vào `/opt/keycloak/lib/...` — xung đột `readOnlyRootFilesystem: true` | `readOnlyRootFilesystem: false` riêng cho Keycloak (dev-mode only — production dùng `kc.sh build` lúc build image, không cần ghi gì lúc chạy) |
 | Readiness/liveness probe 404 dù Pod healthy | Keycloak 26.x phục vụ `/health/*` trên PORT QUẢN TRỊ RIÊNG (9000), không phải 8080 | Probe trỏ port 9000 |
-| Gọi `.../auth/realms/bss/...` → `Unable to find matching target resource method` | nginx Ingress không tự cắt path prefix; Keycloak không hiểu `/auth` nếu chưa cấu hình | (Đã bỏ cách path prefix — xem mục 2, dùng subdomain thay vì sửa `KC_HTTP_RELATIVE_PATH`) |
+| Gọi `.../auth/realms/bss/...` → `Unable to find matching target resource method` | nginx Ingress không tự cắt path prefix; Keycloak không hiểu `/auth` nếu chưa cấu hình | GĐ7 né bằng subdomain. GĐ9 sửa gốc: đặt **cả** `KC_HTTP_RELATIVE_PATH=/auth` lẫn `KC_HOSTNAME=…/auth` (xem mục 2) |
+| Trình duyệt bị chuyển hướng tới `keycloak.bss.svc.cluster.local` và không mở được trang đăng nhập (GĐ9) | `KC_HOSTNAME` = DNS nội bộ cluster. Chỉ `curl` + password grant mới không lộ lỗi này | `KC_HOSTNAME` = địa chỉ công khai; service tải JWKS qua `jwk-set-uri` nội bộ (ADR-008) |
+| *(phòng ngừa, chưa tự tái hiện)* Health probe có thể 404 sau khi thêm `KC_HTTP_RELATIVE_PATH=/auth` | Theo tài liệu Keycloak 26, cổng quản trị 9000 **thừa kế** relative path nếu không đặt riêng → `/auth/health/ready` | Đặt thêm `KC_HTTP_MANAGEMENT_RELATIVE_PATH=/` (đã làm; probe `/health/*` chạy xanh) |
 | Gateway trả 500 khi CÓ token (không phải 401 sạch) | issuer-uri cấu hình sai đường (có `/auth` trong khi `iss` thật của token không có) → Spring không tải được JWKS | issuer-uri phải khớp CHÍNH XÁC domain/path Keycloak thật sự lắng nghe |
 | `hasRole("admin")` luôn từ chối dù token có role thật | Keycloak để role trong `realm_access.roles` (JSON lồng), không phải claim `scope` phẳng mà `JwtAuthenticationConverter` mặc định đọc | `JwtGrantedAuthoritiesConverter` tùy biến đọc `realm_access.roles`, thêm tiền tố `ROLE_` |
 
