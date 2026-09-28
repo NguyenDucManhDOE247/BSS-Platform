@@ -7,10 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-09-28
+
 Everything below shipped after `v0.1.0` (local-only scaffold) and is verified against **real AWS
 infrastructure**, not just written and assumed working — see `docs/adr/` for the decisions and
-`docs/runbooks/` for the verification evidence. This section will become `[1.0.0]` when Phase 8
-closes and the repo is tagged.
+`docs/runbooks/` for the verification evidence. Phase 8 closed with measured capacity (stable to >=150 req/s on 2x t3.medium; beyond that pods go
+`Pending` for lack of node capacity, see ADR-007) and chaos results recorded in `docs/labs/`.
 
 ### Added
 
@@ -84,5 +86,6 @@ The platform builds and runs end-to-end against Postgres + LocalStack via
 - Pod `securityContext`: `runAsNonRoot`, `readOnlyRootFilesystem`, all caps dropped.
 - ECR repos with immutable tags.
 
-[Unreleased]: https://github.com/gemmy94/bss-platform/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/gemmy94/bss-platform/releases/tag/v0.1.0
+[Unreleased]: https://github.com/NguyenDucManhDOE247/BSS-Platform/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/NguyenDucManhDOE247/BSS-Platform/compare/v0.1.0...v1.0.0
+[0.1.0]: https://github.com/NguyenDucManhDOE247/BSS-Platform/releases/tag/v0.1.0
