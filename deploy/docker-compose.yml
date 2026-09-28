@@ -12,6 +12,7 @@
 #   - Postgres on   localhost:5432
 #   - Redis on      localhost:6379
 #   - LocalStack on localhost:4566 (S3, SQS, EventBridge, Secrets Manager emulation)
+#   - Keycloak on   localhost:8180/auth (realm "bss"; admin console: /auth/admin, admin/admin)
 
 services:
   postgres:
@@ -80,6 +81,36 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  # Giai đoạn 9 việc 2 (ADR-008): nguồn danh tính cho 2 website khi chạy local (Vite dev +
+  # service chạy bằng mvn). DÙNG CHUNG file realm với overlay kind (mount thẳng file đó, không chép
+  # bản thứ 2) nên 2 môi trường local không thể lệch nhau. Tài khoản admin Keycloak "admin/admin"
+  # chỉ để vào http://localhost:8180/auth/admin trên máy mình — cùng mức "không phải bí mật" với
+  # bss/bss của Postgres ở trên.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5
+    container_name: bss-keycloak
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_ENABLED: "true"
+      # iss của token = chuỗi này. Service chạy trên máy (mvn) gọi được thẳng localhost:8180, nên ở
+      # local, địa chỉ công khai và địa chỉ tải JWKS là MỘT (khác kind — xem ADR-008 quyết định 2).
+      KC_HOSTNAME: http://localhost:8180/auth
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_HTTP_MANAGEMENT_RELATIVE_PATH: /
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8180:8080"
+    volumes:
+      - ../infrastructure/kubernetes/overlays/local/keycloak/realm-bss.json:/opt/keycloak/data/import/realm-bss.json:ro
+    healthcheck:
+      # Image Keycloak không có curl/wget — dùng /dev/tcp của bash gọi cổng quản trị 9000.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
 
   # Optional: Postgres admin UI
   # B-02 fix: was published on host port 8081, which collides with customer-service's local
