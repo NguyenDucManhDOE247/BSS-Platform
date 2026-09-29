@@ -60,6 +60,28 @@ describe('CustomersPage', () => {
     ));
   });
 
+  it('editing sends only name + phone (email belongs to the Keycloak account)', async () => {
+    renderPage();
+    await waitFor(() => row('act@x.vn'));
+    fireEvent.click(within(row('act@x.vn')).getByRole('button', { name: 'Sửa' }));
+    fireEvent.change(within(row('act@x.vn')).getByLabelText('Tên khách'), { target: { value: '  Ten Moi ' } });
+    fireEvent.change(within(row('act@x.vn')).getByLabelText('SĐT khách'), { target: { value: '0909' } });
+    fireEvent.click(within(row('act@x.vn')).getByRole('button', { name: 'Lưu' }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
+      '/tmf-api/customerManagement/v4/customer/c-act',
+      { name: 'Ten Moi', phoneNumber: '0909' },
+      { headers: { 'Content-Type': 'application/merge-patch+json' } },
+    ));
+  });
+
+  it('cannot save an empty name', async () => {
+    renderPage();
+    await waitFor(() => row('act@x.vn'));
+    fireEvent.click(within(row('act@x.vn')).getByRole('button', { name: 'Sửa' }));
+    fireEvent.change(within(row('act@x.vn')).getByLabelText('Tên khách'), { target: { value: '   ' } });
+    expect((within(row('act@x.vn')).getByRole('button', { name: 'Lưu' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('reads filters from the URL and paginates on the real total', async () => {
     renderPage('/customers?status=Initialized&q=moi');
     await waitFor(() => screen.getByTestId('pager'));

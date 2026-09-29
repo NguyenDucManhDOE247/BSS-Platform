@@ -34,6 +34,70 @@ function actionFor(status: CustomerStatus): { label: string; to: CustomerStatus 
   }
 }
 
+const MERGE_PATCH = { headers: { 'Content-Type': 'application/merge-patch+json' } };
+
+/**
+ * 1 dòng khách, có chế độ sửa tên/SĐT tại chỗ. KHÔNG cho sửa email ở đây: với khách tự đăng ký, email
+ * là của tài khoản Keycloak (đăng nhập bằng nó) — sửa riêng ở hồ sơ sẽ làm 2 nơi lệch nhau.
+ */
+function CustomerRow({ c, busy, onStatus, onDelete }: {
+  c: Customer; busy: boolean; onStatus: (to: CustomerStatus) => void; onDelete: () => void;
+}) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({ name: c.name, phoneNumber: c.phoneNumber ?? '' });
+  const save = useMutation({
+    mutationFn: async () => api.patch(`${URL}/${c.id}`, { name: draft.name.trim(), phoneNumber: draft.phoneNumber.trim() }, MERGE_PATCH),
+    onSuccess: () => { setEditing(false); qc.invalidateQueries({ queryKey: ['customers'] }); },
+  });
+  const action = actionFor(c.status);
+
+  return (
+    <tr data-testid={`customer-${c.email}`} style={{ borderTop: '1px solid #eee' }}>
+      <td>
+        {editing
+          ? <input aria-label="Tên khách" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+          : <>{c.name}{c.selfRegistered && <small title="Tự đăng ký qua web-portal"> 🌐</small>}</>}
+      </td>
+      <td>{c.email}</td>
+      <td>
+        {editing
+          ? <input aria-label="SĐT khách" value={draft.phoneNumber} onChange={(e) => setDraft({ ...draft, phoneNumber: e.target.value })} style={{ width: 120 }} />
+          : c.phoneNumber || '—'}
+      </td>
+      <td data-testid="status">{c.status}</td>
+      <td>{new Date(c.createdAt).toLocaleDateString('vi-VN')}</td>
+      <td>
+        <Link to={`/orders?customerId=${c.id}`}>Đơn</Link>{' · '}
+        <Link to={`/bills?customerId=${c.id}`}>Hóa đơn</Link>
+      </td>
+      <td style={{ display: 'flex', gap: 6 }}>
+        {editing ? (
+          <>
+            <button disabled={save.isPending || draft.name.trim() === ''} onClick={() => save.mutate()}>Lưu</button>
+            <button onClick={() => setEditing(false)} style={{ background: '#888', borderColor: '#888' }}>Hủy</button>
+            {save.isError && <small style={{ color: 'crimson' }}>{problemDetail(save.error, 'Lưu thất bại')}</small>}
+          </>
+        ) : (
+          <>
+            <button onClick={() => setEditing(true)}>Sửa</button>
+            {action && (
+              <button
+                disabled={busy}
+                onClick={() => onStatus(action.to)}
+                style={action.to === 'Suspended' ? { background: '#e67e22', borderColor: '#e67e22' } : undefined}
+              >
+                {action.label}
+              </button>
+            )}
+            <button onClick={onDelete} style={{ background: '#cc0000', borderColor: '#cc0000' }}>Xóa</button>
+          </>
+        )}
+      </td>
+    </tr>
+  );
+}
+
 export default function CustomersPage() {
   const qc = useQueryClient();
   // Bộ lọc nằm trên URL → Dashboard link thẳng được tới "Chờ duyệt", F5 không mất bộ lọc.
@@ -59,7 +123,7 @@ export default function CustomersPage() {
 
   const changeStatus = useMutation({
     mutationFn: async ({ id, to }: { id: string; to: CustomerStatus }) =>
-      api.patch(`${URL}/${id}`, { status: to }, { headers: { 'Content-Type': 'application/merge-patch+json' } }),
+      api.patch(`${URL}/${id}`, { status: to }, MERGE_PATCH),
     onSuccess: refresh,
   });
 
@@ -115,39 +179,13 @@ export default function CustomersPage() {
             </tr>
           </thead>
           <tbody>
-            {list.data.rows.map((c) => {
-              const action = actionFor(c.status);
-              return (
-                <tr key={c.id} data-testid={`customer-${c.email}`} style={{ borderTop: '1px solid #eee' }}>
-                  <td>{c.name}{c.selfRegistered && <small title="Tự đăng ký qua web-portal"> 🌐</small>}</td>
-                  <td>{c.email}</td>
-                  <td>{c.phoneNumber || '—'}</td>
-                  <td data-testid="status">{c.status}</td>
-                  <td>{new Date(c.createdAt).toLocaleDateString('vi-VN')}</td>
-                  <td>
-                    <Link to={`/orders?customerId=${c.id}`}>Đơn</Link>{' · '}
-                    <Link to={`/bills?customerId=${c.id}`}>Hóa đơn</Link>
-                  </td>
-                  <td style={{ display: 'flex', gap: 6 }}>
-                    {action && (
-                      <button
-                        disabled={changeStatus.isPending}
-                        onClick={() => changeStatus.mutate({ id: c.id, to: action.to })}
-                        style={action.to === 'Suspended' ? { background: '#e67e22', borderColor: '#e67e22' } : undefined}
-                      >
-                        {action.label}
-                      </button>
-                    )}
-                    <button
-                      onClick={() => { if (confirm(`Xóa ${c.name}?`)) remove.mutate(c.id); }}
-                      style={{ background: '#cc0000', borderColor: '#cc0000' }}
-                    >
-                      Xóa
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
+            {list.data.rows.map((c) => (
+              <CustomerRow
+                key={c.id} c={c} busy={changeStatus.isPending}
+                onStatus={(to) => changeStatus.mutate({ id: c.id, to })}
+                onDelete={() => { if (confirm(`Xóa ${c.name}?`)) remove.mutate(c.id); }}
+              />
+            ))}
           </tbody>
         </table>
       )}
