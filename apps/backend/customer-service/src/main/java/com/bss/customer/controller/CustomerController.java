@@ -72,7 +72,7 @@ public class CustomerController {
 
     @PostMapping("/me")
     public ResponseEntity<Customer> createMine(@RequestBody MyProfileRequest req) {
-        var saved = service.createMine(currentUser.subject(), currentUser.email(), req);
+        var saved = service.createMine(currentUser.subject(), currentUser.email(), currentUser.emailVerified(), req);
         return ResponseEntity
                 .created(URI.create("/tmf-api/customerManagement/v4/customer/me"))
                 .body(saved);
