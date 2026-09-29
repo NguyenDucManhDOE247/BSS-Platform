@@ -13,3 +13,11 @@ output "karpenter_role_arn" {
 output "karpenter_interruption_queue" {
   value = var.enable_karpenter ? aws_sqs_queue.karpenter_interruption[0].name : null
 }
+
+output "fluent_bit_role_arn" {
+  value = aws_iam_role.fluent_bit.arn
+}
+
+output "otel_collector_role_arn" {
+  value = aws_iam_role.otel_collector.arn
+}
