@@ -18,10 +18,21 @@ jobs:
         with:
           version: v1.30.0
 
+      # Dọn nợ GĐ3 — CI flaky: `install_kustomize.sh` gọi GitHub API KHÔNG xác thực để tra release →
+      # thỉnh thoảng "Github rate-limiter failed the request" (đỏ oan ở PR #170, #175; chạy lại thì xanh).
+      # Tải thẳng asset của release đã ghim (không qua API) + kiểm SHA-256 (lấy từ checksums.txt chính thức
+      # của v5.8.1) — vừa hết flaky, vừa chặn được file bị tráo.
       - name: Install kustomize
+        env:
+          KUSTOMIZE_VERSION: v5.8.1
+          KUSTOMIZE_SHA256: 029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d
         run: |
-          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/kustomize/v5.8.1/hack/install_kustomize.sh" | bash
+          curl -fsSL --retry 3 -o kustomize.tar.gz \
+            "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz"
+          echo "${KUSTOMIZE_SHA256}  kustomize.tar.gz" | sha256sum -c -
+          tar xzf kustomize.tar.gz kustomize
           sudo mv kustomize /usr/local/bin/
+          kustomize version
 
       - name: Install kubeconform
         run: |
