@@ -13,7 +13,7 @@ interface ProductOffering {
 }
 
 /**
- * Giai đoạn 9 việc 4. Trước GĐ9 trang này gửi `customerId: DEMO_CUSTOMER_ID` (1 khách "ma" dùng chung
+ * Giai đoạn 9 việc 4. Trước GĐ9 trang này gửi `customerId` của 1 "khách demo" cố định (khách "ma" dùng chung
  * cho mọi người) + `unitPrice` do client tự khai. Giờ body chỉ còn gói + số lượng: order-management tự
  * biết khách LÀ AI (token) và GIÁ bao nhiêu (product-catalog) — ADR-008, B-13.
  */

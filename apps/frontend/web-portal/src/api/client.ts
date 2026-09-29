@@ -11,7 +11,7 @@ export const api = axios.create({
  * Giai đoạn 9 (ADR-008): mọi request gắn `Authorization: Bearer <access token>` nếu đã đăng nhập.
  * Duyệt gói cước vẫn gọi được khi chưa đăng nhập (gateway để công khai) — lúc đó không gắn gì.
  *
- * (Trước GĐ9 ở đây là `DEMO_CUSTOMER_ID` — 1 khách cố định dùng chung cho MỌI người, không tồn tại
+ * (Trước GĐ9 ở đây là 1 hằng "khách demo" — 1 khách cố định dùng chung cho MỌI người, không tồn tại
  * trong customer-service. Đã xóa hẳn: danh tính giờ đến từ token Keycloak.)
  */
 api.interceptors.request.use((config) => {
