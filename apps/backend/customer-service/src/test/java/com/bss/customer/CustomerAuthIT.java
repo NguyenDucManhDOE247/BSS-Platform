@@ -77,6 +77,50 @@ class CustomerAuthIT {
         mvc.perform(get(BASE + "/me")).andExpect(status().isUnauthorized());
     }
 
+    // ---------- Schema migration Release B: email_verified luôn được ghi (dọn nợ GĐ6) ----------
+
+    @Test
+    void self_registered_profile_takes_email_verified_from_the_keycloak_token() throws Exception {
+        String email = uniq() + "@x.vn";
+        var verified = jwt().jwt(j -> j.subject(uniq()).claim("email", email).claim("email_verified", true))
+                .authorities(new SimpleGrantedAuthority("ROLE_customer"));
+        mvc.perform(post(BASE + "/me").with(verified).contentType(APPLICATION_JSON).content(profile("Da Xac Thuc", null)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.emailVerified", equalTo(true)));
+    }
+
+    @Test
+    void missing_email_verified_claim_means_not_verified() throws Exception {
+        mvc.perform(post(BASE + "/me").with(customer(uniq(), uniq() + "@x.vn")).contentType(APPLICATION_JSON)
+                        .content(profile("Chua Xac Thuc", null)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.emailVerified", equalTo(false)));
+    }
+
+    @Test
+    void admin_created_customer_is_unverified_and_changing_the_email_resets_verification() throws Exception {
+        String email = uniq() + "@x.vn";
+        var verified = jwt().jwt(j -> j.subject(uniq()).claim("email", email).claim("email_verified", true))
+                .authorities(new SimpleGrantedAuthority("ROLE_customer"));
+        String body = mvc.perform(post(BASE + "/me").with(verified).contentType(APPLICATION_JSON).content(profile("A", null)))
+                .andExpect(jsonPath("$.emailVerified", equalTo(true))).andReturn().getResponse().getContentAsString();
+        String id = json.readTree(body).get("id").asText();
+
+        // Sửa tên (email giữ nguyên) → vẫn đã xác thực.
+        mvc.perform(patch(BASE + "/" + id).with(admin()).contentType("application/merge-patch+json").content("{\"name\":\"B\"}"))
+                .andExpect(jsonPath("$.emailVerified", equalTo(true)));
+        // Đổi email → email mới chưa ai xác thực.
+        mvc.perform(patch(BASE + "/" + id).with(admin()).contentType("application/merge-patch+json")
+                        .content("{\"email\":\"" + uniq() + "@x.vn\"}"))
+                .andExpect(jsonPath("$.emailVerified", equalTo(false)));
+
+        // Khách tại quầy do admin tạo tay.
+        mvc.perform(post(BASE).with(admin()).contentType(APPLICATION_JSON)
+                        .content("{\"name\":\"Tai Quay\",\"email\":\"" + uniq() + "@x.vn\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.emailVerified", equalTo(false)));
+    }
+
     // ---------- Khách tự tạo hồ sơ (/me) ----------
 
     @Test

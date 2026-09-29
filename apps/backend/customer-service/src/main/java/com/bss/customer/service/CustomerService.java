@@ -53,7 +53,7 @@ public class CustomerService {
      * Khách vừa đăng ký Keycloak tự tạo hồ sơ. Email lấy từ token (không từ body); trạng thái luôn
      * {@code Initialized} — admin duyệt sang {@code Active} mới được đặt hàng (ADR-008 quyết định 3).
      */
-    public Customer createMine(String subject, String email, MyProfileRequest req) {
+    public Customer createMine(String subject, String email, boolean emailVerified, MyProfileRequest req) {
         if (email == null || email.isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Tài khoản đăng nhập không có email — bổ sung email ở trang tài khoản Keycloak trước");
@@ -68,6 +68,7 @@ public class CustomerService {
         customer.setKeycloakUserId(subject);
         customer.setName(req.name().trim());
         customer.setEmail(email);
+        customer.setEmailVerified(emailVerified); // email đến từ token → tin trạng thái xác thực của Keycloak
         customer.setPhoneNumber(req.phoneNumber());
         // Email đã thuộc 1 khách khác (vd. khách tại quầy do admin tạo) → unique constraint →
         // GlobalExceptionHandler trả 409. CỐ Ý không tự "nhận" hồ sơ đó: Keycloak local chưa xác
@@ -92,6 +93,7 @@ public class CustomerService {
         var customer = new Customer();
         customer.setName(req.name());
         customer.setEmail(req.email());
+        customer.setEmailVerified(false); // admin gõ tay → chưa ai xác thực email này
         customer.setPhoneNumber(req.phoneNumber());
         // status is intentionally NOT settable from the request — see CreateCustomerRequest.
         return repo.save(customer);
@@ -100,7 +102,10 @@ public class CustomerService {
     public Customer patch(UUID id, PatchCustomerRequest req) {
         var existing = get(id);
         if (req.name() != null) existing.setName(req.name());
-        if (req.email() != null) existing.setEmail(req.email());
+        if (req.email() != null && !req.email().equalsIgnoreCase(existing.getEmail())) {
+            existing.setEmail(req.email());
+            existing.setEmailVerified(false); // email mới chưa được xác thực
+        }
         if (req.phoneNumber() != null) existing.setPhoneNumber(req.phoneNumber());
         if (req.status() != null) existing.setStatus(req.status());
         return repo.save(existing);
