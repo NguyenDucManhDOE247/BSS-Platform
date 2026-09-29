@@ -54,6 +54,17 @@ class EmailVerifiedBackfillIT {
             var nulls = st.executeQuery("SELECT count(*) FROM customers WHERE email_verified IS NULL");
             nulls.next();
             assertThat(nulls.getInt(1)).isZero();
+            // Release C (V5): cột đã khóa — code cũ kiểu A (INSERT không nhắc cột) giờ nhận DEFAULT false,
+            // còn ghi NULL tường minh thì bị DB từ chối.
+            st.executeUpdate("INSERT INTO customers (id, name, email, status, created_at, updated_at) VALUES "
+                    + "(gen_random_uuid(), 'Sau C', 'sau-c@x.vn', 'Active', now(), now())");
+            var def = st.executeQuery("SELECT email_verified FROM customers WHERE email = 'sau-c@x.vn'");
+            def.next();
+            assertThat(def.getObject(1)).isEqualTo(false);
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> st.executeUpdate(
+                    "INSERT INTO customers (id, name, email, status, email_verified, created_at, updated_at) VALUES "
+                    + "(gen_random_uuid(), 'Null', 'null@x.vn', 'Active', NULL, now(), now())"))
+                    .hasMessageContaining("null value");
         }
     }
 }

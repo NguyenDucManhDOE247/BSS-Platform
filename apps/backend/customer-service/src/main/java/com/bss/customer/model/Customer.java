@@ -36,7 +36,7 @@ public class Customer {
      * các dòng cũ. Release C (PR riêng, sau khi B đã chạy ở mọi môi trường) mới {@code SET NOT NULL}.
      * Kiểu {@code Boolean} (không phải {@code boolean}) vì pod Release B có thể đọc dòng chưa backfill.
      */
-    @Column(name = "email_verified")
+    @Column(name = "email_verified", nullable = false) // Release C (V5): cột đã NOT NULL DEFAULT false
     private Boolean emailVerified = false;
 
     /**
