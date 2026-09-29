@@ -25,6 +25,14 @@ public class CurrentUser {
         return token().getToken().getClaimAsString("email");
     }
 
+    /**
+     * Claim {@code email_verified} của Keycloak (true khi người dùng đã bấm link xác thực email).
+     * Thiếu claim = chưa xác thực.
+     */
+    public boolean emailVerified() {
+        return Boolean.TRUE.equals(token().getToken().getClaimAsBoolean("email_verified"));
+    }
+
     private JwtAuthenticationToken token() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth instanceof JwtAuthenticationToken jwt) {

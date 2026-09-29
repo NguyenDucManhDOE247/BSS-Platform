@@ -31,6 +31,15 @@ public class Customer {
     private String phoneNumber;
 
     /**
+     * Schema migration Release B (runbook schema-migration §4, dọn nợ GĐ6): cột có từ V2 (Release A,
+     * nullable, chưa ai đọc/ghi). Từ bản này code LUÔN ghi giá trị (mặc định {@code false}); V4 backfill
+     * các dòng cũ. Release C (PR riêng, sau khi B đã chạy ở mọi môi trường) mới {@code SET NOT NULL}.
+     * Kiểu {@code Boolean} (không phải {@code boolean}) vì pod Release B có thể đọc dòng chưa backfill.
+     */
+    @Column(name = "email_verified")
+    private Boolean emailVerified = false;
+
+    /**
      * TMF629 status: Initialized, Validated, Active, Suspended, Terminated.
      */
     @Enumerated(EnumType.STRING)
@@ -78,6 +87,10 @@ public class Customer {
     public void setEmail(String email) { this.email = email; }
     public String getPhoneNumber() { return phoneNumber; }
     public void setPhoneNumber(String phoneNumber) { this.phoneNumber = phoneNumber; }
+
+    /** null (dòng cũ chưa backfill) được coi là chưa xác thực. */
+    public boolean isEmailVerified() { return Boolean.TRUE.equals(emailVerified); }
+    public void setEmailVerified(boolean emailVerified) { this.emailVerified = emailVerified; }
     public CustomerStatus getStatus() { return status; }
     public void setStatus(CustomerStatus status) { this.status = status; }
     public Instant getCreatedAt() { return createdAt; }

@@ -94,6 +94,13 @@ while true; do
 done
 ```
 
+**Kết quả thật — Release B `email_verified` (dọn nợ GĐ6, 2026-09-29, trên kind):** rolling update A → B
+(V4 backfill + code luôn ghi cột) trong lúc vòng lặp trên chạy (kind bật auth → thêm header token admin):
+**418/419 = 201, 1 × 500**. Cái 500 **không phải do schema**: access log ingress-nginx cho thấy gateway trả
+500 đúng lúc 1 Pod cũ bị dừng — Spring graceful shutdown ngừng nhận kết nối trước khi Pod rời Endpoints.
+Sửa bằng `preStop.sleep` 10s cho mọi Deployment (PR riêng) → chạy lại **420/420** và **422/422**. Bài học:
+"0 lỗi" của lab đo cả **rollout** lẫn **schema** — lỗi đầu tiên tìm ra lại nằm ở rollout.
+
 **Câu hỏi tự kiểm tra**
 1. Ba file `V2__fix_currency_column_type.sql` hiện có (`CHAR(3)` → `VARCHAR(3)`) sẽ bị checker chặn nếu xuất hiện trong một PR mới. Chúng có thật sự nguy hiểm không? Bạn sẽ ghi chú `expand-contract` thế nào cho trung thực?
 2. Vì sao "thêm cột NOT NULL không default" là lỗi cứng còn "DROP COLUMN" thì cho phép ghi chú xác nhận?
