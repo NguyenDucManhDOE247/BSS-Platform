@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-09-29
+
+Giai đoạn 9 — "sản phẩm hoàn chỉnh": danh tính thật + quyền sở hữu dữ liệu + 2 website có đăng nhập
+([ADR-008](docs/adr/ADR-008-danh-tinh-va-quyen-so-huu.md)). Shipped `rc-v2.0.0` → staging →
+`v2.0.0` → prod (manual approval) on the same commit `b75b43f`, each environment smoke-tested for
+real and destroyed afterwards (ADR-006).
+
+### ⚠️ Breaking
+
+- **Every non-public API now requires a Keycloak JWT** on dev/staging/prod and kind (only browsing
+  product offerings stays public). Before 2.0.0 the AWS environments accepted anonymous calls (B-18).
+- `POST /productOrder` ignores `customerId` from the body — the customer is the caller's own
+  profile (`GET /customer/me`), and only `Active` (admin-approved) customers may order (422 otherwise).
+- Customers only see their own orders/invoices/billing accounts; reading someone else's returns 404.
+
+### Added
+
+- **Identity** — Keycloak realm shared by every environment (`components/keycloak-realm`, no test
+  users outside local); self-registration + `/customer/me`; admin approves `Initialized → Active`.
+- **web-portal** — register/login (Authorization Code + PKCE), profile, "my orders", "my invoices".
+- **admin-console** — admin-only; customers (search, paging, edit, approve/lock), offerings (create,
+  reprice, retire), system-wide orders + invoices filtered by customer, dashboard with real totals
+  (`X-Total-Count`) and revenue (`GET /customerBill/summary`, summed in the database).
+- **Keycloak on EKS** (`components/keycloak-aws`) — production mode, own Postgres DB on RDS,
+  secrets via Secrets Manager + CSI, IRSA; not exposed on the ALB until HTTPS exists (ADR-008
+  decision 8). Dev node group 2 → 3.
+- **Tests** — Playwright browser E2E on kind (`scripts/e2e-browser.sh`), `e2e-kind.sh` rewritten for
+  auth (fresh Keycloak user per run, ownership + "old orders keep their price" checks), `smoke.sh`
+  checks both directions of auth (401 without token, 403 for the wrong role).
+
+### Known limitations
+
+- No HTTPS on AWS yet → browser login works on kind only; on AWS the websites serve anonymous
+  browsing and the API is secured (tracked as a deferred item in the roadmap).
+- Keycloak runs 1 replica and `start` without `--optimized` (writable root filesystem).
+
 ## [1.0.0] — 2026-09-28
 
 Everything below shipped after `v0.1.0` (local-only scaffold) and is verified against **real AWS
