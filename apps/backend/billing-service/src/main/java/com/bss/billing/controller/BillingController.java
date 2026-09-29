@@ -3,6 +3,7 @@ package com.bss.billing.controller;
 import com.bss.billing.dto.BillingAccountDto;
 import com.bss.billing.dto.CreateAccountRequest;
 import com.bss.billing.dto.InvoiceDto;
+import com.bss.billing.dto.InvoiceSummaryDto;
 import com.bss.billing.service.BillingService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -66,6 +67,12 @@ public class BillingController {
         return ResponseEntity.ok()
                 .header("X-Total-Count", String.valueOf(page.getTotalElements()))
                 .body(page.getContent());
+    }
+
+    /** Giai đoạn 9 việc 5 — doanh thu cho Dashboard (chỉ admin; xem SecurityConfig). */
+    @GetMapping("/customerBill/summary")
+    public InvoiceSummaryDto summary() {
+        return service.summary();
     }
 
     @GetMapping("/customerBill/{id}")

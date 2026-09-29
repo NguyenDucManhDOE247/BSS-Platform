@@ -142,6 +142,30 @@ class BillingAuthIT {
                 .andExpect(jsonPath("$", hasSize(2)));
     }
 
+    /**
+     * Giai đoạn 9 việc 5: doanh thu cho Dashboard admin-console. Cộng ở trình duyệt từ 1 trang danh sách
+     * sẽ sai ngay khi có nhiều hơn 1 trang → tổng phải tính ở DB.
+     */
+    @Test
+    void revenue_summary_is_admin_only_and_sums_every_invoice() throws Exception {
+        String before = mvc.perform(get(BILLS + "/summary").with(admin()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long countBefore = json.readTree(before).get("invoiceCount").asLong();
+        double totalBefore = json.readTree(before).get("totalAmount").asDouble();
+
+        orderCompleted(UUID.randomUUID(), UUID.randomUUID().toString(), "100000"); // → 110000 gồm VAT
+        orderCompleted(UUID.randomUUID(), UUID.randomUUID().toString(), "50000");  // → 55000
+
+        mvc.perform(get(BILLS + "/summary").with(admin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.invoiceCount", equalTo((int) countBefore + 2)))
+                .andExpect(jsonPath("$.totalAmount", closeTo(totalBefore + 165000.0, 0.001)))
+                .andExpect(jsonPath("$.currency", equalTo("VND")));
+
+        mvc.perform(get(BILLS + "/summary").with(customer(UUID.randomUUID().toString())))
+                .andExpect(status().isForbidden());
+    }
+
     @Test
     void only_admin_opens_billing_accounts_manually() throws Exception {
         String body = "{\"customerId\":\"" + UUID.randomUUID() + "\",\"name\":\"Tai khoan\"}";
