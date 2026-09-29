@@ -21,6 +21,9 @@ resources:
   - network-policies-local.yaml
   - keycloak # Giai đoạn 7, việc 6 (B-18) — chỉ ở local; keycloak-admin Secret do scripts/auth-install.sh tạo trước
 
+components:
+  - ../../components/keycloak-realm # GĐ9 việc 7 — realm dùng chung mọi môi trường (không có user)
+
 images:
   # Tag "local" khớp đúng `make build-images` (build context không đổi — xem
   # docs/adr/ADR-000-local-dev.md) — chỉ cần thêm `kind load docker-image bss/<svc>:local

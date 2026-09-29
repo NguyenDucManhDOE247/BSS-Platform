@@ -2,7 +2,7 @@
   "realm": "bss",
   "displayName": "BSS Platform",
   "enabled": true,
-  "sslRequired": "none",
+  "sslRequired": "external",
   "registrationAllowed": true,
   "registrationEmailAsUsername": false,
   "verifyEmail": false,
@@ -137,48 +137,6 @@
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "http://bss.localhost/admin/*##http://localhost:3001/*"
       }
-    }
-  ],
-  "users": [
-    {
-      "id": "a0000000-0000-4000-8000-000000000001",
-      "username": "admin1",
-      "email": "admin1@bss.local",
-      "firstName": "Quan tri",
-      "lastName": "Vien",
-      "enabled": true,
-      "emailVerified": true,
-      "requiredActions": [],
-      "credentials": [
-        {
-          "type": "password",
-          "value": "admin1pass",
-          "temporary": false
-        }
-      ],
-      "realmRoles": [
-        "admin"
-      ]
-    },
-    {
-      "id": "c0000000-0000-4000-8000-000000000001",
-      "username": "customer1",
-      "email": "customer1@bss.local",
-      "firstName": "Khach",
-      "lastName": "Mot",
-      "enabled": true,
-      "emailVerified": true,
-      "requiredActions": [],
-      "credentials": [
-        {
-          "type": "password",
-          "value": "customer1pass",
-          "temporary": false
-        }
-      ],
-      "realmRoles": [
-        "customer"
-      ]
     }
   ]
 }

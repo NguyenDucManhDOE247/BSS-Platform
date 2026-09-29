@@ -92,6 +92,14 @@ runs:
             missing=1
           fi
         done
+        # GĐ9 việc 7: smoke lấy token qua `kubectl port-forward svc/keycloak` và đọc Secret keycloak-admin.
+        for verb_res in "create pods/portforward" "get secrets"; do
+          # shellcheck disable=SC2086 # cố ý tách "verb resource" thành 2 tham số
+          if [ "$(kubectl --request-timeout=20s auth can-i $verb_res -n bss 2>/dev/null)" != "yes" ]; then
+            echo "::error::Deployer KHÔNG có quyền '$verb_res' trong namespace bss — smoke test (scripts/smoke.sh) cần để lấy token Keycloak"
+            missing=1
+          fi
+        done
         [ "$missing" -eq 0 ]
 
     - name: Render + apply

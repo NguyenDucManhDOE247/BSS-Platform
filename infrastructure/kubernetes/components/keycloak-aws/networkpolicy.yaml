@@ -1,0 +1,25 @@
+# Ai được gọi vào Keycloak trên AWS: gateway + các backend (tải JWKS để kiểm chữ ký token; order-
+# management không cần nhưng tier backend gộp chung cho gọn). default-deny-ingress (base) chặn phần
+# còn lại — kể cả 2 frontend và ALB: Keycloak chưa được mở ra ngoài khi chưa có HTTPS.
+#
+# `kubectl port-forward` (smoke test) KHÔNG bị NetworkPolicy chặn: kubelet đưa kết nối vào thẳng
+# network namespace của Pod qua localhost, không đi qua mạng Pod. Probe của kubelet cũng vậy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-to-keycloak
+  namespace: bss
+spec:
+  podSelector:
+    matchLabels: { app: keycloak }
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - { key: tier, operator: In, values: [backend] }
+        - podSelector:
+            matchLabels: { app: api-gateway }
+      ports:
+        - { protocol: TCP, port: 8080 }

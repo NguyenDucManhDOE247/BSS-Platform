@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: bss
+  labels: { app: keycloak, tier: auth }
+spec:
+  # 1 replica ở MỌI môi trường AWS (kể cả prod): chạy >1 cần cấu hình cluster Infinispan (headless
+  # Service + DNS_PING) — chưa làm, ghi nợ ở learning/20 GĐ9. KC_CACHE=local để 1 Pod không đi dò
+  # cluster. Session đăng nhập nằm trong bộ nhớ Pod → Pod khởi động lại thì người dùng đăng nhập lại
+  # (token đã phát vẫn hợp lệ tới khi hết hạn vì backend chỉ kiểm chữ ký).
+  replicas: 1
+  strategy:
+    type: Recreate # 1 replica + DB chung: không để 2 bản khác version cùng migrate schema Keycloak
+  selector:
+    matchLabels: { app: keycloak }
+  template:
+    metadata:
+      labels: { app: keycloak, tier: auth }
+    spec:
+      serviceAccountName: keycloak
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.5 # cùng bản với overlays/local và docker-compose
+          args: ["start", "--import-realm"]
+          env:
+            # ── DB: Postgres trên RDS, database + user riêng của Keycloak (least privilege, B-21) ──
+            - { name: KC_DB, value: postgres }
+            - name: KC_DB_URL_HOST
+              valueFrom: { secretKeyRef: { name: keycloak-db, key: host } }
+            - name: KC_DB_URL_PORT
+              valueFrom: { secretKeyRef: { name: keycloak-db, key: port } }
+            - name: KC_DB_URL_DATABASE
+              valueFrom: { secretKeyRef: { name: keycloak-db, key: dbname } }
+            - name: KC_DB_USERNAME
+              valueFrom: { secretKeyRef: { name: keycloak-db, key: username } }
+            - name: KC_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-db, key: password } }
+            # ── Admin master realm: mật khẩu ngẫu nhiên do Terraform sinh → Secrets Manager → CSI ──
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              valueFrom: { secretKeyRef: { name: keycloak-admin, key: username } }
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-admin, key: password } }
+            # ── Địa chỉ (ADR-008 quyết định 8) ──
+            # Chưa có HTTPS/domain trên AWS → `iss` = DNS NỘI BỘ. Backend so khớp đúng chuỗi này
+            # (SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI ở overlay). Token lấy qua
+            # port-forward (smoke) vẫn mang iss này vì KC_HOSTNAME là URL đầy đủ — Keycloak không
+            # suy ra từ Host của request. Khi có domain + HTTPS: đổi thành https://<domain>/auth
+            # (và issuer của backend), rồi thêm path /auth vào Ingress — không phải sửa code.
+            - { name: KC_HOSTNAME, value: "http://keycloak.bss.svc.cluster.local:8080/auth" }
+            - { name: KC_HTTP_ENABLED, value: "true" }
+            - { name: KC_HTTP_RELATIVE_PATH, value: "/auth" }
+            - { name: KC_HTTP_MANAGEMENT_RELATIVE_PATH, value: "/" } # xem overlays/local/keycloak
+            - { name: KC_HEALTH_ENABLED, value: "true" }
+            - { name: KC_METRICS_ENABLED, value: "true" }
+            - { name: KC_CACHE, value: local }
+            - { name: KC_LOG_CONSOLE_OUTPUT, value: json } # CLAUDE.md §10: log JSON ở môi trường AWS
+          ports:
+            - { containerPort: 8080, name: http }
+            - { containerPort: 9000, name: management }
+          # Lần khởi động ĐẦU của `start` (không --optimized) phải "augment" Quarkus + tạo schema
+          # Keycloak trên RDS + import realm → có thể > 2 phút trên t3.medium. startupProbe cho tới
+          # 5 phút; sau đó readiness/liveness mới có hiệu lực.
+          startupProbe:
+            httpGet: { path: /health/started, port: 9000 }
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: { path: /health/ready, port: 9000 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health/live, port: 9000 }
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            # Đo trên kind (GĐ7/9): ~600–700Mi lúc chạy. Keycloak đặt heap = 70% limit mặc định.
+            requests: { cpu: "250m", memory: "768Mi" }
+            limits: { cpu: "1000m", memory: "1Gi" }
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            # Ngoại lệ DUY NHẤT với quy ước readOnlyRootFilesystem (CLAUDE.md §7): `start` không
+            # --optimized chạy bước "augmentation" Quarkus LÚC KHỞI ĐỘNG, ghi vào /opt/keycloak/lib
+            # (lỗi thật đã gặp ở kind: ReadOnlyFileSystemException). Cách đúng: image riêng chạy
+            # `kc.sh build` lúc build + `start --optimized` — ghi nợ ở learning/20 GĐ9.
+            readOnlyRootFilesystem: false
+            capabilities: { drop: ["ALL"] }
+            seccompProfile: { type: RuntimeDefault }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: realm-import, mountPath: /opt/keycloak/data/import, readOnly: true }
+            # Mount CSI chỉ để driver sync 2 K8s Secret keycloak-db + keycloak-admin (secretObjects)
+            # — Keycloak đọc chúng qua env, không đọc file.
+            - { name: secrets-store, mountPath: /mnt/secrets-store, readOnly: true }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - name: realm-import
+          configMap: { name: keycloak-realm-bss } # ../keycloak-realm — KHÔNG có user thử
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: keycloak-credentials
