@@ -14,3 +14,22 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+# ── Karpenter (ADR-010) — chỉ dev bật ──
+variable "enable_karpenter" {
+  type        = bool
+  default     = false
+  description = "Tạo IAM role controller + hàng đợi interruption cho Karpenter (karpenter.tf)"
+}
+
+variable "cluster_name" {
+  type        = string
+  default     = ""
+  description = "Tên cluster EKS — Karpenter scope quyền EC2 theo tag kubernetes.io/cluster/<name>"
+}
+
+variable "node_role_arn" {
+  type        = string
+  default     = ""
+  description = "Role của node (modules/eks) — Karpenter được iam:PassRole đúng role này"
+}

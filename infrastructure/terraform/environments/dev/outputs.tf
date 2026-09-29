@@ -58,3 +58,12 @@ output "waf_web_acl_arn" {
   description = "Feed to scripts/wire-waf.sh after `kubectl apply -k` to associate this env's ALB with its Web ACL"
   value       = module.waf.web_acl_arn
 }
+
+# ADR-010 — scripts/platform-install.sh đọc 2 output này để cài Karpenter (null ở môi trường không bật).
+output "karpenter_role_arn" {
+  value = module.platform_iam.karpenter_role_arn
+}
+
+output "karpenter_interruption_queue" {
+  value = module.platform_iam.karpenter_interruption_queue
+}

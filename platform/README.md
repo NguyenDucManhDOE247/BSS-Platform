@@ -51,11 +51,11 @@ helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/
 helm upgrade --install external-dns external-dns/external-dns \
   -n kube-system -f networking/external-dns-values.yaml
 
-# 5. Karpenter (auto-provisioner for workload nodes) — Giai đoạn 8 (cost/scaling work).
-helm repo add karpenter oci://public.ecr.aws/karpenter
-helm upgrade --install karpenter karpenter/karpenter \
-  -n karpenter --create-namespace
-kubectl apply -f networking/karpenter-nodepool.yaml
+# 5. Karpenter (auto-provisioner, ưu tiên Spot) — ADR-010, hiện CHỈ dev. KHÔNG cài tay: bước 6/6 của
+#    scripts/platform-install.sh cài chart v1.14.1 (oci://public.ecr.aws/karpenter/karpenter, namespace
+#    kube-system, IRSA + interruption queue từ `terraform output`) rồi áp networking/karpenter-nodepool.yaml
+#    (thay __CLUSTER__). Lệnh cũ ở đây (repo "karpenter/karpenter", namespace riêng, không role/queue) không
+#    bao giờ chạy được. Destroy: scripts/teardown.sh xóa NodePool trước (node Karpenter không có trong state).
 
 # 6. Fluent Bit (logs → CloudWatch) — Giai đoạn 7. 1 lệnh (schema values cũ SAI — xem cảnh báo
 # lớn ở đầu logging/fluent-bit-values.yaml, đã sửa và kiểm bằng `helm template`).

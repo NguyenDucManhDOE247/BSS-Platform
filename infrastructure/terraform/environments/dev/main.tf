@@ -100,7 +100,8 @@ module "eks" {
   public_subnet_ids          = module.vpc.public_subnet_ids
   public_access_cidrs        = var.public_access_cidrs
   system_node_instance_types = ["t3.medium"]
-  system_node_desired_size   = 3 # GĐ9 việc 7: +1 node cho Keycloak (~768Mi) — 2 node từng FailedScheduling ở GĐ8
+  enable_network_policy      = true # dọn nợ GĐ7: thi hành NetworkPolicy thật (B-25)
+  system_node_desired_size   = 2    # ADR-010: node thứ 3 (GĐ9 cần cho Keycloak) giờ do Karpenter tự thêm (Spot) khi thiếu chỗ
   system_node_min_size       = 2
   system_node_max_size       = 3
 
@@ -142,6 +143,11 @@ module "platform_iam" {
   name_prefix               = local.name_prefix
   cluster_oidc_provider_arn = module.eks.cluster_oidc_provider_arn
   cluster_oidc_provider_url = module.eks.cluster_oidc_provider_url
+
+  # Dọn nợ GĐ8 — ADR-010: Karpenter thật ở dev (node Spot cho phần tải vượt managed node group).
+  enable_karpenter = true
+  cluster_name     = module.eks.cluster_name
+  node_role_arn    = module.eks.node_role_arn
 
   tags = local.common_tags
 }
