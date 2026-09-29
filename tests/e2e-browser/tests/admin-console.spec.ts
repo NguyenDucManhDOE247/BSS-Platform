@@ -34,7 +34,13 @@ test('admin: dashboard có số thật + doanh thu; tạo gói → sửa giá �
   await page.getByLabel('Tên gói').fill(name);
   await page.getByLabel('Mô tả gói').fill('Gói tạo bởi test E2E');
   await page.getByLabel('Giá (VND)').fill('123000');
-  await page.getByRole('button', { name: 'Tạo gói' }).click();
+  // Chờ POST tạo gói trả 201 RỒI mới mở web-portal: không chờ thì trang của khách có thể tải danh sách
+  // TRƯỚC khi gói được ghi (ingress log 2026-09-29: GET khách 08:57:41 đứng trước POST 201 cùng giây) →
+  // trang không tự tải lại → đỏ oan. Hai bước sau (sửa giá, ngừng bán) đã chờ admin thấy kết quả.
+  await Promise.all([
+    page.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/productOffering') && r.status() === 201),
+    page.getByRole('button', { name: 'Tạo gói' }).click(),
+  ]);
   // Gói mới có thể không nằm ở trang 1 → kiểm phía web-portal, nơi khách thật nhìn thấy.
   const portal = await browser.newContext();
   const guest = await portal.newPage();
