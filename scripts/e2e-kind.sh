@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end smoke test for the *kind* stack — same business flow as scripts/e2e-local.sh
-# (customer → plans → order → invoice) but through the real Ingress at http://bss.localtest.me
+# (customer → plans → order → invoice) but through the real Ingress at http://bss.localhost
 # instead of `mvn spring-boot:run` on bare metal. This is the Giai đoạn 2 equivalent checkpoint
 # of Giai đoạn 1's e2e-local.sh — see learning/20 Giai đoạn 2 checkpoint.
 #
@@ -16,7 +16,7 @@
 set -euo pipefail
 
 KCTX="kind-bss"
-GATEWAY_URL="http://bss.localtest.me/api"
+GATEWAY_URL="http://bss.localhost/api"
 
 log()  { echo "→ $*"; }
 fail() { echo "✗ FAIL: $*" >&2; exit 1; }
@@ -34,7 +34,7 @@ fi
 ok "all Pods Ready"
 
 log "Sanity-checking the Ingress answers at all…"
-curl -fsS -o /dev/null "http://bss.localtest.me/" || fail "GET / through the Ingress failed — is ingress-nginx installed? (scripts/kind-up.sh)"
+curl -fsS -o /dev/null "http://bss.localhost/" || fail "GET / through the Ingress failed — is ingress-nginx installed? (scripts/kind-up.sh)"
 ok "Ingress responds"
 
 # ── 2. The actual business flow, through the Ingress, exactly like a browser would ─────────────

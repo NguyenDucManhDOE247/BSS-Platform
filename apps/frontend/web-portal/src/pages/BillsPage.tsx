@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { api, DEMO_CUSTOMER_ID, formatVND } from '../api/client';
+import { api, formatVND, problemDetail } from '../api/client';
 
 interface Invoice {
   id: string;
@@ -14,29 +14,29 @@ interface Invoice {
   items: { description: string; amount: number }[];
 }
 
+/**
+ * Giai đoạn 9 việc 4: "Hóa đơn của tôi". Không truyền customerId (trước GĐ9 là DEMO_CUSTOMER_ID dùng
+ * chung) — billing-service tự lọc theo người đang đăng nhập (ADR-008 quyết định 5).
+ */
 export default function BillsPage() {
   const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ['bills', DEMO_CUSTOMER_ID],
-    queryFn: async () => {
-      const res = await api.get<Invoice[]>(
-        `/tmf-api/billingManagement/v4/customerBill?customerId=${DEMO_CUSTOMER_ID}&limit=20`,
-      );
-      return res.data;
-    },
+    queryKey: ['bills'],
+    queryFn: async () =>
+      (await api.get<Invoice[]>('/tmf-api/billingManagement/v4/customerBill?limit=20')).data,
     refetchInterval: 5000, // billing pipeline is async — poll while waiting
   });
 
   if (isLoading) return <p>Đang tải hóa đơn…</p>;
-  if (error) return <p>Lỗi khi tải hóa đơn.</p>;
+  if (error) return <p style={{ color: 'crimson' }}>{problemDetail(error, 'Lỗi khi tải hóa đơn.')}</p>;
 
   return (
     <section>
       <h1>Hóa đơn của bạn</h1>
       <p style={{ color: '#666' }}>
-        Hóa đơn được phát hành tự động sau khi đơn hàng hoàn tất (qua EventBridge → SQS → billing-service).
+        Hóa đơn được phát hành tự động vài giây sau khi đơn hàng hoàn tất (qua EventBridge → SQS → billing-service).
         {isFetching && ' Đang làm mới…'}
       </p>
-      <button onClick={() => refetch()}>Tải lại</button>
+      <button onClick={() => void refetch()}>Tải lại</button>
 
       {!data?.length ? (
         <p style={{ marginTop: 16 }}>Chưa có hóa đơn nào.</p>

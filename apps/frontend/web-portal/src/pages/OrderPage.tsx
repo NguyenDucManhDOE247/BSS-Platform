@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from 'react-oidc-context';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { api, DEMO_CUSTOMER_ID, formatVND } from '../api/client';
+import { api, formatVND, problemDetail } from '../api/client';
+import { statusText, useMyProfile } from '../hooks/useMyProfile';
 
 interface ProductOffering {
   id: string;
@@ -10,58 +12,43 @@ interface ProductOffering {
   priceCurrency: string;
 }
 
-interface CreateOrderResponse {
-  id: string;
-  state: string;
-  totalAmount: number;
-}
-
+/**
+ * Giai đoạn 9 việc 4. Trước GĐ9 trang này gửi `customerId: DEMO_CUSTOMER_ID` (1 khách "ma" dùng chung
+ * cho mọi người) + `unitPrice` do client tự khai. Giờ body chỉ còn gói + số lượng: order-management tự
+ * biết khách LÀ AI (token) và GIÁ bao nhiêu (product-catalog) — ADR-008, B-13.
+ */
 export default function OrderPage() {
   const { offeringId } = useParams<{ offeringId: string }>();
+  const auth = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { data: me, isLoading: meLoading } = useMyProfile();
 
   const { data: offering, isLoading } = useQuery({
     queryKey: ['offering', offeringId],
-    queryFn: async () => {
-      const res = await api.get<ProductOffering>(
-        `/tmf-api/productCatalog/v4/productOffering/${offeringId}`,
-      );
-      return res.data;
-    },
+    queryFn: async () =>
+      (await api.get<ProductOffering>(`/tmf-api/productCatalog/v4/productOffering/${offeringId}`)).data,
     enabled: !!offeringId,
   });
 
   const placeOrder = useMutation({
     mutationFn: async () => {
       if (!offering) throw new Error('No offering');
-      const body = {
-        customerId: DEMO_CUSTOMER_ID,
+      return (await api.post('/tmf-api/orderManagement/v4/productOrder', {
         category: 'new',
         description: `Subscription: ${offering.name}`,
-        items: [
-          {
-            productOfferingId: offering.id,
-            productOfferingName: offering.name,
-            quantity: 1,
-            unitPrice: offering.priceAmount,
-          },
-        ],
-      };
-      const res = await api.post<CreateOrderResponse>(
-        '/tmf-api/orderManagement/v4/productOrder',
-        body,
-      );
-      return res.data;
+        items: [{ productOfferingId: offering.id, quantity: 1 }],
+      })).data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bills'] });
-      navigate('/bills');
+      void queryClient.invalidateQueries({ queryKey: ['bills'] });
+      void queryClient.invalidateQueries({ queryKey: ['my-orders'] });
+      navigate('/orders');
     },
   });
 
   if (isLoading) return <p>Đang tải gói cước…</p>;
-  if (!offering) return <p>Không tìm thấy gói cước.</p>;
+  if (!offering) return <p>Không tìm thấy gói cước (có thể gói đã ngừng bán).</p>;
 
   return (
     <section>
@@ -72,20 +59,30 @@ export default function OrderPage() {
         <p className="plan-card__price">{formatVND(offering.priceAmount)} /tháng</p>
       </article>
 
-      <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
-        <button
-          onClick={() => placeOrder.mutate()}
-          disabled={placeOrder.isPending}
-          style={{ padding: '8px 16px' }}
-        >
-          {placeOrder.isPending ? 'Đang xử lý…' : 'Xác nhận đăng ký'}
-        </button>
-        <Link to="/plans">Hủy</Link>
+      <div style={{ marginTop: 16 }}>
+        {!auth.isAuthenticated ? (
+          <p>
+            <button onClick={() => void auth.signinRedirect()}>Đăng nhập để đăng ký gói</button>{' '}
+            hoặc <button onClick={() => void auth.signinRedirect({ prompt: 'create' })}>tạo tài khoản mới</button>
+          </p>
+        ) : meLoading ? (
+          <p>Đang kiểm tra hồ sơ…</p>
+        ) : me === null ? (
+          <p>Bạn cần <Link to="/profile">hoàn tất hồ sơ khách hàng</Link> trước khi đăng ký gói.</p>
+        ) : me && me.status !== 'Active' ? (
+          <p data-testid="not-active">{statusText[me.status]}</p>
+        ) : (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => placeOrder.mutate()} disabled={placeOrder.isPending}>
+              {placeOrder.isPending ? 'Đang xử lý…' : 'Xác nhận đăng ký'}
+            </button>
+            <Link to="/plans">Hủy</Link>
+          </div>
+        )}
+        {placeOrder.isError && (
+          <p style={{ color: 'crimson' }}>{problemDetail(placeOrder.error, 'Tạo đơn thất bại — thử lại sau.')}</p>
+        )}
       </div>
-
-      {placeOrder.isError && (
-        <p style={{ color: 'crimson' }}>Tạo đơn thất bại — thử lại sau.</p>
-      )}
     </section>
   );
 }

@@ -1,0 +1,13 @@
+{
+  "name": "@bss/e2e-browser",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Giai đoạn 9 việc 6 — test E2E bằng trình duyệt thật (Playwright/Chromium) cho 2 website",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

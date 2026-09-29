@@ -7,7 +7,7 @@
 #   2. secretGenerator tạo Secret local (B-20 bản local) — dev/staging/prod dùng Secrets Store
 #      CSI (chưa hoàn thiện, B-20 bản AWS vẫn còn treo, xem learning/16 mục 4).
 #   3. Không có patch IRSA (`eks.amazonaws.com/role-arn`) — kind không phải EKS, không có IAM.
-#   4. Ingress dùng ingressClassName "nginx" + host *.localtest.me (không cần domain thật, không
+#   4. Ingress dùng ingressClassName "nginx" + host bss.localhost (không cần domain thật, không
 #      cần ACM) thay vì "alb" + domain CHANGE_ME (B-23 chỉ áp dụng cho AWS).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -41,7 +41,7 @@ configMapGenerator:
       # Giai đoạn 9 việc 3 (ADR-008 quyết định 4): service TỰ kiểm JWT — cùng công tắc + cùng cặp
       # issuer công khai / JWKS nội bộ như api-gateway (xem giải thích ở api-gateway-config).
       - BSS_AUTH_ENABLED=true
-      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://bss.localtest.me/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://bss.localhost/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: product-catalog-config
     literals:
@@ -49,7 +49,7 @@ configMapGenerator:
       - LOGGING_LEVEL_ROOT=DEBUG
       # Giai đoạn 9 việc 3b — xem customer-service-config.
       - BSS_AUTH_ENABLED=true
-      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://bss.localtest.me/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://bss.localhost/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: order-management-config
     literals:
@@ -60,7 +60,7 @@ configMapGenerator:
       - EVENT_BUS_NAME=bss-dev-events
       # Giai đoạn 9 việc 3c — xem customer-service-config.
       - BSS_AUTH_ENABLED=true
-      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://bss.localtest.me/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://bss.localhost/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: billing-service-config
     literals:
@@ -71,7 +71,7 @@ configMapGenerator:
       - SQS_QUEUE_URL=http://localstack.bss.svc.cluster.local:4566/000000000000/bss-dev-billing-orders
       # Giai đoạn 9 việc 3d — xem customer-service-config.
       - BSS_AUTH_ENABLED=true
-      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://bss.localtest.me/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://bss.localhost/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: api-gateway-config
     literals:
@@ -85,9 +85,9 @@ configMapGenerator:
       #   ISSUER_URI  = địa chỉ CÔNG KHAI, chỉ để so khớp claim `iss` (trùng KC_HOSTNAME của Keycloak);
       #   JWK_SET_URI = địa chỉ NỘI BỘ cluster, để tải khóa công khai.
       # Khi có JWK_SET_URI, Spring Boot tải khóa trực tiếp từ đó và KHÔNG gọi discovery
-      # "{issuer-uri}/.well-known/openid-configuration" — Pod không cần resolve bss.localtest.me
+      # "{issuer-uri}/.well-known/openid-configuration" — Pod không cần resolve bss.localhost
       # (trong Pod, tên đó trỏ 127.0.0.1 = chính Pod). Thiếu JWK_SET_URI → gateway 500 khi có token.
-      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://bss.localtest.me/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://bss.localhost/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
 
 # B-20 (bản local): dùng Kustomize secretGenerator thay Secrets Store CSI (AWS-only — bản AWS
@@ -180,7 +180,12 @@ patches:
     patch: |-
       - { op: replace, path: /spec/ingressClassName, value: nginx }
       - { op: replace, path: /metadata/annotations, value: {} }
-      - { op: replace, path: /spec/rules/0/host, value: bss.localtest.me }
+      # Giai đoạn 9 (ADR-008 quyết định 7): `bss.localhost`, KHÔNG phải `bss.localtest.me` như GĐ2-8.
+      # Đăng nhập PKCE cần `crypto.subtle` của trình duyệt — chỉ có trong "secure context" (HTTPS,
+      # hoặc localhost / *.localhost dù là HTTP). Đã đo thật bằng Chromium: http://bss.localtest.me
+      # → isSecureContext=false, crypto.subtle undefined → bấm "Đăng nhập" không có gì xảy ra.
+      # *.localhost được trình duyệt + curl tự phân giải về 127.0.0.1, không cần /etc/hosts.
+      - { op: replace, path: /spec/rules/0/host, value: bss.localhost }
       # Giai đoạn 9 việc 2 (ADR-008 quyết định 2): Keycloak dưới PATH `/auth` của cùng host, thay
       # subdomain `auth.bss.localtest.me` của Giai đoạn 7. Keycloak tự phục vụ dưới `/auth`
       # (KC_HTTP_RELATIVE_PATH), nên Ingress chuyển nguyên path, KHÔNG rewrite. Chèn vào ĐẦU danh
