@@ -8,8 +8,8 @@
 # script này (gọi API không token, admin tự tạo khách hộ) chết ngay ở bước đầu với 401. Bản này đi
 # đúng luồng thật bằng API, không cần trình duyệt (luồng trình duyệt: scripts/e2e-browser.sh):
 #   khách MỚI (user Keycloak tạo riêng cho mỗi lần chạy) → tự tạo hồ sơ → bị chặn mua (422, chưa
-#   duyệt) → admin1 duyệt → mua → thấy hóa đơn của CHÍNH mình (VAT 10%) → khách khác (customer1)
-#   đọc đơn/hóa đơn đó → 404, gọi API quản trị → 403.
+#   duyệt) → admin1 duyệt → mua → thấy hóa đơn của CHÍNH mình (VAT 10%) → admin đổi giá + ngừng bán
+#   gói → đơn cũ giữ nguyên giá → khách khác (customer1) đọc đơn/hóa đơn đó → 404.
 # e2e-local.sh KHÔNG cần đổi: service chạy bằng `mvn` với profile `local`, auth tắt (mặc định).
 #
 # Same B-52 discipline as e2e-local.sh: `set -euo pipefail`, every check is `curl -f` or an
@@ -120,12 +120,17 @@ CUSTOMER_STATUS=$(echo "$CUSTOMER_JSON" | jq -r '.status')
 [ "$CUSTOMER_STATUS" = "Initialized" ] || fail "hồ sơ mới phải là Initialized (chờ duyệt), nhận $CUSTOMER_STATUS"
 ok "profile created: $CUSTOMER_ID (status=Initialized)"
 
-log "Listing product offerings (công khai, không cần token)…"
-OFFERINGS_JSON=$(curl -fsS "$GATEWAY_URL/tmf-api/productCatalog/v4/productOffering?lifecycleStatus=Active&limit=10")
-OFFERING_ID=$(echo "$OFFERINGS_JSON" | jq -r '.[0].id')
-OFFERING_PRICE=$(echo "$OFFERINGS_JSON" | jq -r '.[0].priceAmount')
-[ -n "$OFFERING_ID" ] && [ "$OFFERING_ID" != "null" ] || fail "no product offerings found — did Flyway seed data run?"
-ok "found offering $OFFERING_ID (price=$OFFERING_PRICE)"
+# Gói RIÊNG cho lần chạy này (admin tạo) thay vì gói seed: bước cuối sẽ đổi giá + ngừng bán nó để kiểm
+# "đơn cũ giữ nguyên giá lúc mua" mà không làm bẩn catalog seed dùng chung.
+log "Admin tạo gói riêng cho lần chạy này…"
+OFFERING_JSON=$(curl -fsS -X POST "$GATEWAY_URL/tmf-api/productCatalog/v4/productOffering" "${AS_ADMIN[@]}"   -H 'Content-Type: application/json'   -d "{\"name\":\"E2E Kind $RUN_ID\",\"priceAmount\":123000,\"priceCurrency\":\"VND\",\"recurringPeriod\":\"monthly\"}")
+OFFERING_ID=$(echo "$OFFERING_JSON" | jq -r '.id')
+[ -n "$OFFERING_ID" ] && [ "$OFFERING_ID" != "null" ] || fail "admin tạo gói thất bại: $OFFERING_JSON"
+
+log "Khách xem gói (công khai, không cần token)…"
+OFFERING_PRICE=$(curl -fsS "$GATEWAY_URL/tmf-api/productCatalog/v4/productOffering/$OFFERING_ID" | jq -r '.priceAmount')
+[ "$OFFERING_PRICE" != "null" ] || fail "không đọc được gói $OFFERING_ID khi chưa đăng nhập"
+ok "offering $OFFERING_ID (price=$OFFERING_PRICE)"
 
 # Không gửi customerId/giá: server lấy khách từ token (ADR-008) và giá từ catalog (B-13).
 ORDER_BODY="{\"category\":\"new\",\"description\":\"e2e-kind\",\"items\":[{\"productOfferingId\":\"$OFFERING_ID\",\"quantity\":1}]}"
@@ -170,7 +175,17 @@ EXPECTED_TAX=$(awk -v p="$OFFERING_PRICE" 'BEGIN { printf "%.2f", p * 0.10 }')
   || fail "invoice VAT ($INVOICE_TAX) != expected 10% of $OFFERING_PRICE ($EXPECTED_TAX)"
 ok "invoice $(echo "$INVOICE_JSON" | jq -r '.invoiceNumber') found with correct VAT: tax=$INVOICE_TAX (expected $EXPECTED_TAX)"
 
-# ── 5. Quyền sở hữu: khách KHÁC không đọc được đơn/hóa đơn này (404 — không lộ là nó tồn tại) ─────
+# ── 5. Admin đổi giá + ngừng bán gói → khách không thấy gói nữa, nhưng ĐƠN CŨ giữ nguyên giá lúc mua
+#    (order-management lưu đơn giá tại thời điểm mua — B-13; ADR-008 "ngừng bán thay vì xóa"). ────────
+curl -fsS -o /dev/null -X PATCH "$GATEWAY_URL/tmf-api/productCatalog/v4/productOffering/$OFFERING_ID" "${AS_ADMIN[@]}"   -H 'Content-Type: application/merge-patch+json' -d '{"priceAmount":150000,"lifecycleStatus":"Retired"}'
+ok "admin đổi giá gói → 150000 và ngừng bán (Retired)"
+curl -fsS "$GATEWAY_URL/tmf-api/productCatalog/v4/productOffering?lifecycleStatus=Active&limit=100"   | jq -e --arg id "$OFFERING_ID" 'all(.[]; .id != $id)' >/dev/null   || fail "gói đã ngừng bán vẫn hiện trong danh sách gói đang bán"
+ok "gói đã ngừng bán không còn trong danh sách khách thấy"
+OLD_ORDER=$(curl -fsS "$GATEWAY_URL/tmf-api/orderManagement/v4/productOrder/$ORDER_ID" "${AS_CUSTOMER[@]}")
+[ "$(echo "$OLD_ORDER" | jq -r '.items[0].unitPrice')" = "$OFFERING_PRICE" ]   && [ "$(echo "$OLD_ORDER" | jq -r '.totalAmount')" = "$OFFERING_PRICE" ]   || fail "đơn cũ bị đổi giá theo catalog: $OLD_ORDER"
+ok "đơn cũ vẫn giữ giá lúc mua ($OFFERING_PRICE), không theo giá mới"
+
+# ── 6. Quyền sở hữu: khách KHÁC không đọc được đơn/hóa đơn này (404 — không lộ là nó tồn tại) ─────
 expect_status 404 "$OTHER_USER đọc đơn của khách khác" "$GATEWAY_URL/tmf-api/orderManagement/v4/productOrder/$ORDER_ID" "${AS_OTHER[@]}"
 expect_status 404 "$OTHER_USER đọc hóa đơn của khách khác" "$GATEWAY_URL/tmf-api/billingManagement/v4/customerBill/$INVOICE_ID" "${AS_OTHER[@]}"
 expect_status 200 "admin đọc hóa đơn đó" "$GATEWAY_URL/tmf-api/billingManagement/v4/customerBill/$INVOICE_ID" "${AS_ADMIN[@]}"
