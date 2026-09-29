@@ -1,6 +1,6 @@
 # ADR-007 — Karpenter: không áp dụng ở giai đoạn hiện tại
 
-- **Trạng thái:** Chấp nhận (Accepted)
+- **Trạng thái:** ~~Chấp nhận~~ → **Bị thay thế (Superseded) bởi [ADR-010](ADR-010-karpenter-lam-that-o-dev.md)** 2026-09-29 — chủ repo chọn làm Karpenter thật ở dev. Giữ file này làm lịch sử lý do.
 - **Ngày:** 2026-09-27
 - **Giai đoạn:** 8 — Reliability, load test, tài liệu, demo
 

@@ -40,6 +40,18 @@ if aws eks describe-cluster --region "$REGION" --name "$CLUSTER" >/dev/null 2>&1
     echo "  ⚠ Could not delete the Ingress (endpoint unreachable / no permission / controller down)."
     echo "    Check after destroy for a leftover ALB:  aws elbv2 describe-load-balancers --region $REGION"
   fi
+  # ADR-010: node do Karpenter tạo cũng KHÔNG nằm trong state Terraform (cùng lý do với ALB). Xóa
+  # NodePool khi controller còn chạy → Karpenter tự drain + terminate node của nó; chờ NodeClaim hết.
+  # Bỏ qua lặng lẽ ở môi trường không cài Karpenter (không có CRD NodePool).
+  if kubectl get crd nodepools.karpenter.sh >/dev/null 2>&1; then
+    echo "→ Deleting Karpenter NodePools (so Karpenter terminates the EC2 nodes it launched)..."
+    if kubectl delete nodepool --all --wait=true --timeout=5m        && kubectl wait --for=delete nodeclaim --all --timeout=5m 2>/dev/null; then
+      echo "  ✓ Karpenter nodes gone"
+    else
+      echo "  ⚠ Karpenter nodes may remain — after destroy check:"
+      echo "    aws ec2 describe-instances --region $REGION --filters Name=tag-key,Values=karpenter.sh/nodepool Name=instance-state-name,Values=running,pending"
+    fi
+  fi
 else
   echo "→ Cluster $CLUSTER not found — skipping Ingress cleanup."
 fi
@@ -58,3 +70,4 @@ echo "  Leftover check (each should print nothing / an empty list):"
 echo "    aws elbv2 describe-load-balancers --region $REGION --query 'LoadBalancers[].LoadBalancerName'"
 echo "    aws ec2 describe-nat-gateways --region $REGION --filter Name=state,Values=available --query 'NatGateways[].NatGatewayId'"
 echo "    aws ec2 describe-volumes --region $REGION --filters Name=status,Values=available --query 'Volumes[].VolumeId'"
+echo "    aws ec2 describe-instances --region $REGION --filters Name=tag-key,Values=karpenter.sh/nodepool Name=instance-state-name,Values=running,pending --query 'Reservations[].Instances[].InstanceId'"

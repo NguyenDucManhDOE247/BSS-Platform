@@ -68,3 +68,9 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "enable_network_policy" {
+  type        = bool
+  default     = false
+  description = "Bật thi hành NetworkPolicy trong addon VPC CNI (dọn nợ GĐ7). Hiện chỉ dev bật — staging/prod bật sau khi dev đã chạy ma trận scripts/netpol-matrix.sh"
+}

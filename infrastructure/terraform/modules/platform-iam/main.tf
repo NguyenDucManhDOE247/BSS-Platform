@@ -8,9 +8,11 @@
 #   - AWS Load Balancer Controller (creates ALBs/NLBs from Ingress/Service resources)
 #   - EBS CSI Driver (provisions the gp3 volumes Prometheus/Grafana/Alertmanager PVCs need — B-41)
 #
-# Deliberately NOT here yet (checklist scope for Giai đoạn 4 — see learning/20 mục Giai đoạn 4
-# item 6): Karpenter (+ SQS spot-interruption queue), Fluent Bit, OTel Collector. Add them here
-# the same way when their phase comes, instead of a new module each time.
+#   - Karpenter controller + SQS interruption queue — karpenter.tf, bật bằng `enable_karpenter`
+#     (dọn nợ GĐ8, ADR-010; hiện chỉ dev)
+#
+# Deliberately NOT here yet: Fluent Bit, OTel Collector. Add them here the same way when their
+# phase comes, instead of a new module each time.
 
 data "aws_partition" "current" {}
 

@@ -22,11 +22,11 @@ REGION="${AWS_REGION:-ap-southeast-1}"
 TF_DIR="infrastructure/terraform/environments/$ENV"
 CLUSTER="bss-$ENV-eks"
 
-echo "=== 1/5 — kubeconfig for $CLUSTER ==="
+echo "=== 1/6 — kubeconfig for $CLUSTER ==="
 aws eks update-kubeconfig --region "$REGION" --name "$CLUSTER"
 
 echo ""
-echo "=== 2/5 — namespace bss (with Pod Security labels) ==="
+echo "=== 2/6 — namespace bss (with Pod Security labels) ==="
 # Giai đoạn 6: the CD deployer role can only touch objects INSIDE namespace `bss` (namespace-scoped
 # EKS access policy), and a Namespace is cluster-scoped — so overlays/{dev,staging,prod} drop it
 # from what `kubectl apply -k` sends (see the `$patch: delete` at the top of their `patches:`), and
@@ -34,7 +34,7 @@ echo "=== 2/5 — namespace bss (with Pod Security labels) ==="
 kubectl apply -f infrastructure/kubernetes/base/namespace.yaml
 
 echo ""
-echo "=== 3/5 — AWS Load Balancer Controller (creates the ALB from Ingress) ==="
+echo "=== 3/6 — AWS Load Balancer Controller (creates the ALB from Ingress) ==="
 helm repo add eks https://aws.github.io/eks-charts >/dev/null 2>&1 || true
 helm repo update eks >/dev/null
 # Chart/app version 3.5.0 MUST match the iam_policy.json version pinned in
@@ -46,11 +46,11 @@ helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-contro
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$(terraform -chdir="$TF_DIR" output -raw aws_lb_controller_role_arn)"
 
 echo ""
-echo "=== 4/5 — gp3 StorageClass (B-41: EKS ships none by default) ==="
+echo "=== 4/6 — gp3 StorageClass (B-41: EKS ships none by default) ==="
 kubectl apply -f platform/storage/storageclass-gp3.yaml
 
 echo ""
-echo "=== 5/5 — Secrets Store CSI Driver + AWS provider (B-20: per-service RDS credentials) ==="
+echo "=== 5/6 — Secrets Store CSI Driver + AWS provider (B-20: per-service RDS credentials) ==="
 helm repo add secrets-store-csi-driver https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts >/dev/null 2>&1 || true
 helm repo update secrets-store-csi-driver >/dev/null
 helm upgrade --install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver \
@@ -59,6 +59,28 @@ helm upgrade --install csi-secrets-store secrets-store-csi-driver/secrets-store-
 # Pinned to a release tag, not "main" (B-42) — an unpinned branch can change under you between
 # two runs of this exact same script with no changelog to check.
 kubectl apply -f https://raw.githubusercontent.com/aws/secrets-store-csi-driver-provider-aws/3.1.4/deployment/aws-provider-installer.yaml
+
+echo ""
+echo "=== 6/6 — Karpenter (ADR-010 — chỉ môi trường có enable_karpenter trong Terraform) ==="
+# Version PHẢI khớp template IAM đã dịch trong modules/platform-iam/karpenter.tf (xem comment ở đó).
+KARPENTER_VERSION="1.14.1"
+KARPENTER_ROLE="$(terraform -chdir="$TF_DIR" output -raw karpenter_role_arn 2>/dev/null || true)"
+if [ -n "$KARPENTER_ROLE" ] && [ "$KARPENTER_ROLE" != "null" ]; then
+  helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter \
+    --version "$KARPENTER_VERSION" -n kube-system \
+    --set settings.clusterName="$CLUSTER" \
+    --set settings.interruptionQueue="$(terraform -chdir="$TF_DIR" output -raw karpenter_interruption_queue)" \
+    --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$KARPENTER_ROLE" \
+    --set controller.resources.requests.cpu=250m --set controller.resources.requests.memory=512Mi \
+    --set controller.resources.limits.cpu=1 --set controller.resources.limits.memory=512Mi \
+    --set replicas=1 \
+    --wait
+  # CRD NodePool/EC2NodeClass do chart vừa cài — áp sau `--wait` để API đã nhận CRD.
+  sed "s/__CLUSTER__/$CLUSTER/g" platform/networking/karpenter-nodepool.yaml | kubectl apply -f -
+  kubectl wait --for=condition=Ready ec2nodeclass/default --timeout=120s
+else
+  echo "(bỏ qua — $ENV không bật Karpenter; node group cố định, ADR-006/010)"
+fi
 
 echo ""
 echo "✓ Addons installed. metrics-server + EBS CSI driver already came from Terraform"
