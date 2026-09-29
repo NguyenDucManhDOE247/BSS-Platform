@@ -44,7 +44,11 @@ helm repo update eks >/dev/null
 
 kubectl --context "$CTX" create namespace "$NS" --dry-run=client -o yaml | kubectl --context "$CTX" apply -f - >/dev/null
 
-helm --kube-context "$CTX" upgrade --install fluent-bit eks/aws-for-fluent-bit \
+# Lỗi thật lần chạy EKS đầu (2026-09-29, Git Bash trên Windows): MSYS "dịch" mọi tham số trông như đường
+# dẫn POSIX trước khi gọi helm.exe → "logGroupName=/aws/eks/..." thành "C:/Git/aws/eks/..." → Fluent Bit bị
+# AccessDenied (IAM chỉ cho /aws/eks/<cluster>/*). Chỉ loại trừ ĐÚNG tham số đó — `-f /c/.../values.yaml`
+# vẫn CẦN được dịch để helm.exe đọc được file. Biến này vô hại trên Linux/CI.
+MSYS2_ARG_CONV_EXCL="cloudWatchLogs." helm --kube-context "$CTX" upgrade --install fluent-bit eks/aws-for-fluent-bit \
   --version "$CHART_VERSION" -n "$NS" -f "$VALUES" "${EXTRA_ARGS[@]}" --wait --timeout 5m
 
 ok "Fluent Bit đã cài trên $CTX (namespace $NS, DaemonSet)"

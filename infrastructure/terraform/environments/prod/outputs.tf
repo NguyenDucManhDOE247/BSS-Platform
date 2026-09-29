@@ -57,3 +57,12 @@ output "waf_web_acl_arn" {
   description = "Feed to scripts/wire-waf.sh after `kubectl apply -k` to associate this env's ALB with its Web ACL"
   value       = module.waf.web_acl_arn
 }
+
+# Dọn nợ GĐ7 — scripts/logging-install.sh + tracing-install.sh đọc 2 output này (IRSA).
+output "fluent_bit_role_arn" {
+  value = module.platform_iam.fluent_bit_role_arn
+}
+
+output "otel_collector_role_arn" {
+  value = module.platform_iam.otel_collector_role_arn
+}
