@@ -1,19 +1,19 @@
 {
-  "deployed_at": "2026-09-29T03:49:14Z",
+  "deployed_at": "2026-09-29T09:57:48Z",
   "environment": "dev",
   "schema": 1,
   "services": {
     "admin-console": "7af3148a8ce32dc29c8af5604e1f8db080f1b68e",
-    "api-gateway": "aabd6a5651135b273300946d62734470a2c1b80a",
-    "billing-service": "7af3148a8ce32dc29c8af5604e1f8db080f1b68e",
-    "customer-service": "aabd6a5651135b273300946d62734470a2c1b80a",
-    "order-management": "fef87a44a631e4901508644fee1c2bf1d61923d5",
-    "product-catalog": "13700eac0f6d9ab81d5a67cdc08a4ff35b03f565",
+    "api-gateway": "f7bcce36fe54d9ca4d1bdfe5d32726f011085b54",
+    "billing-service": "f7bcce36fe54d9ca4d1bdfe5d32726f011085b54",
+    "customer-service": "33fd4c0fe28557bb76d494fe8fb01c6d2134a4dd",
+    "order-management": "f7bcce36fe54d9ca4d1bdfe5d32726f011085b54",
+    "product-catalog": "f7bcce36fe54d9ca4d1bdfe5d32726f011085b54",
     "web-portal": "303817cb52b1a036615a11a9dffca75240b9f372"
   },
   "source": {
     "ref": "refs/heads/main",
-    "run_url": "https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/runs/36518784126",
-    "sha": "b75b43f83dbbf55743a73ca6b12904a9505ea071"
+    "run_url": "https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/runs/36552479092",
+    "sha": "194196047e7c1bb3078f41900cf369ea3f4f2d61"
   }
 }
