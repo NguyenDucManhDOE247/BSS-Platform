@@ -1,7 +1,7 @@
 # Draft — "Building a Telecom BSS on AWS EKS" (Giai đoạn 8, việc 6)
 
-> Bản nháp. Trước khi đăng: điền số liệu thật từ Lab 07/08 (đánh dấu `TODO:` bên dưới), thêm ảnh
-> chụp thật (Grafana dashboard, k6 output, ALB WAF block), và đọc lại 1 lượt để chuyển giọng văn
+> Bản nháp — mọi con số đã là số đo thật (Lab 07/08 và buổi dev EKS 2026-09-29). Trước khi đăng: thêm
+> ảnh chụp thật (Grafana dashboard, k6 output, ALB WAF block), và đọc lại 1 lượt để chuyển giọng văn
 > sang tiếng nói cá nhân của bạn — bản này chỉ là khung + nội dung kỹ thuật chính xác, không phải
 > bản để đăng nguyên văn.
 
@@ -104,22 +104,41 @@ still have 2 replicas left over from the load test) landed its replacement pod o
 node, confirmed by node name in `kubectl get pods -o wide`. That's the actual, load-bearing reason
 staging and prod run ≥2 replicas — it's not about raw capacity, it's about disruption math.
 
-### What I decided *not* to build
+### The autoscaler I first decided not to build — and then built
 
-Not every scaffolded idea survived contact with reality. The original design called for Karpenter
-to auto-provision Spot instances for ~70% savings. But every environment here is **ephemeral** —
-stood up for a session, torn down right after — which already captures most of the cost benefit
-Karpenter would add, while its extra moving parts (two new CRDs, an interruption-handling IAM role,
-replacing a managed node group that was already working) would have added risk right before the
-one phase where I needed *stable, reproducible* load-test numbers. Full reasoning in
-[ADR-007](adr/ADR-007-karpenter.md) — sometimes the right engineering decision is writing down why
-you're *not* doing something.
+My first answer to "should this run Karpenter?" was no ([ADR-007](adr/ADR-007-karpenter.md)): every
+environment here is ephemeral, so Spot savings barely accumulate. Reading it again later, the load test
+above said otherwise — the ceiling was literally "no node to put the pod on". So I built it for dev
+([ADR-010](adr/ADR-010-karpenter-lam-that-o-dev.md)) and re-ran the exact same 200→700 req/s test:
+
+| | 2 fixed nodes | Karpenter (capped at 8 vCPU of Spot) |
+|---|---|---|
+| Requests served | 58,926 | **139,781** (2.4×) |
+| p95 | 8.55 s | **3.66 s** |
+| Errors | 5.47% | **7.9%** |
+
+Karpenter added four nodes within about a minute (a node is `Ready` ~36–39 s after the claim), picked the
+smallest instances that fit, and stopped exactly at the vCPU limit I gave it — the account's Spot quota.
+Six minutes after the load stopped it removed half of them again. The ceiling moved; it didn't disappear.
+And the error rate got *worse*, which I haven't explained yet (cold JVMs taking traffic, or 2 GiB nodes
+being too tight — both untested guesses). I'd rather publish that than a cleaner story.
+
+Two things only showed up on real AWS. First, Karpenter quietly fell back to On-Demand — at twice the
+price — because a brand-new account has never used Spot and lacks the `AWSServiceRoleForEC2Spot`
+service-linked role; nothing failed loudly, it just cost more. Second, nodes that Karpenter creates are
+not in Terraform's state, exactly like the load balancer an Ingress creates. My first teardown left two
+of them running; they held the cluster's security group, and the VPC refused to delete. A tiny script
+that lists "anything tagged for this project that still costs money" ended up catching three different
+kinds of leftovers in one day.
 
 ### What's next
 
-TODO: 1 đoạn ngắn về hướng tiếp theo sau `v1.0.0` (nếu có) — vd. nâng Spring Boot minor version để
-dọn ~48 CVE tồn đọng, hoặc bật NetworkPolicy enforcement thật trên EKS (hiện mới kiểm chứng trên
-`kind`).
+The system now has a real identity layer (Keycloak, self-registration, admin approval, per-customer data
+ownership — released as `v2.0.0`) and zero HIGH/CRITICAL CVEs after moving to Spring Boot 3.5. What's
+missing is the least glamorous part: **HTTPS on AWS**. Browser login needs a secure context, so on AWS
+the API is secured but the two websites can't sign users in until there's a domain and a certificate.
+After that: explain that 7.9%, and turn on NetworkPolicy enforcement in staging/prod (it's verified on
+dev EKS — 11/11 on a matrix run from inside the real service pods).
 
 ---
 
