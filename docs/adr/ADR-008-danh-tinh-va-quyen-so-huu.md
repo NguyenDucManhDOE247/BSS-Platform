@@ -172,8 +172,10 @@ hiện ở đâu cả.
 - ✅ Dọn luôn phần còn lại của B-13: `unitPrice` và `customerId` không còn nhận từ client.
 - ⚠️ Mọi test IT hiện có gọi API không kèm token sẽ đỏ khi bật resource server. Phải cập nhật bằng
   `spring-security-test` (`jwt()`), không mock framework (đúng CLAUDE.md §9).
-- ⚠️ Script `e2e-local.sh` và `e2e-kind.sh` phải tự lấy token (client `api-gateway`, password
-  grant, chỉ cho test).
+- ⚠️ Script `e2e-kind.sh` phải tự lấy token (client `api-gateway`, password grant, chỉ cho test).
+  **Đã làm (việc 6):** mỗi lần chạy tạo 1 user Keycloak mới qua Admin REST API, đi đủ luồng tạo hồ sơ →
+  422 khi chưa duyệt → admin duyệt → mua → hóa đơn, và kiểm quyền sở hữu (khách khác đọc → 404).
+  `e2e-local.sh` không cần đổi: service chạy bằng `mvn` với profile `local`, auth tắt mặc định.
 - ⚠️ docker-compose thêm 1 container Keycloak (~768Mi RAM) cho môi trường local.
 - ⚠️ Trên AWS, Keycloak làm tăng thời gian dựng cluster ephemeral (chờ Keycloak `Ready`) và tăng
   RAM cần có. Số liệu thật ghi lại ở việc 7.
