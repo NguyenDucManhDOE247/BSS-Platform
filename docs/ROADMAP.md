@@ -20,6 +20,8 @@ kept by the maintainer while working through this project as a learning exercise
 | 6 — CD: dev → staging → prod | Merge-to-dev automation, tag-based promotion, automatic rollback | ✅ Done |
 | 7 — Observability + security on AWS | Dashboards/alerts/SLO, NetworkPolicy, OAuth2, WAF, Trivy gate | ✅ Done |
 | 8 — Reliability, load test, docs, demo | k6 capacity threshold, chaos engineering, ops tooling, this README/CLAUDE.md refresh, `v1.0.0` | ✅ Done |
+| 9 — Real product (identity) | Keycloak + OIDC/PKCE, self-registration → admin approval, per-customer ownership in 4 services, 2 real websites, auth on in every environment, `v2.0.0` | ✅ Done — Playwright on `kind`; `rc-v2.0.0` → staging → `v2.0.0` → prod with authenticated smoke |
+| Debt pass 8 → 0 | Every open item from earlier phases | ✅ Done — Karpenter Spot on dev, NetworkPolicy on EKS (11/11), all 8 Phase-7 items on one EKS cluster, Spring Boot 3.5 (0 HIGH/CRITICAL), expand/migrate/contract on RDS, orphan finder |
 
 Each phase above was executed and **verified against real infrastructure** (not just "code written")
 before being marked done — see the architecture decisions in [`docs/adr/`](adr/) and the
