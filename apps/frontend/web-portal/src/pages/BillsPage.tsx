@@ -15,7 +15,7 @@ interface Invoice {
 }
 
 /**
- * Giai đoạn 9 việc 4: "Hóa đơn của tôi". Không truyền customerId (trước GĐ9 là DEMO_CUSTOMER_ID dùng
+ * Giai đoạn 9 việc 4: "Hóa đơn của tôi". Không truyền customerId (trước GĐ9 là id "khách demo" dùng
  * chung) — billing-service tự lọc theo người đang đăng nhập (ADR-008 quyết định 5).
  */
 export default function BillsPage() {
