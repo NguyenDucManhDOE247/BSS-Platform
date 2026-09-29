@@ -9,6 +9,7 @@ info:
       `customerSub` trong event OrderCompleted, gắn ở cấp billing account); đọc của người khác → 404.
       Role `admin` thấy tất cả, lọc theo `customerId`.
     - `POST /billingAccount` — chỉ `admin` (bình thường account tự mở khi có hóa đơn đầu tiên).
+    - `GET /customerBill/summary` — chỉ `admin` (doanh thu toàn hệ thống cho Dashboard admin-console).
     Khi `bss.auth.enabled=false`: hành vi trước GĐ9 (`customerId` bắt buộc ở `GET /customerBill`).
   version: 4.1.0
 
@@ -73,6 +74,16 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/Invoice' }
 
+  /customerBill/summary:
+    get:
+      summary: Revenue summary over ALL invoices (admin only)
+      description: |
+        Giai đoạn 9 việc 5 — Dashboard admin-console. Tổng tính ở DB bằng 1 câu SQL tổng hợp; cộng
+        ở client từ 1 trang danh sách sẽ sai khi có nhiều hơn 1 trang hóa đơn.
+      responses:
+        '200': { description: Revenue summary., content: { application/json: { schema: { $ref: '#/components/schemas/InvoiceSummary' } } } }
+        '403': { description: Caller is not admin. }
+
   /customerBill/{id}:
     get:
       summary: Get an invoice
@@ -136,3 +147,12 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/InvoiceItem' }
+
+    InvoiceSummary:
+      type: object
+      required: [invoiceCount, totalAmount, totalTax, currency]
+      properties:
+        invoiceCount:  { type: integer }
+        totalAmount:   { type: number, description: 'Tổng phải thu, đã gồm VAT.' }
+        totalTax:      { type: number, description: 'Phần VAT trong totalAmount.' }
+        currency:      { type: string, default: VND }

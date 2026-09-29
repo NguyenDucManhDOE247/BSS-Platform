@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { approveCustomerByEmail, fillKeycloakRegistration, uniqueUser } from './helpers';
+import { approveCustomerInAdminConsole, fillKeycloakRegistration, loginAdminConsole, uniqueUser } from './helpers';
 
 /**
  * Thanh điều hướng. Mặc định Playwright so khớp tên KHÔNG chính xác (chuỗi con, không phân biệt hoa
@@ -14,7 +14,7 @@ const nav = (page: Page) => page.getByRole('navigation');
  * thấy đơn + hóa đơn của CHÍNH mình → đăng xuất.
  * Mỗi bước chụp ảnh (thư mục test-results/) làm bằng chứng cho checkpoint GĐ9.
  */
-test('khách mới: đăng ký → hồ sơ → chờ duyệt → được duyệt → mua gói → đơn + hóa đơn', async ({ page, request, baseURL }) => {
+test('khách mới: đăng ký → hồ sơ → chờ duyệt → được duyệt → mua gói → đơn + hóa đơn', async ({ page, browser }) => {
   const user = uniqueUser();
   const shot = (name: string) => page.screenshot({ path: `test-results/journey/${name}.png`, fullPage: true });
   // In mọi lỗi/cảnh báo của TRÌNH DUYỆT ra log test — lỗi của oidc-client-ts (vd. không tải được
@@ -56,8 +56,9 @@ test('khách mới: đăng ký → hồ sơ → chờ duyệt → được duy�
   const orderUrl = page.url();
   await shot('05-chua-duyet-khong-mua-duoc');
 
-  // 5. Nhân viên duyệt (API thật; GĐ9 việc 5 sẽ đổi sang bấm trên admin-console).
-  await approveCustomerByEmail(request, baseURL!, user.email);
+  // 5. Nhân viên duyệt trên admin-console (phiên đăng nhập riêng của admin1) — 2 website đồng bộ qua
+  //    cùng 1 backend: khách thấy thay đổi ngay ở bước sau mà không cần đăng nhập lại.
+  await approveCustomerInAdminConsole(browser, user.email, 'test-results/journey/05b-admin-duyet');
 
   // 6. Tải lại → mua được → chuyển sang "Đơn hàng của tôi".
   await page.goto(orderUrl);
@@ -73,9 +74,28 @@ test('khách mới: đăng ký → hồ sơ → chờ duyệt → được duy�
   await expect(page.locator('tbody tr code')).toContainText('BSS-');
   await shot('07-hoa-don-cua-toi');
 
-  // 8. Đăng xuất → quay về trang chủ, không còn menu riêng tư.
+  // 8. Phía nhân viên: admin-console thấy đúng đơn + hóa đơn của CHÍNH khách này (lọc theo khách).
+  const staff = await browser.newContext();
+  const admin = await staff.newPage();
+  await loginAdminConsole(admin);
+  await admin.goto(`/admin/customers?q=${encodeURIComponent(user.email)}`);
+  const row = admin.getByTestId(`customer-${user.email}`);
+  await row.getByRole('link', { name: 'Đơn', exact: true }).click();
+  await expect(admin.getByTestId('filter-customer')).toContainText(user.email);
+  await expect(admin.getByTestId('order-row')).toHaveCount(1);
+  await admin.getByTestId('order-row').getByRole('button', { name: 'Chi tiết' }).click();
+  await expect(admin.getByTestId('order-detail')).toContainText('Đơn giá lúc mua');
+  await admin.screenshot({ path: 'test-results/journey/08a-admin-don-cua-khach.png', fullPage: true });
+  await admin.goto(`/admin/customers?q=${encodeURIComponent(user.email)}`);
+  await row.getByRole('link', { name: 'Hóa đơn', exact: true }).click();
+  await expect(admin.getByTestId('bill-row')).toHaveCount(1);
+  await expect(admin.getByTestId('bill-row').locator('code')).toContainText('BSS-');
+  await admin.screenshot({ path: 'test-results/journey/08b-admin-hoa-don-cua-khach.png', fullPage: true });
+  await staff.close();
+
+  // 9. Đăng xuất → quay về trang chủ, không còn menu riêng tư.
   await nav(page).getByRole('button', { name: 'Đăng xuất', exact: true }).click();
   await expect(nav(page).getByRole('button', { name: 'Đăng nhập', exact: true })).toBeVisible();
   await expect(nav(page).getByRole('link', { name: 'Hóa đơn', exact: true })).toHaveCount(0);
-  await shot('08-da-dang-xuat');
+  await shot('09-da-dang-xuat');
 });
