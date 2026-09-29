@@ -52,7 +52,7 @@ vòng 5 phút (ngưỡng `for` của alert):
 
 ```bash
 for i in $(seq 1 50); do
-  curl -s -o /dev/null -w "%{http_code}\n" -X POST http://bss.localtest.me/api/tmf-api/orderManagement/v4/productOrder \
+  curl -s -o /dev/null -w "%{http_code}\n" -X POST http://bss.localhost/api/tmf-api/orderManagement/v4/productOrder \
     -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
     -d '{"customerId":"00000000-0000-0000-0000-000000000000","category":"new","items":[{"productOfferingId":"00000000-0000-0000-0000-000000000000","quantity":1}]}'
   sleep 2

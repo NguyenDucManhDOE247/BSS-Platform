@@ -1,7 +1,7 @@
 # Giai đoạn 7, việc 6 (B-18) dựng Keycloak ở overlay `local` (kind). Giai đoạn 9 việc 2 sửa lại
 # địa chỉ theo ADR-008 quyết định 2. dev/staging/prod: Giai đoạn 9 việc 7.
 #
-# `KC_HOSTNAME` = ĐỊA CHỈ CÔNG KHAI mà trình duyệt thấy (`http://bss.localtest.me/auth`), không phải
+# `KC_HOSTNAME` = ĐỊA CHỈ CÔNG KHAI mà trình duyệt thấy (`http://bss.localhost/auth`), không phải
 # DNS nội bộ cluster. Keycloak ghi đúng chuỗi này vào claim `iss` của MỌI token, bất kể client gọi
 # tới qua đường nào — nên `iss` vẫn là 1 giá trị duy nhất.
 # Giai đoạn 7 từng đặt `KC_HOSTNAME` = DNS nội bộ (`keycloak.bss.svc.cluster.local`) để gateway khớp
@@ -9,7 +9,7 @@
 # duyệt: Keycloak chuyển hướng người dùng tới chính địa chỉ nội bộ đó, trình duyệt không mở được.
 # Gateway/service giờ tách 2 việc: so khớp `iss` với địa chỉ công khai, nhưng TẢI KHÓA (JWKS) qua
 # DNS nội bộ (xem api-gateway-config trong ../kustomization.yaml). Pod không bao giờ phải tự
-# resolve `bss.localtest.me` (trong Pod tên đó trỏ về 127.0.0.1 = chính Pod).
+# resolve `bss.localhost` (trong Pod tên đó trỏ về 127.0.0.1 = chính Pod).
 #
 # Path `/auth` cùng origin với 2 website, không dùng subdomain `auth.bss.localtest.me` như GĐ7:
 # trên AWS chưa có domain nên không tạo được subdomain trên DNS của ALB; path chạy y hệt ở kind
@@ -44,7 +44,7 @@ spec:
             - name: KC_HTTP_ENABLED
               value: "true"
             - name: KC_HOSTNAME
-              value: "http://bss.localtest.me/auth"
+              value: "http://bss.localhost/auth"
             - name: KC_HTTP_RELATIVE_PATH
               value: "/auth"
             # Nếu không đặt, cổng quản trị 9000 THỪA KẾ `/auth` từ KC_HTTP_RELATIVE_PATH → probe

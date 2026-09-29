@@ -1,11 +1,11 @@
 // k6 load test — Giai đoạn 2 checkpoint cuối: "k6 ở 50 VU → HPA tăng pod; dừng tải → giảm sau
-// ~5 phút" (learning/20 dòng 123). Chạy qua Ingress thật (http://bss.localtest.me), giống hệt
+// ~5 phút" (learning/20 dòng 123). Chạy qua Ingress thật (http://bss.localhost), giống hệt
 // luồng nghiệp vụ của scripts/e2e-kind.sh (xem offering → đặt hàng) nhưng lặp lại liên tục với
 // nhiều "người dùng ảo" (VU) cùng lúc thay vì 1 lần.
 //
 // Usage:
 //   k6 run tests/load/plans-and-order.js
-//   k6 run --env BASE_URL=http://bss.localtest.me tests/load/plans-and-order.js   # tuỳ chỉnh host
+//   k6 run --env BASE_URL=http://bss.localhost tests/load/plans-and-order.js   # tuỳ chỉnh host
 //
 // Trong lúc chạy, ở terminal khác:
 //   kubectl -n bss get hpa -w                 # xem cột REPLICAS tăng dần
@@ -18,7 +18,7 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
-const BASE_URL = __ENV.BASE_URL || 'http://bss.localtest.me';
+const BASE_URL = __ENV.BASE_URL || 'http://bss.localhost';
 const API = `${BASE_URL}/api`;
 
 // Ramp lên 50 VU rồi giữ, đúng con số checkpoint yêu cầu — không cần ramp-down trong script vì

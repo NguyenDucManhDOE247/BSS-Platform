@@ -55,7 +55,7 @@ chọn "iss = DNS nội bộ", và chính lựa chọn đó làm hỏng luồng 
 
 **Chọn:**
 - `KC_HOSTNAME` = **địa chỉ công khai** của môi trường, kèm `KC_HTTP_RELATIVE_PATH=/auth`. Ví dụ
-  `http://bss.localtest.me/auth` (kind), `http://<alb-dns>/auth` (AWS khi chưa có domain). Như vậy
+  `http://bss.localhost/auth` (kind — xem quyết định 7 vì sao phải là `*.localhost`), `https://<địa chỉ AWS>/auth` (AWS — bắt buộc HTTPS, quyết định 7). Như vậy
   `iss` luôn là địa chỉ công khai. Bật thêm `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true` để lời gọi từ
   trong cluster (lấy token trong script, JWKS) dùng được địa chỉ nội bộ.
 - Mọi service kiểm JWT cấu hình **2 giá trị tách biệt**:
@@ -141,6 +141,28 @@ Khách chỉ thấy gói `Active`, admin thấy cả gói đã ngừng bán (`Re
 **Chọn A.** Chi tiết triển khai (có tăng node dev hay không, số liệu RAM thật) làm ở Giai đoạn 9
 việc 7, và **hỏi trước khi `apply`**. Công tắc `bss.auth.enabled` bị **xóa** khi cả 4 môi trường
 (local, dev, staging, prod) đã có Keycloak. Từ đó auth luôn bật, không còn môi trường nào "mở".
+
+## Quyết định 7 — Đăng nhập PKCE cần "secure context" (bổ sung 2026-09-29, GĐ9 việc 4)
+
+**Phát hiện khi chạy thật** (không có trong bản đầu của ADR): PKCE dùng `crypto.subtle` của trình
+duyệt để băm `code_verifier` bằng SHA-256. Trình duyệt **chỉ cung cấp `crypto.subtle` trong "secure
+context"**: HTTPS, hoặc `localhost` / `*.localhost` dù là HTTP. Đo thật bằng Chromium tại
+`http://bss.localtest.me`: `isSecureContext=false`, `crypto.subtle` = undefined → bấm "Đăng nhập"
+không có gì xảy ra. Lỗi còn bị `react-oidc-context` giữ trong `auth.error` thay vì ném ra, nên không
+hiện ở đâu cả.
+
+- **kind (local): đổi host `bss.localtest.me` → `bss.localhost`.** Trình duyệt và curl tự phân giải
+  `*.localhost` về 127.0.0.1 (không cần sửa `/etc/hosts`), và coi nó là secure context → không cần
+  chứng chỉ. Đánh đổi: một số công cụ ngoài trình duyệt (vd. Node.js trong container) không tự hiểu
+  `*.localhost`, phải thêm 1 dòng `/etc/hosts` (xem `scripts/e2e-browser.sh`).
+- **AWS (GĐ9 việc 7): BẮT BUỘC HTTPS.** ALB hiện chỉ có HTTP và chưa có domain (B-23), nên web sẽ hỏng
+  y hệt. Các lựa chọn sẽ quyết ở việc 7, **hỏi chủ repo trước**:
+
+  | # | Phương án | Ghi chú |
+  |---|---|---|
+  | A | Mua domain + ACM + Route 53 | Chuẩn nhất; chủ repo từng muốn để domain về sau |
+  | B | **CloudFront trước ALB**, dùng domain mặc định `*.cloudfront.net` (HTTPS miễn phí của AWS) | Không cần mua domain; khớp lớp Edge "CloudFront → ALB" trong CLAUDE.md §2 |
+  | C | Chứng chỉ tự ký import vào ACM | Trình duyệt cảnh báo — không dùng được cho người dùng thật |
 
 ## Hệ quả
 

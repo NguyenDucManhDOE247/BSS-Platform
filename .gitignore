@@ -34,6 +34,9 @@ replay_pid*
 
 # ─── Node / Frontend ──────────────────────────────────────────────
 node_modules/
+# Giai đoạn 9: kết quả chạy Playwright (ảnh chụp, trace, báo cáo HTML) — sinh lại mỗi lần chạy
+tests/e2e-browser/test-results/
+tests/e2e-browser/playwright-report/
 dist/
 build/
 .next/

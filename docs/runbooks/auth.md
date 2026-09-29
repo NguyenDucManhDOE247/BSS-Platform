@@ -28,7 +28,7 @@ kubectl apply -k infrastructure/kubernetes/overlays/local
 kubectl -n bss rollout status deploy/keycloak
 ```
 
-Keycloak nằm dưới **path `/auth` của cùng host** `http://bss.localtest.me/auth` (Giai đoạn 9 việc
+Keycloak nằm dưới **path `/auth` của cùng host** `http://bss.localhost/auth` (Giai đoạn 9 việc
 2, [ADR-008](../adr/ADR-008-danh-tinh-va-quyen-so-huu.md) quyết định 2). Giai đoạn 7 từng dùng
 subdomain `auth.bss.localtest.me` với `KC_HOSTNAME` = DNS nội bộ cluster. Cách đó hỏng luồng đăng
 nhập của trình duyệt, vì Keycloak chuyển hướng trình duyệt tới địa chỉ nội bộ mà trình duyệt không
@@ -36,9 +36,9 @@ mở được. Hiện tại:
 
 | Giá trị | Ở đâu | Là gì |
 |---|---|---|
-| `KC_HOSTNAME=http://bss.localtest.me/auth` + `KC_HTTP_RELATIVE_PATH=/auth` | `overlays/local/keycloak/deployment.yaml` | `iss` trong token = địa chỉ công khai; 2 biến phải cùng mang `/auth` |
-| `…JWT_ISSUER_URI=http://bss.localtest.me/auth/realms/bss` | `api-gateway-config` | Chỉ để **so khớp** `iss` |
-| `…JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs` | `api-gateway-config` | Tải khóa qua DNS **nội bộ**. Có giá trị này thì Spring không gọi discovery, nên Pod không phải resolve `bss.localtest.me` (trong Pod tên đó trỏ 127.0.0.1) |
+| `KC_HOSTNAME=http://bss.localhost/auth` + `KC_HTTP_RELATIVE_PATH=/auth` | `overlays/local/keycloak/deployment.yaml` | `iss` trong token = địa chỉ công khai; 2 biến phải cùng mang `/auth` |
+| `…JWT_ISSUER_URI=http://bss.localhost/auth/realms/bss` | `api-gateway-config` | Chỉ để **so khớp** `iss` |
+| `…JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs` | `api-gateway-config` | Tải khóa qua DNS **nội bộ**. Có giá trị này thì Spring không gọi discovery, nên Pod không phải resolve `bss.localhost` (trong Pod tên đó trỏ 127.0.0.1) |
 
 docker-compose (`deploy/`) chạy Keycloak ở `http://localhost:8180/auth`, **mount chung** file
 `realm-bss.json` với kind.
@@ -46,19 +46,19 @@ docker-compose (`deploy/`) chạy Keycloak ở `http://localhost:8180/auth`, **m
 ## 3. Lấy token thật + gọi thử API
 
 ```bash
-ADMIN_TOK=$(curl -s -X POST http://bss.localtest.me/auth/realms/bss/protocol/openid-connect/token \
+ADMIN_TOK=$(curl -s -X POST http://bss.localhost/auth/realms/bss/protocol/openid-connect/token \
   -d grant_type=password -d client_id=api-gateway -d username=admin1 -d password=admin1pass \
   | sed -E 's/.*"access_token":"([^"]+)".*/\1/')
 
-CUST_TOK=$(curl -s -X POST http://bss.localtest.me/auth/realms/bss/protocol/openid-connect/token \
+CUST_TOK=$(curl -s -X POST http://bss.localhost/auth/realms/bss/protocol/openid-connect/token \
   -d grant_type=password -d client_id=api-gateway -d username=customer1 -d password=customer1pass \
   | sed -E 's/.*"access_token":"([^"]+)".*/\1/')
 
-curl -s http://bss.localtest.me/api/tmf-api/productCatalog/v4/productOffering                     # 200, không cần token
-curl -s -X POST http://bss.localtest.me/api/tmf-api/orderManagement/v4/productOrder -d '{}'       # 401, thiếu token
-curl -s -X DELETE http://bss.localtest.me/api/tmf-api/customerManagement/v4/customer/<id> \
+curl -s http://bss.localhost/api/tmf-api/productCatalog/v4/productOffering                     # 200, không cần token
+curl -s -X POST http://bss.localhost/api/tmf-api/orderManagement/v4/productOrder -d '{}'       # 401, thiếu token
+curl -s -X DELETE http://bss.localhost/api/tmf-api/customerManagement/v4/customer/<id> \
   -H "Authorization: Bearer $CUST_TOK"                                                            # 403, role customer không đủ
-curl -s -X DELETE http://bss.localtest.me/api/tmf-api/customerManagement/v4/customer/<id> \
+curl -s -X DELETE http://bss.localhost/api/tmf-api/customerManagement/v4/customer/<id> \
   -H "Authorization: Bearer $ADMIN_TOK"                                                           # 404 (không tìm thấy id giả) — QUA được security
 ```
 

@@ -24,7 +24,7 @@ image nếu vừa sửa `apps/backend/<svc>/src/main/resources/logback-spring.xm
 
 ```bash
 # Gọi 1 request thật qua gateway (ví dụ danh sách khách hàng)
-curl -s "http://bss.localtest.me/api/tmf-api/customerManagement/v4/customer?limit=1" -o /dev/null
+curl -s "http://bss.localhost/api/tmf-api/customerManagement/v4/customer?limit=1" -o /dev/null
 
 # Xem span nhận được (verbosity: detailed ở bản kind — xem toàn bộ attribute)
 kubectl -n observability logs deploy/otel-collector --since=30s | grep -A5 "Span #"

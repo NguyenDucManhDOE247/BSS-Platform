@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Creates (or reuses) the "bss" kind cluster and installs the 2 cluster-wide addons Giai đoạn 2
-# needs before any BSS manifest can go in: ingress-nginx (so http://bss.localtest.me works with
+# needs before any BSS manifest can go in: ingress-nginx (so http://bss.localhost works with
 # no /etc/hosts edit and no `kubectl port-forward`) and metrics-server (HPA reads CPU/memory from
 # it — B-43, without it `kubectl get hpa` shows <unknown> forever and never scales).
 #
