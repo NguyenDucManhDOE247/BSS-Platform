@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Debt pass from Phase 8 back to 0 (after `v2.0.0`), each item verified on real infrastructure.
+
+### Added
+
+- **Karpenter 1.14.1 on dev** (Spot first) — [ADR-010](docs/adr/ADR-010-karpenter-lam-that-o-dev.md)
+  supersedes ADR-007; IAM translated from the official template; node `Ready` ~36 s; 200→700 req/s served
+  2.4× more requests than fixed nodes (p95 3.66 s vs 8.55 s, but 7.9% errors — see ADR-010).
+- **NetworkPolicy enforcement on EKS** (VPC CNI `enableNetworkPolicy`, dev) + `scripts/netpol-matrix.sh`
+  run from inside real service pods (11/11 on EKS, 10/10 on kind).
+- **IRSA for Fluent Bit and the OTel Collector** — logs reach CloudWatch as JSON with `trace_id`, traces
+  reach X-Ray (a log's `trace_id` resolves to a 13-segment trace across EventBridge → SQS).
+- `tools/ops/orphan_finder.py` — lists anything still billing after `terraform destroy`.
+- Schema migration Release B/C for `customers.email_verified` (expand → migrate → contract), run on RDS.
+- Real Discord alert delivery (alert + runbook link in 132–146 s after a service goes down).
+- ADR-009 (no Jenkins/Helm chart/Ansible alongside the current toolchain).
+
+### Changed
+
+- **Spring Boot 3.2.12 → 3.5.16** (+ patch overrides for Tomcat/Jackson/pgjdbc/Netty): Trivy HIGH/CRITICAL
+  34 → **0** per image; all temporary `.trivyignore` entries removed. The old "Flyway breaks on 3.5" was a
+  missing `flyway-database-postgresql` module.
+- Dev node group 3 → 2 (Karpenter adds capacity on demand).
+
+### Fixed
+
+- Rolling updates dropped requests (1/419 → 500): `preStop` sleep 10 s on every Deployment.
+- `teardown.sh`: waits for / removes leftover ALB target groups, PVC-backed EBS volumes and Karpenter
+  nodes before `terraform destroy`; runs `orphan_finder` at the end.
+- Karpenter silently fell back to On-Demand on a fresh account (missing `AWSServiceRoleForEC2Spot`) —
+  now created by `bootstrap-aws.sh`.
+- Flaky CI (kustomize install hit the unauthenticated GitHub API rate limit).
+
 ## [2.0.0] — 2026-09-29
 
 Giai đoạn 9 — "sản phẩm hoàn chỉnh": danh tính thật + quyền sở hữu dữ liệu + 2 website có đăng nhập
