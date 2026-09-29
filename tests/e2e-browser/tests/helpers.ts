@@ -1,34 +1,52 @@
-import type { APIRequestContext, Page } from '@playwright/test';
+import { expect, type Browser, type Page } from '@playwright/test';
 
-/**
- * Thao tác "phía nhân viên" chưa có UI (duyệt khách) — gọi API thật qua gateway bằng token admin thật.
- * Khi admin-console có trang duyệt (GĐ9 việc 5), test sẽ chuyển sang bấm UI thay cho hàm này.
- */
-export async function adminToken(request: APIRequestContext, baseURL: string): Promise<string> {
-  const res = await request.post(`${baseURL}/auth/realms/bss/protocol/openid-connect/token`, {
-    form: { grant_type: 'password', client_id: 'api-gateway', username: 'admin1', password: 'admin1pass' },
-  });
-  if (!res.ok()) throw new Error(`Lấy token admin thất bại: ${res.status()} ${await res.text()}`);
-  return (await res.json()).access_token as string;
+/** Tài khoản mẫu trong realm kind (overlays/local/keycloak/realm-bss.json) — chỉ tồn tại ở local. */
+export const ADMIN = { username: 'admin1', password: 'admin1pass' };
+export const CUSTOMER1 = { username: 'customer1', password: 'customer1pass' };
+
+/** Điền form ĐĂNG NHẬP của Keycloak (theme keycloak.v2). */
+export async function fillKeycloakLogin(page: Page, u: { username: string; password: string }): Promise<void> {
+  await page.locator('#username').fill(u.username);
+  await page.locator('#password').fill(u.password);
+  await page.locator('input[type=submit], button[type=submit]').first().click();
 }
 
-export async function approveCustomerByEmail(
-  request: APIRequestContext, baseURL: string, email: string,
-): Promise<void> {
-  const token = await adminToken(request, baseURL);
-  const auth = { Authorization: `Bearer ${token}` };
-  const list = await request.get(
-    `${baseURL}/api/tmf-api/customerManagement/v4/customer?status=Initialized&q=${encodeURIComponent(email)}`,
-    { headers: auth },
-  );
-  const customers = (await list.json()) as { id: string; email: string }[];
-  const target = customers.find((c) => c.email === email);
-  if (!target) throw new Error(`Không thấy khách ${email} trong danh sách chờ duyệt`);
-  const res = await request.patch(`${baseURL}/api/tmf-api/customerManagement/v4/customer/${target.id}`, {
-    headers: { ...auth, 'Content-Type': 'application/merge-patch+json' },
-    data: { status: 'Active' },
-  });
-  if (!res.ok()) throw new Error(`Duyệt thất bại: ${res.status()} ${await res.text()}`);
+/** Mở admin-console và đăng nhập bằng tài khoản admin (qua trang Keycloak thật, PKCE). */
+export async function loginAdminConsole(page: Page, u = ADMIN): Promise<void> {
+  await page.goto('/admin/');
+  await page.getByRole('button', { name: 'Đăng nhập' }).click();
+  await expect(page).toHaveURL(/\/auth\/realms\/bss\//);
+  await fillKeycloakLogin(page, u);
+  // PHẢI chờ app nhận code + đổi lấy token xong. Không chờ → `page.goto` ngay sau đó chạy đua với
+  // redirect `/admin/?code=...` và hủy nó: trang mới không có phiên, không gọi API nào (lần chạy đầu
+  // treo đúng như vậy ở bước 8 của hành trình khách — trace chỉ thấy /admin/?code=... bị bỏ dở).
+  await expect(page.getByRole('navigation').getByRole('button', { name: 'Đăng xuất' })).toBeVisible();
+}
+
+/**
+ * Nhân viên duyệt khách BẰNG GIAO DIỆN admin-console (GĐ9 việc 5 — thay cho gọi API trực tiếp như
+ * trước). Chạy trong 1 browser context RIÊNG: nhân viên và khách là 2 người, 2 phiên đăng nhập.
+ */
+export async function approveCustomerInAdminConsole(browser: Browser, email: string, shotPath?: string): Promise<void> {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await loginAdminConsole(page);
+    await page.getByRole('navigation').getByRole('link', { name: 'Khách hàng', exact: true }).click();
+    await page.getByLabel('Trạng thái').selectOption('Initialized');
+    await page.getByLabel('Tìm khách').fill(email);
+    await page.getByRole('button', { name: 'Tìm', exact: true }).click();
+    const row = page.getByTestId(`customer-${email}`);
+    await expect(row.getByTestId('status')).toHaveText('Initialized');
+    if (shotPath) await page.screenshot({ path: `${shotPath}-truoc.png`, fullPage: true });
+    await row.getByRole('button', { name: 'Duyệt', exact: true }).click();
+    // Sau khi duyệt, khách rời bộ lọc "Initialized" → bỏ lọc để thấy trạng thái mới.
+    await page.getByLabel('Trạng thái').selectOption('');
+    await expect(row.getByTestId('status')).toHaveText('Active');
+    if (shotPath) await page.screenshot({ path: `${shotPath}-sau.png`, fullPage: true });
+  } finally {
+    await context.close();
+  }
 }
 
 /** Điền form ĐĂNG KÝ của Keycloak (theme keycloak.v2) — đúng các ô khách thật nhìn thấy. */

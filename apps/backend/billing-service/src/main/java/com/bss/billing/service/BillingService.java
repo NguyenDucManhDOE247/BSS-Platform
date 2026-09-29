@@ -3,6 +3,7 @@ package com.bss.billing.service;
 import com.bss.billing.dto.BillingAccountDto;
 import com.bss.billing.dto.CreateAccountRequest;
 import com.bss.billing.dto.InvoiceDto;
+import com.bss.billing.dto.InvoiceSummaryDto;
 import com.bss.billing.exception.NotFoundException;
 import com.bss.billing.model.BillingAccount;
 import com.bss.billing.model.Invoice;
@@ -96,6 +97,11 @@ public class BillingService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "customerId is required");
         }
         return invoices.findAll(pageable).map(InvoiceDto::from);
+    }
+
+    @Transactional(readOnly = true)
+    public InvoiceSummaryDto summary() {
+        return invoices.summarize();
     }
 
     /** Giữ cho code/test cũ — tương đương {@link #listInvoices} khi auth tắt. */

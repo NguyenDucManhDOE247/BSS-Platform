@@ -44,6 +44,9 @@ public class SecurityConfig {
                         // /error biến thành 403.
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers("/actuator/**").permitAll()
+                        // Doanh thu toàn hệ thống — chỉ admin. PHẢI khai TRƯỚC luật GET chung bên dưới
+                        // (luật đầu tiên khớp sẽ thắng).
+                        .requestMatchers(HttpMethod.GET, BILLING + "/customerBill/summary").hasRole("admin")
                         .requestMatchers(HttpMethod.GET, BILLING + "/**").hasAnyRole("customer", "admin")
                         .requestMatchers(HttpMethod.POST, BILLING + "/billingAccount").hasRole("admin")
                         .anyRequest().denyAll())
