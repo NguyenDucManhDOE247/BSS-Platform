@@ -3,8 +3,9 @@
 ## 1. Bức tranh chung
 
 - **Keycloak** (chỉ overlay `local`/kind) — realm `bss`, 2 role (`admin`, `customer`), 2 user thử
-  (`admin1`/`admin1pass`, `customer1`/`customer1pass`) — khai trong
-  `infrastructure/kubernetes/overlays/local/keycloak/realm-bss.json`.
+  (`admin1`/`admin1pass`, `customer1`/`customer1pass`) — realm dùng chung mọi môi trường ở
+  `infrastructure/kubernetes/components/keycloak-realm/bss-realm.json` (không có user), 2 user thử CHỈ
+  local ở `infrastructure/kubernetes/overlays/local/keycloak/bss-users-0.json` (GĐ9 việc 7).
 - **api-gateway** validate JWT (OAuth2 Resource Server). Luật phân quyền
   (`com.bss.gateway.config.SecurityConfig`):
 
@@ -40,8 +41,8 @@ mở được. Hiện tại:
 | `…JWT_ISSUER_URI=http://bss.localhost/auth/realms/bss` | `api-gateway-config` | Chỉ để **so khớp** `iss` |
 | `…JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs` | `api-gateway-config` | Tải khóa qua DNS **nội bộ**. Có giá trị này thì Spring không gọi discovery, nên Pod không phải resolve `bss.localhost` (trong Pod tên đó trỏ 127.0.0.1) |
 
-docker-compose (`deploy/`) chạy Keycloak ở `http://localhost:8180/auth`, **mount chung** file
-`realm-bss.json` với kind.
+docker-compose (`deploy/`) chạy Keycloak ở `http://localhost:8180/auth`, **mount chung** 2 file
+realm (`bss-realm.json` + `bss-users-0.json`) với kind.
 
 ## 3. Lấy token thật + gọi thử API
 

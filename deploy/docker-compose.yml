@@ -104,7 +104,8 @@ services:
     ports:
       - "8180:8080"
     volumes:
-      - ../infrastructure/kubernetes/overlays/local/keycloak/realm-bss.json:/opt/keycloak/data/import/realm-bss.json:ro
+      - ../infrastructure/kubernetes/components/keycloak-realm/bss-realm.json:/opt/keycloak/data/import/bss-realm.json:ro
+      - ../infrastructure/kubernetes/overlays/local/keycloak/bss-users-0.json:/opt/keycloak/data/import/bss-users-0.json:ro
     healthcheck:
       # Image Keycloak không có curl/wget — dùng /dev/tcp của bash gọi cổng quản trị 9000.
       test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q UP <&3"]

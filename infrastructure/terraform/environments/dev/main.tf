@@ -100,7 +100,7 @@ module "eks" {
   public_subnet_ids          = module.vpc.public_subnet_ids
   public_access_cidrs        = var.public_access_cidrs
   system_node_instance_types = ["t3.medium"]
-  system_node_desired_size   = 2
+  system_node_desired_size   = 3 # GĐ9 việc 7: +1 node cho Keycloak (~768Mi) — 2 node từng FailedScheduling ở GĐ8
   system_node_min_size       = 2
   system_node_max_size       = 3
 
@@ -172,6 +172,29 @@ module "observability" {
   xray_sampling_rate = 0.5
 
   tags = local.common_tags
+}
+
+# ── Keycloak admin (Giai đoạn 9 việc 7) ─────────────────────────────────
+# Mật khẩu admin master realm: sinh ngẫu nhiên → Secrets Manager → CSI → K8s Secret keycloak-admin
+# (overlays/dev/secrets/keycloak-credentials-spc.yaml). Không nằm trong git/tfvars (CLAUDE.md §7).
+# Nằm ở state của MÔI TRƯỜNG (không phải shared): Keycloak + DB của nó sống/chết cùng cluster.
+resource "random_password" "keycloak_admin" {
+  length  = 24
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "keycloak_admin" {
+  name                    = "${local.name_prefix}/keycloak/admin"
+  recovery_window_in_days = 0 # B-37: dev gets destroyed/re-applied daily
+  tags                    = local.common_tags
+}
+
+resource "aws_secretsmanager_secret_version" "keycloak_admin" {
+  secret_id = aws_secretsmanager_secret.keycloak_admin.id
+  secret_string = jsonencode({
+    username = "admin"
+    password = random_password.keycloak_admin.result
+  })
 }
 
 # ── IAM (per-service IRSA roles — GitHub OIDC lives in environments/shared) ─
@@ -256,6 +279,21 @@ module "iam" {
         }
       ]
     }
+    # Giai đoạn 9 việc 7 — Keycloak (components/keycloak-aws): CHỈ đọc được secret DB của chính nó +
+    # secret admin master realm (không đọc master RDS, không đọc secret của service nào khác).
+    keycloak = {
+      namespace           = "bss"
+      service_account     = "keycloak"
+      managed_policy_arns = []
+      inline_policy_statements = [
+        {
+          Effect   = "Allow"
+          Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+          Resource = [module.rds.service_secret_arns["keycloak"], aws_secretsmanager_secret.keycloak_admin.arn]
+        }
+      ]
+    }
+
     # B-21: read-only access to the master secret + all 4 per-service secrets, for the one-off
     # db-bootstrap Job — see infrastructure/kubernetes/overlays/dev/db-bootstrap/README.md.
     # Nothing else should ever assume this role; it's the only SA in the cluster that can read
@@ -279,6 +317,7 @@ module "iam" {
             module.rds.service_secret_arns["product-catalog"],
             module.rds.service_secret_arns["order-management"],
             module.rds.service_secret_arns["billing-service"],
+            module.rds.service_secret_arns["keycloak"], # GĐ9 việc 7
           ]
         }
       ]

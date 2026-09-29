@@ -164,6 +164,34 @@ hiện ở đâu cả.
   | B | **CloudFront trước ALB**, dùng domain mặc định `*.cloudfront.net` (HTTPS miễn phí của AWS) | Không cần mua domain; khớp lớp Edge "CloudFront → ALB" trong CLAUDE.md §2 |
   | C | Chứng chỉ tự ký import vào ACM | Trình duyệt cảnh báo — không dùng được cho người dùng thật |
 
+## Quyết định 8 — AWS trước khi có HTTPS: Keycloak chỉ trong cluster, `iss` = DNS nội bộ (bổ sung 2026-09-29, GĐ9 việc 7)
+
+**Bối cảnh:** quyết định 7 cho thấy đăng nhập bằng trình duyệt trên AWS cần HTTPS. Chủ repo chọn **để
+HTTPS về sau** (mua domain + ACM, hoặc CloudFront — việc riêng trong `learning/20`), nhưng vẫn muốn đóng
+B-18 trên AWS ngay. Câu hỏi: không có HTTPS thì 2 website trên AWS có chạy "bình thường" được không?
+
+**Trả lời: không, nếu không hạ bảo mật.** Muốn đăng nhập trên HTTP phải tắt PKCE (oidc-client-ts
+`disablePKCE`), cho Keycloak nhận HTTP từ IP công khai (`sslRequired: none`) và để mật khẩu người dùng
+đi dạng rõ qua internet — mỗi chỗ hạ đều phải gỡ lại khi có HTTPS. Không làm.
+
+**Chọn:**
+
+| Thành phần | Trên AWS lúc này | Khi có HTTPS + domain |
+|---|---|---|
+| Keycloak | Chạy trên EKS (`components/keycloak-aws`: `start`, DB riêng trên RDS, secret qua CSI), **không** có path `/auth` trên Ingress, NetworkPolicy chỉ cho gateway + backend gọi vào | Thêm path `/auth` vào Ingress |
+| `KC_HOSTNAME` / `iss` | `http://keycloak.bss.svc.cluster.local:8080/auth` — 1 giá trị duy nhất, không phụ thuộc Host của request | `https://<domain>/auth` |
+| Backend | Auth BẬT (`BSS_AUTH_ENABLED=true`), `issuer-uri` = DNS nội bộ | Đổi `issuer-uri` |
+| Smoke test (CD) | Lấy token của user riêng `smoke-bot` qua `kubectl port-forward` (API server, có TLS); mật khẩu admin đọc từ K8s Secret qua kubectl | Có thể gọi thẳng `/auth` qua ALB |
+| 2 website | Khách xem gói được; đăng nhập/mua/duyệt **chưa** dùng được | Đầy đủ như trên kind |
+
+Như vậy B-18 đóng ở **tầng API** trên AWS (không token → 401, role sai → 403), và việc bật HTTPS sau này
+chỉ là đổi cấu hình (3 chỗ ở bảng trên), không phải sửa code. Trạng thái 2 website trên AWS **không tệ
+hơn** trước việc 7: từ việc 4 đã cần đăng nhập để mua.
+
+**Đánh đổi:** token của `smoke-bot` (role customer, không có dữ liệu, hết hạn sau vài phút) vẫn đi qua HTTP
+tới ALB — chấp nhận được cho tới khi có HTTPS. Keycloak 1 replica (chưa cấu hình cluster Infinispan) và
+chạy `start` không `--optimized` (cần ghi rootfs) — ghi nợ trong `learning/20`.
+
 ## Hệ quả
 
 - ✅ Một người thật dùng được 2 website từ đầu đến cuối. Dữ liệu 2 bên đồng bộ vì cùng một danh tính

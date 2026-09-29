@@ -1,6 +1,6 @@
 import { expect, type Browser, type Page } from '@playwright/test';
 
-/** Tài khoản mẫu trong realm kind (overlays/local/keycloak/realm-bss.json) — chỉ tồn tại ở local. */
+/** Tài khoản mẫu trong realm kind (overlays/local/keycloak/bss-users-0.json) — chỉ tồn tại ở local. */
 export const ADMIN = { username: 'admin1', password: 'admin1pass' };
 export const CUSTOMER1 = { username: 'customer1', password: 'customer1pass' };
 

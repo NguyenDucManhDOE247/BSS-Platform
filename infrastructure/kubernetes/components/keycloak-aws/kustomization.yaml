@@ -1,0 +1,22 @@
+# Giai đoạn 9 việc 7 (ADR-008 quyết định 6 + 8) — Keycloak trên EKS cho dev/staging/prod.
+#
+# Khác overlays/local/keycloak (kind):
+#   • `start` (chế độ production) thay cho `start-dev`; DB là Postgres trên RDS (database + user riêng
+#     "keycloak"/"keycloak_svc" do modules/rds tạo, db-bootstrap Job tạo trong Postgres) thay cho H2
+#     trong emptyDir — user tự đăng ký KHÔNG mất khi Pod khởi động lại.
+#   • Secret DB + admin lấy từ Secrets Manager qua CSI (ADR-004) — SecretProviderClass
+#     `keycloak-credentials` ở overlays/<env>/secrets/ (tên secret có tiền tố môi trường).
+#   • KHÔNG đi qua ALB (không có path /auth trên Ingress AWS) và KHÔNG mang nhãn `tier: edge`: chưa có
+#     HTTPS trên AWS (ADR-008 quyết định 8) → không mở trang đăng nhập/admin console của Keycloak ra
+#     internet bằng HTTP. Chỉ gateway + backend (tải JWKS) gọi được vào; smoke test đi bằng
+#     `kubectl port-forward` (qua API server, có TLS).
+#
+# Overlay dùng component này phải: thêm SecretProviderClass `keycloak-credentials`, gắn IRSA role cho
+# ServiceAccount `keycloak`, và dùng kèm ../keycloak-realm (realm dùng chung, không có user).
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - serviceaccount.yaml
+  - deployment.yaml
+  - service.yaml
+  - networkpolicy.yaml

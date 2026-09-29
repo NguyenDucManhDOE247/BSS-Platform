@@ -87,7 +87,7 @@ Addon + namespace + database (lần nào dựng lại cũng phải làm — dữ
 ./scripts/platform-install.sh <env>                 # namespace bss, ALB Controller, StorageClass, Secrets CSI
 kubectl apply -k infrastructure/kubernetes/overlays/<env>/db-bootstrap
 kubectl -n bss wait --for=condition=complete job/db-bootstrap --timeout=180s
-kubectl -n bss logs job/db-bootstrap | tail -5      # "db-bootstrap: all 4 databases ready"
+kubectl -n bss logs job/db-bootstrap | tail -5      # "db-bootstrap: all 5 databases ready" (4 service + Keycloak)
 kubectl delete -k infrastructure/kubernetes/overlays/<env>/db-bootstrap
 ```
 
@@ -149,6 +149,8 @@ Hôm sau xem chi phí: Cost Explorer → lọc tag `Environment` = `staging`/`pr
 | `destroy` báo `Cannot delete protected DB instance` | Dựng với `ephemeral = false` | Đặt `ephemeral = true`, `terraform apply` (chỉ tắt bảo vệ), rồi destroy |
 | Actions: `kubectl` timeout ở Preflight | `public_access_cidrs` chặn IP runner (§4) | Chọn A/B/C ở §4 |
 | Pod `CreateContainerConfigError` (secret `*-db-credentials` không có) | Chưa chạy `db-bootstrap`, hoặc SPC/IRSA sai | `kubectl -n bss describe pod`; xem [ADR-004](../adr/ADR-004-db-credential-wiring-dev.md) |
+| Pod `keycloak` `CreateContainerConfigError` (secret `keycloak-db`/`keycloak-admin` không có) | Cùng nguyên nhân: CSI chưa sync — SPC `keycloak-credentials` hoặc IRSA `bss-<env>-keycloak` sai; hoặc chưa chạy `db-bootstrap` (database `keycloak`) | `kubectl -n bss describe pod -l app=keycloak`; [ADR-008 quyết định 8](../adr/ADR-008-danh-tinh-va-quyen-so-huu.md) |
+| Smoke: `không lấy được token (Keycloak chưa sẵn sàng?)` | Keycloak khởi động lần đầu chậm (tạo schema trên RDS, ~1–3 phút) hoặc crash | `kubectl -n bss logs deploy/keycloak`; smoke tự chờ `rollout status deployment/keycloak` |
 | `apply` prod: node group `CREATE_FAILED`, `VcpuLimitExceeded` | Quota vCPU EC2 (mặc định 8) < vCPU đang chạy + 8 cần cho 4 × t3.large (thường do dev/staging còn chạy). Cluster + RDS + NAT đã tạo nên đang **tốn tiền** | `make ENV=prod tf-destroy` ngay; destroy môi trường khác đang chạy (hoặc xin quota, §1b), rồi dựng lại. Đừng để cluster dở dang qua đêm |
 | Pod `Pending` "Insufficient cpu" dù node `Ready` | Tổng `requests` > allocatable (t3.large ≈ 1.93 vCPU/node); chưa có autoscaler nên không tự thêm node | Xem mục "Allocated resources" của `kubectl describe node`; thêm node (nâng `desired_size` trong quota cho phép) — không nới `requests` để "lách" |
 | `namespaces "bss" not found` | Chưa `platform-install.sh` | Chạy nó (bước 2) |

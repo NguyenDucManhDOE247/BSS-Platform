@@ -18,6 +18,11 @@ resources:
 # stable value (the account itself doesn't get destroyed/recreated by `terraform destroy` — only
 # the resources inside it do), unlike the RDS hostname or SQS queue URL used to be here (B-20/
 # ADR-004 moved those to flow from Secrets Manager instead of being hand-copied into this file).
+# Giai đoạn 9 việc 7 (ADR-008 quyết định 6 + 8): Keycloak trên EKS + realm dùng chung (không có user thử).
+components:
+  - ../../components/keycloak-realm
+  - ../../components/keycloak-aws
+
 images:
   - name: customer-service
     newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/customer-service
@@ -50,22 +55,42 @@ configMapGenerator:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=DEBUG
       - AWS_REGION=ap-southeast-1
+      # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
+      # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
+      - BSS_AUTH_ENABLED=true
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: product-catalog-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=DEBUG
       - AWS_REGION=ap-southeast-1
+      # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
+      # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
+      - BSS_AUTH_ENABLED=true
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: order-management-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=DEBUG
       - AWS_REGION=ap-southeast-1
       - EVENT_BUS_NAME=bss-dev-events
+      # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
+      # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
+      - BSS_AUTH_ENABLED=true
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: billing-service-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=DEBUG
       - AWS_REGION=ap-southeast-1
+      # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
+      # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
+      - BSS_AUTH_ENABLED=true
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
       # Giai đoạn 5: real queue URL — account id is stable (see note on `images:` above), queue
       # name is "${name_prefix}-billing-orders" = "bss-dev-billing-orders" (modules/eventbridge's
       # `consumers` map key, see infrastructure/terraform/modules/eventbridge/variables.tf).
@@ -76,6 +101,11 @@ configMapGenerator:
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=DEBUG
+      # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
+      # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
+      - BSS_AUTH_ENABLED=true
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
 
 # Dev runs 1 replica each to save cost.
 replicas:
@@ -124,6 +154,11 @@ patches:
       - op: add
         path: /metadata/annotations
         value: { eks.amazonaws.com/role-arn: arn:aws:iam::132249065347:role/bss-dev-billing-service }
+  - target: { kind: ServiceAccount, name: keycloak }
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::132249065347:role/bss-dev-keycloak }
 
   # Giai đoạn 5 / B-20: mount each service's own SecretProviderClass — without a Pod actually
   # mounting it, the Secrets Store CSI driver never syncs anything into a real K8s Secret, and

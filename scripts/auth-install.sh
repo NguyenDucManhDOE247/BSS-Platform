@@ -38,7 +38,7 @@ cat <<'EOF'
 Mật khẩu admin Keycloak (đăng nhập http://bss.localhost/auth/admin):
   kubectl -n bss get secret keycloak-admin -o jsonpath='{.data.password}' | base64 -d; echo
 
-2 user thử sẵn (realm "bss", khai trong overlays/local/keycloak/realm-bss.json — KHÔNG phải mật
+2 user thử sẵn (realm "bss", khai trong overlays/local/keycloak/bss-users-0.json — KHÔNG phải mật
 khẩu thật, chỉ để kiểm chứng cục bộ):
   admin1    / admin1pass    (role: admin)
   customer1 / customer1pass (role: customer)

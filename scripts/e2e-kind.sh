@@ -27,7 +27,7 @@ KCTX="kind-bss"
 BASE_URL="http://bss.localhost"
 GATEWAY_URL="$BASE_URL/api"
 REALM_URL="$BASE_URL/auth/realms/bss"
-# 2 user thử có sẵn trong realm kind (overlays/local/keycloak/realm-bss.json) — chỉ tồn tại ở local.
+# 2 user thử có sẵn trong realm kind (overlays/local/keycloak/bss-users-0.json) — chỉ tồn tại ở local.
 ADMIN_USER="admin1";    ADMIN_PASS="admin1pass"
 OTHER_USER="customer1"; OTHER_PASS="customer1pass"
 

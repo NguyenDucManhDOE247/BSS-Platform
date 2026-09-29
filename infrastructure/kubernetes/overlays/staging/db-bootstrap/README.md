@@ -35,7 +35,7 @@ kubectl -n bss logs job/db-bootstrap
 ```
 
 Expect 4 lines like `=== bootstrapping database 'customer' / role 'customer_svc' ===`, ending
-with `db-bootstrap: all 4 databases ready`.
+with `db-bootstrap: all 5 databases ready` (4 service + Keycloak từ Giai đoạn 9 việc 7).
 
 ## Clean up after a successful run
 

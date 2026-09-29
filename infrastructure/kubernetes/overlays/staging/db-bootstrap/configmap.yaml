@@ -37,5 +37,6 @@ data:
     bootstrap_one "$PRODUCT_DB"  "$PRODUCT_USER"  "$PRODUCT_PASSWORD"
     bootstrap_one "$ORDERS_DB"   "$ORDERS_USER"   "$ORDERS_PASSWORD"
     bootstrap_one "$BILLING_DB"  "$BILLING_USER"  "$BILLING_PASSWORD"
+    bootstrap_one "$KEYCLOAK_DB" "$KEYCLOAK_USER" "$KEYCLOAK_PASSWORD" # GĐ9 việc 7
 
-    echo "db-bootstrap: all 4 databases ready"
+    echo "db-bootstrap: all 5 databases ready"

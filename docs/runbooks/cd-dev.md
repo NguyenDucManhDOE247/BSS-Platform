@@ -25,7 +25,7 @@ push main ─► plan ─────────────► build (matrix) 
 | GitHub Environment `dev` có variable `AWS_ROLE_ARN` | `gh api repos/{owner}/{repo}/environments/dev/variables` |
 | Repository variable `ECR_REGISTRY` | `gh variable list` |
 | Cluster có namespace `bss` + addon (chạy **bằng admin**, không phải bằng CD) | `./scripts/platform-install.sh dev` |
-| Đã chạy `db-bootstrap` Job (4 DB + 4 user) | `overlays/dev/db-bootstrap/README.md` |
+| Đã chạy `db-bootstrap` Job (5 DB + 5 user: 4 service + Keycloak — GĐ9 việc 7) | `overlays/dev/db-bootstrap/README.md` |
 
 Lệnh cụ thể để tạo Environment/variable: [SETUP.md Part 6](../SETUP.md).
 

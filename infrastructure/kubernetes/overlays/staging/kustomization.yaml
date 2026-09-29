@@ -15,6 +15,11 @@ resources:
 # infrastructure/kubernetes/rendered/, gitignored) that stacks `images:` with the real tag of every
 # service on top of this overlay, matching by the FULL name set by `newName` below. The AWS account id
 # (132249065347) is this project's real, stable account (see overlays/dev).
+# Giai đoạn 9 việc 7 (ADR-008 quyết định 6 + 8): Keycloak trên EKS + realm dùng chung (không có user thử).
+components:
+  - ../../components/keycloak-realm
+  - ../../components/keycloak-aws
+
 images:
   - name: customer-service
     newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/customer-service
@@ -46,27 +51,52 @@ configMapGenerator:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=INFO
       - AWS_REGION=ap-southeast-1
+      # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
+      # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
+      - BSS_AUTH_ENABLED=true
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: product-catalog-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=INFO
       - AWS_REGION=ap-southeast-1
+      # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
+      # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
+      - BSS_AUTH_ENABLED=true
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: order-management-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=INFO
       - AWS_REGION=ap-southeast-1
       - EVENT_BUS_NAME=bss-staging-events
+      # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
+      # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
+      - BSS_AUTH_ENABLED=true
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: billing-service-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=INFO
       - AWS_REGION=ap-southeast-1
       - SQS_QUEUE_URL=https://sqs.ap-southeast-1.amazonaws.com/132249065347/bss-staging-billing-orders
+      # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
+      # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
+      - BSS_AUTH_ENABLED=true
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: api-gateway-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=INFO
+      # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
+      # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
+      - BSS_AUTH_ENABLED=true
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
 
 replicas:
   - { name: customer-service, count: 2 }
@@ -109,6 +139,11 @@ patches:
       - op: add
         path: /metadata/annotations
         value: { eks.amazonaws.com/role-arn: arn:aws:iam::132249065347:role/bss-staging-billing-service }
+  - target: { kind: ServiceAccount, name: keycloak }
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value: { eks.amazonaws.com/role-arn: arn:aws:iam::132249065347:role/bss-staging-keycloak }
 
   # Mount each service's own SecretProviderClass — without a Pod mounting it the Secrets Store CSI
   # driver never syncs the Kubernetes Secret the base Deployment's secretKeyRef expects.
