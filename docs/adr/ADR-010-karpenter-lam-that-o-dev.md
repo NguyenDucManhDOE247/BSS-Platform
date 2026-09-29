@@ -74,8 +74,11 @@ HPA đẩy api-gateway lên 12, product-catalog lên 8 → Pod `Pending` → Kar
 trong ~1 phút** (3 → 6 node), chọn máy **nhỏ nhất đủ chỗ** (`t3.small`, `t8i.small` Spot — 2 vCPU/2 GiB)
 rồi dừng ở trần NodePool 8 vCPU ("could not schedule pod") — 10 Pod vẫn `Pending`. Trần sức chứa **dời
 lên** nhưng vẫn bị quota chặn. Tỉ lệ lỗi CAO HƠN chưa được giải thích — giả thuyết chưa kiểm: Pod mới nhận
-tải khi JVM còn lạnh; node 2 GiB quá chật cho Pod 512Mi. Việc tiếp: giới hạn `instance-memory` ≥ 4 GiB
-và đo lại.
+tải khi JVM còn lạnh; node 2 GiB quá chật cho Pod 512Mi. **Manh mối có bằng chứng (bổ sung sau):** kênh
+Discord nhận alert `BssPodCrashLooping` cho 2 Pod `api-gateway` ("restarting repeatedly") đúng trong lúc
+đo — Pod gateway khởi động lại dưới tải là nguồn lỗi rất có thể. Cluster đã destroy nên chưa biết lý do
+restart (OOMKilled hay liveness fail khi CPU bão hòa). Việc tiếp: đo lại, xem `kubectl describe pod`
+(`Last State`), và thử `instance-memory` ≥ 4 GiB.
 
 **Gom node khi hết tải:** ~6 phút sau khi k6 dừng (chờ HPA thu Pod), Karpenter xóa 2/4 NodeClaim. Log có
 cảnh báo `TopologySpreadConstraint` dạng preferred có thể cản việc gom.

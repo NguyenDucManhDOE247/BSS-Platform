@@ -64,8 +64,8 @@ Mục đích kép: **portfolio học tập platform-engineering** + **tham chi�
 | Vai trò | Lựa chọn | Lý do |
 |---|---|---|
 | Cloud | **AWS** | Job market lớn ở VN, ecosystem trưởng thành, free-tier tốt năm 1 |
-| Orchestration | **EKS Managed Node Groups + Karpenter** | Production-realistic, Karpenter tự provision spot rẻ hơn ~70% |
-| Backend | **Java 21 + Spring Boot 3.2** | Telco VN dùng Java; Spring Cloud Gateway / Boot 3 ecosystem chuẩn |
+| Orchestration | **EKS Managed Node Groups + Karpenter (dev)** | Production-realistic; Karpenter tự thêm node Spot khi thiếu chỗ (đo thật: Spot −53%, node Ready ~36s — ADR-010). Staging/prod giữ node group cố định (ADR-006) |
+| Backend | **Java 21 + Spring Boot 3.5** | Telco VN dùng Java; Spring Cloud Gateway / Boot 3 ecosystem chuẩn (3.5.16 + ghi đè patch Tomcat/Jackson/pgjdbc/Netty → 0 CVE HIGH/CRITICAL) |
 | Frontend | **Vite + React + TypeScript** | Vite build nhanh, React phổ biến, dễ tuyển; SSR có thể thêm sau |
 | DB | **RDS PostgreSQL** | Managed, có HA, IAM auth, PITR; 1 instance dùng chung schema-per-service |
 | Cache | **ElastiCache Redis** | (Thêm khi cần) — sub-ms latency |
@@ -78,6 +78,7 @@ Mục đích kép: **portfolio học tập platform-engineering** + **tham chi�
 | Monitoring | **kube-prometheus-stack (in-cluster)** | Source of truth cho metric; CloudWatch chỉ cho log + AWS-native metrics |
 | Tracing | **OTel + X-Ray** | Vendor-neutral instrument; export sang X-Ray |
 | Secrets | **AWS Secrets Manager + Secrets Store CSI** | Pod mount secret, không cần env var với plain text |
+| Identity | **Keycloak (OIDC) + PKCE** | Cùng realm ở kind/compose/AWS; Cognito không chạy được local (ADR-008) |
 | Service mesh | **Không dùng (đến khi >10 services)** | Istio quá nặng cho 7 service; bật khi cần mTLS/traffic shaping |
 
 > **Nguyên tắc:** không over-engineer. Spinnaker, ArgoCD, Argo Rollouts, multi-region, MSK — đều **để dành** đến khi có nhu cầu rõ.
@@ -88,11 +89,11 @@ Mục đích kép: **portfolio học tập platform-engineering** + **tham chi�
 
 | Service | Trách nhiệm | TMF API | Trạng thái |
 |---|---|---|---|
-| `customer-service` | Vòng đời khách hàng, identity | **TMF629** | ✅ CRUD + PATCH (merge-patch+json), Flyway, Testcontainers IT |
-| `product-catalog` | Plans, offers, pricing | **TMF620** | ✅ Offering + Category + Specification, seed data, IT |
-| `order-management` | Order capture + orchestration | **TMF622** | ✅ Order + Item + **transactional outbox** → EventBridge |
-| `billing-service` | Charging, invoicing, payment | **TMF678** | ✅ Account + Invoice (VAT 10%) + **idempotent SQS consumer** |
-| `api-gateway` | Routing, auth, rate-limit | — | ✅ Routes configured (Spring Cloud Gateway) |
+| `customer-service` | Vòng đời khách hàng, identity | **TMF629** | ✅ CRUD + PATCH, `/customer/me` (hồ sơ gắn `sub` Keycloak), admin duyệt/khóa, Flyway, IT |
+| `product-catalog` | Plans, offers, pricing | **TMF620** | ✅ Offering + Category + Specification; admin sửa giá/ngừng bán, khách chỉ thấy gói `Active` |
+| `order-management` | Order capture + orchestration | **TMF622** | ✅ **transactional outbox** → EventBridge; khách lấy từ token, phải `Active`, giá từ catalog |
+| `billing-service` | Charging, invoicing, payment | **TMF678** | ✅ Invoice (VAT 10%) + **idempotent SQS consumer**; khách chỉ thấy hóa đơn của mình; doanh thu cho admin |
+| `api-gateway` | Routing, auth, rate-limit | — | ✅ Spring Cloud Gateway + OAuth2 Resource Server (chặn thô; mỗi service tự kiểm JWT) |
 
 ### Tương tác giữa service
 
@@ -131,7 +132,7 @@ admin-console        SHA            rc-vX           vX
 | AZs | 2 | 3 | 3 |
 | NAT Gateway | ❌ (VPC Endpoints thay thế) | 1 | HA |
 | EKS public endpoint | 0.0.0.0/0 | restricted IPs | restricted IPs |
-| Node group | t3.medium × 2 | t3.large × 2-5 | t3.large × 3-6 |
+| Node group | t3.medium × 2 + Karpenter Spot (≤ 8 vCPU) | t3.large × 3 | t3.large × 4 (vừa quota 8 vCPU) |
 | RDS | db.t3.micro single-AZ | db.t3.small single-AZ | db.t3.medium **multi-AZ** |
 | Deletion protection | OFF | ON | ON |
 | Log retention | 3d | 14d | 30d |
@@ -503,7 +504,7 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 - **IRSA** — https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html
 - **GitHub OIDC + AWS** — https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services
 - **Karpenter docs** — https://karpenter.sh/
-- **Spring Boot 3.2** — https://docs.spring.io/spring-boot/docs/3.2.x/reference/html/
+- **Spring Boot 3.5** — https://docs.spring.io/spring-boot/3.5/
 - **Kustomize** — https://kubectl.docs.kubernetes.io/guides/introduction/kustomize/
 - **SRE Workbook — SLO chapter** — https://sre.google/workbook/implementing-slos/
 
@@ -520,10 +521,9 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 - **Ngày tiếp nhận:** repo được người maintain hiện tại (không phải người dựng scaffold ban đầu)
   tiếp nhận, kiểm chứng lại toàn bộ từ đầu, và tách hẳn khỏi repo gốc — xem
   `learning/01-hien-trang-va-danh-sach-loi.md` cho danh sách đầy đủ lỗi phát hiện lúc tiếp nhận.
-- **Phase hiện tại: 8 hoàn thành → `v1.0.0`. Video demo + bài blog là việc của maintainer (khung ở `docs/demo-script.md`, `docs/blog-post-draft.md`).** Phase 0 → 8 đã
-  **hoàn thành và kiểm chứng thật** trên hạ tầng thật (không chỉ code) — xem
-  [docs/ROADMAP.md](docs/ROADMAP.md) cho bảng trạng thái public, và bảng dưới đây cho tóm tắt bằng
-  chứng của từng phase.
+- **Phase hiện tại: 9 hoàn thành → `v2.0.0` (sản phẩm có danh tính thật, chạy trên cả dev/staging/prod),
+  và đợt "dọn nợ" từ Phase 8 về 0 đã xong.** Mọi phase đã **hoàn thành và kiểm chứng thật** trên hạ tầng thật
+  (không chỉ code) — xem [docs/ROADMAP.md](docs/ROADMAP.md) cho bảng public, bảng dưới cho bằng chứng.
 - **AWS account:** đã tạo, MFA bật, Budget alert theo dõi (ngân sách dev mục tiêu **< $50/tháng**,
   không chạy 24/7 — mọi environment dựng theo buổi rồi `terraform destroy`, xem
   [ADR-002](docs/adr/ADR-002-mang-dev.md), [ADR-006](docs/adr/ADR-006-staging-prod-ephemeral.md)).
@@ -543,23 +543,29 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 | 5 — Deploy dev EKS | ✅ | 7 Pod `Running` trên EKS thật; hóa đơn thật qua ALB → EventBridge → SQS → billing (IRSA thật, B-19) |
 | 6 — CD dev/staging/prod | ✅ | 3 lần merge liên tiếp → dev tự deploy đúng; rollback tự động có log thật (2 kịch bản) |
 | 7 — Observability + security | ✅ | Dashboard/alert/SLO thật trên `kind`; WAF chặn SQLi + rate-limit thật trên EKS dev (dựng + phá + destroy trong 1 buổi) |
-| 8 — Reliability, docs, demo | ✅ | k6 threshold, chaos (pod delete/drain node), `tools/ops/`, ADR-007 (Karpenter — không áp dụng), tài liệu này — xem `learning/20` mục Giai đoạn 8 cho checklist đang chạy |
+| 8 — Reliability, docs, demo | ✅ | k6 threshold, chaos (pod delete/drain node), `tools/ops/`, blog/demo có số đo thật; Karpenter làm thật ở dọn nợ (ADR-010) |
+| 9 — Sản phẩm hoàn chỉnh (danh tính) | ✅ | Keycloak + PKCE, khách tự đăng ký → admin duyệt → mua, quyền sở hữu 4 service (ADR-008); Playwright 3/3 + `e2e-kind.sh` trên kind; Keycloak trên EKS, `rc-v2.0.0` → staging → `v2.0.0` → prod (duyệt tay), smoke có token 4/4 cả 3 môi trường |
+| Dọn nợ 8 → 0 | ✅ | Karpenter Spot thật (node Ready ~36s, k6 ×2.4 request); NetworkPolicy EKS 11/11; 8 việc GĐ7 trên 1 cluster (alert → Discord 146s, log JSON + `trace_id` → X-Ray); Spring Boot 3.5 → 0 CVE; schema expand → migrate → contract trên RDS; `orphan_finder.py` bắt 3 loại tài nguyên sót |
 
 ### Quyết định kiến trúc đã chốt kể từ scaffold ban đầu (ADR đầy đủ ở `docs/adr/`)
 
-- **Không dùng Karpenter** ở giai đoạn hiện tại — [ADR-007](docs/adr/ADR-007-karpenter.md). Khác
-  với dự định ban đầu ở mục 2 (bảng "Vai trò | Lựa chọn") — bảng đó ghi lại **lý do lựa chọn công
-  nghệ lúc scaffold**, không phải trạng thái đang chạy; ADR-007 là quyết định **cập nhật** sau khi
-  đối chiếu với ADR-006 (staging/prod ephemeral) làm giảm giá trị của Karpenter.
+- **Karpenter chỉ ở dev** — [ADR-010](docs/adr/ADR-010-karpenter-lam-that-o-dev.md) thay
+  [ADR-007](docs/adr/ADR-007-karpenter.md) (lúc đầu chọn không dùng). Staging/prod giữ node group cố định.
+- **Danh tính: Keycloak + OIDC/PKCE, quyền sở hữu theo `sub`** — [ADR-008](docs/adr/ADR-008-danh-tinh-va-quyen-so-huu.md).
+  Trên AWS **chưa có HTTPS** (quyết định 8): Keycloak không mở ra ALB, auth bật ở tầng API, đăng nhập web
+  chỉ chạy trên kind cho tới khi có domain.
+- **Không thêm Jenkins/Helm chart/Ansible** song song với bộ hiện tại — [ADR-009](docs/adr/ADR-009-khong-them-jenkins-helm-ansible.md).
 - **Mạng dev dùng NAT Gateway**, không phải VPC Endpoint như dự định ban đầu — [ADR-002](docs/adr/ADR-002-mang-dev.md) (VPC Endpoint vừa không đủ chạy được vừa đắt hơn ở quy mô 2 AZ).
 - **3 cluster riêng (dev/staging/prod), nhưng staging/prod ephemeral** (dựng theo buổi) — [ADR-006](docs/adr/ADR-006-staging-prod-ephemeral.md).
 - **Nguồn sự thật phiên bản CD** = commit git (desired) + release manifest ở nhánh `deploy-state`
   (last-known-good), không phải bot tự commit lại overlay — [ADR-005](docs/adr/ADR-005-nguon-su-that-phien-ban-cd.md).
 
-### Còn lại (không chặn Phase 8, ghi để không quên)
+### Còn lại (có chủ đích để sau — chi tiết ở `learning/20` mục "Để sau")
 
-- `bss-common-java` chưa được mọi service import (một phần dùng, xem `learning/01` B-15).
-- NetworkPolicy đã kiểm chứng thật trên `kind` (Calico) nhưng **chưa bật** `network_policy_configuration`
-  của VPC CNI addon trên EKS thật — xem `docs/runbooks/network-policy.md`.
-- ~48 CVE HIGH/CRITICAL còn tồn đọng do chưa nâng Spring Boot minor version (nỗ lực nâng cấp lớn
-  trước đó phá Flyway/Postgres compatibility — để dành đợt nâng cấp có chủ đích riêng).
+- **HTTPS + đăng nhập web trên AWS** (domain + ACM hoặc CloudFront) — B-23, và phần web của B-18.
+- **Keycloak production-grade:** image `kc.sh build` + `start --optimized`, > 1 replica ở prod.
+- **Xóa công tắc `bss.auth.enabled`** khi `e2e-local.sh` (mvn, auth tắt) cũng dùng token.
+- **NetworkPolicy ở staging/prod:** đã kiểm trên dev EKS (11/11), chưa bật ở 2 môi trường kia.
+- **Tỉ lệ lỗi 7,9% dưới tải 700 req/s có Karpenter** — manh mối: `BssPodCrashLooping` của api-gateway
+  bắn trong lúc đo (ADR-010).
+- B-15: UUID v7, `Idempotency-Key`, `bss-common-java` chưa được mọi service dùng.

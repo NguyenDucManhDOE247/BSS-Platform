@@ -155,10 +155,28 @@ Phase-by-phase tracking lives in [docs/ROADMAP.md](docs/ROADMAP.md). Today:
 | 6 — CD: dev auto-deploy → staging/prod tag-based promotion + rollback | ✅ Done |
 | 7 — Observability + security on AWS (dashboards, OAuth2, WAF, Trivy gate) | ✅ Done |
 | 8 — Reliability, load test, ops tooling, docs, `v1.0.0` | ✅ Done |
+| 9 — Real product: Keycloak identity (PKCE), self-registration → admin approval, per-customer data ownership, `v2.0.0` on prod | ✅ Done |
+| Debt pass 8 → 0 — Karpenter (Spot) on dev, NetworkPolicy enforced on EKS, Spring Boot 3.5 (0 HIGH/CRITICAL CVE), orphan finder | ✅ Done |
 
 Every ✅ above was verified against **real infrastructure**, not just written and assumed working —
 see [`docs/adr/`](docs/adr/) for the decisions and [`docs/runbooks/`](docs/runbooks/) for the
 verification evidence. See [CHANGELOG.md](CHANGELOG.md) for the release history.
+
+### The two websites (Phase 9)
+
+A customer registers on **web-portal**, waits for approval, buys a plan, and sees only their own
+invoices; staff approve customers and manage plans, orders and invoices on **admin-console**. Screenshots
+are from the Playwright browser test (`scripts/e2e-browser.sh`) on `kind` — test data only.
+
+| web-portal (customer) | admin-console (staff) |
+|---|---|
+| ![Waiting for approval — cannot buy yet](docs/images/web-portal-cho-duyet.png) | ![Approving a self-registered customer](docs/images/admin-console-duyet-khach.png) |
+| ![My invoices — only this customer's, VAT 10%](docs/images/web-portal-hoa-don-cua-toi.png) | ![Dashboard — real totals and revenue](docs/images/admin-console-dashboard.png) |
+| | ![One customer's invoices, filtered by staff](docs/images/admin-console-hoa-don-cua-khach.png) |
+
+> Browser login works on `kind` today. On AWS the API is secured (401/403 verified by the CD smoke
+> test) but the websites can't sign users in until there is HTTPS — see
+> [ADR-008](docs/adr/ADR-008-danh-tinh-va-quyen-so-huu.md) decision 8.
 
 ## Cost
 
