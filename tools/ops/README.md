@@ -35,6 +35,24 @@ repo đã gắn tag này — **AWS Cost Explorer có độ trễ lên tới ~24h
 allocation, đây là giới hạn của AWS, không phải bug của script hay của Terraform. Chạy lại sau 1
 ngày để thấy nhóm theo tag hoạt động đúng.
 
+## `orphan_finder.py` — sau destroy, còn gì BSS vẫn tính tiền? (dọn nợ GĐ4)
+
+```bash
+python tools/ops/orphan_finder.py            # bảng; exit 0 = sạch, 1 = còn sót, 2 = lỗi AWS
+python tools/ops/orphan_finder.py --json     # cho script khác đọc
+```
+
+Kiểm EKS, RDS (+ snapshot thủ công), EC2 (kể cả node Karpenter), ALB/Target Group `k8s-bss-*` (do
+Ingress tạo — không nằm trong state Terraform), NAT, EIP không gắn, EBS/ENI rời, VPC còn sót — theo tag
+`Project=bss-platform`, tag cluster `bss-*`, hoặc tên `bss-`. Chỉ đọc. Tài nguyên bền của
+`environments/shared` (ECR, OIDC, role deployer, bucket state) là cố ý, không bị báo. `scripts/teardown.sh`
+tự chạy nó ở cuối.
+
+**Lần chạy thật đầu tiên (2026-09-29)** — tài khoản tưởng đã sạch (aws CLI không thấy EKS/ALB/NAT/RDS/EC2)
+nhưng script bắt được **3 Target Group `k8s-bss-*` mồ côi** của `bss-dev-eks` trong một VPC đã xóa: ALB
+Controller xóa ALB rồi mới xóa Target Group, còn `teardown.sh` destroy (giết controller) ngay khi Ingress
+mất. Đã xóa + sửa `teardown.sh` chờ/dọn Target Group theo tag cluster.
+
 ## `dlq_tool.py` — kiểm tra & khôi phục Dead Letter Queue
 
 ```bash
