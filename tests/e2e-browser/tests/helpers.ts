@@ -39,7 +39,13 @@ export async function approveCustomerInAdminConsole(browser: Browser, email: str
     const row = page.getByTestId(`customer-${email}`);
     await expect(row.getByTestId('status')).toHaveText('Initialized');
     if (shotPath) await page.screenshot({ path: `${shotPath}-truoc.png`, fullPage: true });
-    await row.getByRole('button', { name: 'Duyệt', exact: true }).click();
+    // Chờ PATCH duyệt trả 2xx RỒI mới đổi bộ lọc. Không chờ → lọc mới có thể tới server TRƯỚC khi PATCH
+    // ghi xong (ingress log lần đỏ 2026-09-29, ngay sau rollout JVM còn lạnh: GET và PATCH cùng giây) →
+    // bảng hiện trạng thái cũ `Initialized` và không tự tải lại (đỏ 1/3 lần chạy).
+    await Promise.all([
+      page.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().includes('/customer/') && r.ok()),
+      row.getByRole('button', { name: 'Duyệt', exact: true }).click(),
+    ]);
     // Sau khi duyệt, khách rời bộ lọc "Initialized" → bỏ lọc để thấy trạng thái mới.
     await page.getByLabel('Trạng thái').selectOption('');
     await expect(row.getByTestId('status')).toHaveText('Active');
