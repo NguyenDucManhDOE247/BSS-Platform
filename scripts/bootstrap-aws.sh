@@ -2,6 +2,7 @@
 # Bootstrap one-time AWS resources required BEFORE Terraform can run:
 #   1. S3 bucket for Terraform state (with versioning + encryption)
 #   2. (Optional) budget alert at 50/80/100% + forecasted
+#   3. Service-linked role AWSServiceRoleForEC2Spot (Karpenter Spot — ADR-010)
 #
 # Run this once per AWS account, NOT per environment.
 #
@@ -94,6 +95,19 @@ EOF
     --budget "$BUDGET_JSON" \
     --notifications-with-subscribers "$NOTIFICATIONS_JSON"
   echo "✓ Budget alert at 50%/80%/100% (actual) + 100% (forecasted) of \$$BUDGET_USD"
+fi
+
+# ── 3. Service-linked role cho EC2 Spot (ADR-010 — Karpenter) ─────────
+# Lỗi thật lần đầu chạy Karpenter (2026-09-29): tài khoản CHƯA từng dùng Spot nên chưa có
+# AWSServiceRoleForEC2Spot; CreateFleet Spot trả AuthFailure.ServiceLinkedRoleCreationNotPermitted
+# (controller Karpenter — đúng policy chính thức — không được tạo role cấp tài khoản) → Karpenter rơi
+# xuống On-Demand (đắt gấp đôi) mà vẫn "chạy". Role này mỗi tài khoản 1 cái, miễn phí → tạo 1 lần ở đây.
+echo ""
+if aws iam get-role --role-name AWSServiceRoleForEC2Spot >/dev/null 2>&1; then
+  echo "✓ AWSServiceRoleForEC2Spot already exists"
+else
+  aws iam create-service-linked-role --aws-service-name spot.amazonaws.com >/dev/null
+  echo "✓ Created AWSServiceRoleForEC2Spot (EC2 Spot — Karpenter)"
 fi
 
 echo ""

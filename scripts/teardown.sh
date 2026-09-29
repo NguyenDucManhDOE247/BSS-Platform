@@ -57,16 +57,43 @@ if aws eks describe-cluster --region "$REGION" --name "$CLUSTER" >/dev/null 2>&1
     echo "  ⚠ Could not delete the Ingress (endpoint unreachable / no permission / controller down)."
     echo "    Check after destroy for a leftover ALB:  aws elbv2 describe-load-balancers --region $REGION"
   fi
+  # Dọn nợ GĐ7 (lỗi thật 2026-09-29, orphan_finder bắt được): PVC của Prometheus/Grafana/Alertmanager là
+  # EBS volume do EBS CSI tạo — KHÔNG nằm trong state. Destroy cluster trước khi xóa PVC → 3 volume mồ côi
+  # (2+5+10 GiB). Xóa PVC khi CSI driver còn chạy → CSI tự xóa volume (reclaimPolicy Delete).
+  echo "→ Deleting all PVCs (so the EBS CSI driver deletes their EBS volumes)..."
+  if kubectl delete pvc --all --all-namespaces --wait=true --timeout=5m >/dev/null 2>&1; then
+    echo "  ✓ PVCs gone"
+  else
+    echo "  ⚠ Some PVCs/volumes may remain — orphan_finder at the end will list them"
+  fi
+
   # ADR-010: node do Karpenter tạo cũng KHÔNG nằm trong state Terraform (cùng lý do với ALB). Xóa
   # NodePool khi controller còn chạy → Karpenter tự drain + terminate node của nó; chờ NodeClaim hết.
   # Bỏ qua lặng lẽ ở môi trường không cài Karpenter (không có CRD NodePool).
   if kubectl get crd nodepools.karpenter.sh >/dev/null 2>&1; then
+    # Lỗi thật 2026-09-29: bước này hết 5 phút mà node Karpenter vẫn còn → destroy xóa cluster, 2 EC2 mồ côi
+    # giữ security group của cluster → subnet + VPC treo tới khi xóa tay. Nghi vấn chính (log không đủ để
+    # khẳng định): drain bị chặn bởi PDB minAvailable 1 của service 1 replica — đúng bài học drain GĐ8.
+    # Đang phá cả môi trường nên bỏ PDB trước; NodePool còn có terminationGracePeriod (drain không treo mãi).
+    kubectl -n bss delete pdb --all >/dev/null 2>&1 || true
     echo "→ Deleting Karpenter NodePools (so Karpenter terminates the EC2 nodes it launched)..."
-    if kubectl delete nodepool --all --wait=true --timeout=5m        && kubectl wait --for=delete nodeclaim --all --timeout=5m 2>/dev/null; then
+    if kubectl delete nodepool --all --wait=true --timeout=5m \
+       && kubectl wait --for=delete nodeclaim --all --timeout=5m 2>/dev/null; then
       echo "  ✓ Karpenter nodes gone"
     else
-      echo "  ⚠ Karpenter nodes may remain — after destroy check:"
-      echo "    aws ec2 describe-instances --region $REGION --filters Name=tag-key,Values=karpenter.sh/nodepool Name=instance-state-name,Values=running,pending"
+      # Dự phòng: terminate THẲNG theo tag (chỉ EC2 của cluster này + do Karpenter tạo), TRƯỚC destroy —
+      # không thì chúng giữ security group của cluster và VPC không xóa được.
+      ids="$(aws ec2 describe-instances --region "$REGION" \
+        --filters "Name=tag:kubernetes.io/cluster/$CLUSTER,Values=owned" Name=tag-key,Values=karpenter.sh/nodepool \
+                  Name=instance-state-name,Values=pending,running,stopping,stopped \
+        --query 'Reservations[].Instances[].InstanceId' --output text)"
+      if [ -n "$ids" ]; then
+        echo "  ⚠ Karpenter nodes still there after 5m — terminating by tag: $ids"
+        # shellcheck disable=SC2086 # tách danh sách id thành nhiều tham số
+        aws ec2 terminate-instances --region "$REGION" --instance-ids $ids >/dev/null \
+          && aws ec2 wait instance-terminated --region "$REGION" --instance-ids $ids \
+          && echo "  ✓ terminated"
+      fi
     fi
   fi
 else

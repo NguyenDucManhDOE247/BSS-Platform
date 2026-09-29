@@ -11,8 +11,8 @@
 #   - Karpenter controller + SQS interruption queue — karpenter.tf, bật bằng `enable_karpenter`
 #     (dọn nợ GĐ8, ADR-010; hiện chỉ dev)
 #
-# Deliberately NOT here yet: Fluent Bit, OTel Collector. Add them here the same way when their
-# phase comes, instead of a new module each time.
+#   - Fluent Bit (CloudWatch Logs) + OTel Collector (X-Ray) — observability.tf (dọn nợ GĐ7: GĐ7 chỉ
+#     từng chạy 2 addon này trên kind nên thiếu role mà không ai biết cho tới lần chạy EKS đầu tiên)
 
 data "aws_partition" "current" {}
 

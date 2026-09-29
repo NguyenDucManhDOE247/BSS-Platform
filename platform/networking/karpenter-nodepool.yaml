@@ -59,6 +59,9 @@ spec:
         # Máy nhỏ (2–4 vCPU): workload của dev nhỏ, và quota tài khoản chỉ 8 vCPU (xem limits).
         - { key: karpenter.k8s.aws/instance-cpu, operator: In, values: ["2", "4"] }
       expireAfter: 720h # thay node sau 30 ngày (AMI/bản vá mới) — dev hiếm khi sống lâu vậy
+      # Drain một node không được treo vô hạn (vd. PDB minAvailable 1 của service 1 replica chặn eviction —
+      # bài học GĐ8, và nghi vấn chính của lần teardown kẹt 2026-09-29): quá 10 phút thì Karpenter xóa node.
+      terminationGracePeriod: 10m
   # Trần TỔNG node Karpenter được tạo. Quota tài khoản: Spot 8 vCPU + On-Demand 8 vCPU (managed node
   # group dev đã dùng 4). Bản nháp scaffold để 100 vCPU → Karpenter sẽ liên tục thử và bị AWS từ chối
   # (VcpuLimitExceeded) thay vì dừng đúng chỗ.

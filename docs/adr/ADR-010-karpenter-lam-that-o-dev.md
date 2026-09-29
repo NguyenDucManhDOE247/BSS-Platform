@@ -47,7 +47,42 @@ Chi tiết triển khai:
 - ⚠️ Thêm 1 thành phần phải giữ đồng bộ version: chart ↔ IAM policy (cùng kiểu với ALB Controller).
 - ⚠️ Quên xóa NodePool trước destroy = EC2 mồ côi tiếp tục tính tiền — đã đưa vào `teardown.sh`.
 
-## Kết quả đo thật
+## Kết quả đo thật (dev EKS, 2026-09-29)
 
-(điền sau buổi chạy trên dev EKS — thời gian từ Pod `Pending` tới node `Ready`, loại máy + giá Spot
-Karpenter chọn, thời gian gom node khi hết tải, và load test GĐ8 chạy lại.)
+**Tự thêm node khi thiếu chỗ.** Managed node group 2 × t3.medium đủ cho 8 Pod ứng dụng (Boot 3.5 dùng ít RAM
+hơn — node 63–76%). Cài kube-prometheus-stack làm Pod thiếu chỗ → Karpenter tạo node: NodeClaim tạo →
+launched +5s → registered +26s → **Ready +39s**.
+
+**Lỗi thật #1 — Spot không dùng được, âm thầm rơi xuống On-Demand.** Node đầu là `t3a.medium` On-Demand.
+Log: `AuthFailure.ServiceLinkedRoleCreationNotPermitted` — tài khoản chưa từng dùng Spot nên chưa có
+`AWSServiceRoleForEC2Spot`, và controller (đúng policy chính thức) không được tạo role cấp tài khoản.
+Karpenter vẫn "chạy" nhưng đắt gấp đôi. Sửa: `scripts/bootstrap-aws.sh` bước 3 tạo role (1 lần/tài
+khoản). Sau khi tạo phải chờ **cache "offering không khả dụng" ~3 phút** của Karpenter hết hạn; lần tạo
+lại kế tiếp ra **`t3.medium` Spot, Ready +36s**. Giá lúc đo: Spot **$0.0246/h** vs On-Demand **$0.0528/h**
+(−53%).
+
+**Tải 200 → 700 req/s** (dựng lại đúng lần 2 của GĐ8, WAF tạm gỡ để rate-limit không chặn máy đo):
+
+| | GĐ8 (2 node cố định) | Có Karpenter (trần 8 vCPU Spot) |
+|---|---|---|
+| Request phục vụ | 58.926 | **139.781** (×2.4) |
+| p95 | 8,55 s | **3,66 s** |
+| Lỗi | 5,47% | **7,9%** (tệ hơn) |
+| dropped_iterations | 57.948 | 42.469 |
+
+HPA đẩy api-gateway lên 12, product-catalog lên 8 → Pod `Pending` → Karpenter thêm tới **4 NodeClaim
+trong ~1 phút** (3 → 6 node), chọn máy **nhỏ nhất đủ chỗ** (`t3.small`, `t8i.small` Spot — 2 vCPU/2 GiB)
+rồi dừng ở trần NodePool 8 vCPU ("could not schedule pod") — 10 Pod vẫn `Pending`. Trần sức chứa **dời
+lên** nhưng vẫn bị quota chặn. Tỉ lệ lỗi CAO HƠN chưa được giải thích — giả thuyết chưa kiểm: Pod mới nhận
+tải khi JVM còn lạnh; node 2 GiB quá chật cho Pod 512Mi. Việc tiếp: giới hạn `instance-memory` ≥ 4 GiB
+và đo lại.
+
+**Gom node khi hết tải:** ~6 phút sau khi k6 dừng (chờ HPA thu Pod), Karpenter xóa 2/4 NodeClaim. Log có
+cảnh báo `TopologySpreadConstraint` dạng preferred có thể cản việc gom.
+
+**Lỗi thật #2 — teardown.** Bước xóa NodePool hết 5 phút mà 2 node vẫn còn → destroy xóa cluster, 2 EC2
+mồ côi giữ security group của cluster → subnet + VPC treo tới khi terminate tay + xóa SG. Nghi vấn chính
+(log không đủ để khẳng định): drain bị PDB `minAvailable: 1` của service 1 replica chặn (bài học GĐ8).
+Sửa: NodePool `terminationGracePeriod: 10m`; `teardown.sh` xóa PDB trước, và nếu vẫn còn thì terminate
+theo tag (cluster + nodepool) TRƯỚC destroy. Cũng buổi này: 3 EBS volume của PVC monitoring mồ côi →
+`teardown.sh` xóa PVC trước destroy. `tools/ops/orphan_finder.py` là thứ bắt được cả hai.

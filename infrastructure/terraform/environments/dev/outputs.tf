@@ -67,3 +67,12 @@ output "karpenter_role_arn" {
 output "karpenter_interruption_queue" {
   value = module.platform_iam.karpenter_interruption_queue
 }
+
+# Dọn nợ GĐ7 — scripts/logging-install.sh + tracing-install.sh đọc 2 output này (IRSA).
+output "fluent_bit_role_arn" {
+  value = module.platform_iam.fluent_bit_role_arn
+}
+
+output "otel_collector_role_arn" {
+  value = module.platform_iam.otel_collector_role_arn
+}
