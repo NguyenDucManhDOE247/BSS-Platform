@@ -98,10 +98,18 @@ kind delete cluster --name netpol-test   # dọn ngay sau khi xong — cluster n
 
 ### Trên EKS thật
 
-VPC CNI (`aws-node`) hỗ trợ NetworkPolicy từ bản `v1.14+` — bật bằng cấu hình addon
-`network_policy_configuration { enabled = true }` (Terraform, module `eks` — **chưa bật**, việc
-riêng, cần `terraform apply` thật nên hỏi trước theo CLAUDE.md §9). Sau khi bật, lặp lại ma trận
-kiểm tra ở trên **trực tiếp trên cluster dev** (không cần Calico) bằng 3 Pod tạm tương tự.
+VPC CNI (`aws-node`) hỗ trợ NetworkPolicy từ bản `v1.14+`. Bật bằng biến `enable_network_policy` của
+module `eks` (addon `vpc-cni`, `configuration_values = {"enableNetworkPolicy":"true"}`) — **dev bật từ
+đợt dọn nợ GĐ7**; staging/prod bật sau khi dev đã qua ma trận. Kiểm (kind hoặc EKS, cùng 1 script):
+
+```bash
+./scripts/netpol-matrix.sh kind-bss                                       # kind
+./scripts/netpol-matrix.sh arn:aws:eks:ap-southeast-1:<acct>:cluster/bss-dev-eks   # EKS dev
+```
+
+Script thử luồng service → service **từ bên trong Pod thật** (`kubectl exec` + bash `/dev/tcp`), không
+dùng Pod giả mang nhãn service (Service sẽ chọn nhầm Pod giả làm backend). Trên AWS có thêm 2 dòng cho
+Keycloak (`tier: auth` — chỉ gateway + backend được gọi).
 
 ## 3. Sự cố hay gặp sau khi bật NetworkPolicy thật
 

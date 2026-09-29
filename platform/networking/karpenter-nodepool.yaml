@@ -1,31 +1,38 @@
-# Karpenter NodePool + EC2NodeClass for workload pods.
-# System pods stay on the managed node group; everything else schedules here.
+# Karpenter NodePool + EC2NodeClass (ADR-010, dọn nợ GĐ8) — cài bởi scripts/platform-install.sh
+# (bước Karpenter, chỉ khi Terraform của môi trường bật `enable_karpenter`). `__CLUSTER__` được script
+# thay bằng tên cluster (vd. bss-dev-eks) — không có Helm/kustomize cho 2 object nhỏ này.
 #
-# Apply AFTER installing Karpenter via Helm. See platform/networking/README.md.
+# Managed node group (2 × t3.medium ở dev) chạy phần hệ thống + controller Karpenter (chart mặc định
+# có affinity tránh node do chính nó tạo). Phần tải vượt quá sức chứa đó → Pod `Pending` → Karpenter
+# tạo node mới (ưu tiên Spot, rẻ hơn On-Demand) trong ~1 phút; hết tải → gom Pod + xóa node thừa.
 ---
 apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
 metadata:
   name: default
 spec:
-  amiFamily: AL2023
-  role: bss-dev-eks-node # match the Terraform-created node IAM role
+  # Bắt buộc từ Karpenter v1 (bản nháp scaffold thiếu → NodeClass không bao giờ Ready).
+  # Ghim theo alias "@latest": AMI EKS-optimized mới nhất cho đúng version Kubernetes của cluster.
+  amiSelectorTerms:
+    - alias: al2023@latest
+  role: __CLUSTER__-node # = aws_iam_role.node (modules/eks) — dùng chung với managed node group
   subnetSelectorTerms:
     - tags:
-        karpenter.sh/discovery: bss-dev-eks
+        karpenter.sh/discovery: __CLUSTER__ # tag trên private subnet (modules/vpc)
   securityGroupSelectorTerms:
     - tags:
-        karpenter.sh/discovery: bss-dev-eks
+        karpenter.sh/discovery: __CLUSTER__ # tag trên cluster SG (modules/eks aws_ec2_tag)
   blockDeviceMappings:
     - deviceName: /dev/xvda
       ebs:
-        volumeSize: 50Gi
+        volumeSize: 30Gi
         volumeType: gp3
         encrypted: true
+  metadataOptions:
+    httpTokens: required # IMDSv2
+    httpPutResponseHopLimit: 1 # Pod không đọc được credential của NODE qua IMDS — Pod dùng IRSA
   tags:
-    karpenter.sh/discovery: bss-dev-eks
     Project: bss-platform
-    Environment: dev
     ManagedBy: karpenter
 ---
 apiVersion: karpenter.sh/v1
@@ -38,30 +45,28 @@ spec:
       labels:
         role: workload
     spec:
-      requirements:
-        - key: kubernetes.io/arch
-          operator: In
-          values: ["amd64"]
-        - key: kubernetes.io/os
-          operator: In
-          values: ["linux"]
-        - key: karpenter.sh/capacity-type
-          operator: In
-          values: ["spot", "on-demand"] # prefer spot
-        - key: karpenter.k8s.aws/instance-category
-          operator: In
-          values: ["t", "m"]
-        - key: karpenter.k8s.aws/instance-generation
-          operator: Gt
-          values: ["2"]
       nodeClassRef:
         group: karpenter.k8s.aws
         kind: EC2NodeClass
         name: default
-      expireAfter: 720h # recycle nodes weekly
+      requirements:
+        - { key: kubernetes.io/arch, operator: In, values: ["amd64"] }
+        - { key: kubernetes.io/os, operator: In, values: ["linux"] }
+        # Spot trước (Karpenter chọn loại rẻ nhất khả dụng), On-Demand chỉ khi hết Spot.
+        - { key: karpenter.sh/capacity-type, operator: In, values: ["spot", "on-demand"] }
+        - { key: karpenter.k8s.aws/instance-category, operator: In, values: ["t", "m", "c"] }
+        - { key: karpenter.k8s.aws/instance-generation, operator: Gt, values: ["2"] }
+        # Máy nhỏ (2–4 vCPU): workload của dev nhỏ, và quota tài khoản chỉ 8 vCPU (xem limits).
+        - { key: karpenter.k8s.aws/instance-cpu, operator: In, values: ["2", "4"] }
+      expireAfter: 720h # thay node sau 30 ngày (AMI/bản vá mới) — dev hiếm khi sống lâu vậy
+  # Trần TỔNG node Karpenter được tạo. Quota tài khoản: Spot 8 vCPU + On-Demand 8 vCPU (managed node
+  # group dev đã dùng 4). Bản nháp scaffold để 100 vCPU → Karpenter sẽ liên tục thử và bị AWS từ chối
+  # (VcpuLimitExceeded) thay vì dừng đúng chỗ.
   limits:
-    cpu: 100
-    memory: 200Gi
+    cpu: "8"
+    memory: 32Gi
   disruption:
     consolidationPolicy: WhenEmptyOrUnderutilized
-    consolidateAfter: 30s
+    consolidateAfter: 1m
+    budgets:
+      - nodes: "1" # mỗi lúc chỉ thu hồi 1 node → Pod luôn có chỗ chạy trong lúc gom

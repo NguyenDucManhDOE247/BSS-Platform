@@ -222,6 +222,11 @@ resource "aws_ec2_tag" "cluster_sg_karpenter" {
 resource "aws_eks_addon" "vpc_cni" {
   cluster_name = aws_eks_cluster.this.name
   addon_name   = "vpc-cni"
+
+  # Dọn nợ GĐ7 (B-25): KHÔNG bật thì mọi NetworkPolicy trong base/network-policies chỉ là object nằm im —
+  # `kubectl apply` vẫn "thành công" nhưng không gói tin nào bị chặn. Bật = VPC CNI chạy thêm network
+  # policy agent (eBPF) trong aws-node. Kiểm bằng scripts/netpol-matrix.sh, đừng tin apply.
+  configuration_values = var.enable_network_policy ? jsonencode({ enableNetworkPolicy = "true" }) : null
 }
 
 resource "aws_eks_addon" "coredns" {
