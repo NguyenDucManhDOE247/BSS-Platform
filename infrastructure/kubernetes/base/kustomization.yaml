@@ -14,3 +14,20 @@ resources:
   - web-portal
   - admin-console
   - ingress.yaml
+
+# Rolling update KHÔNG rớt request (tìm ra ở lab schema-migration §5 trên kind, 2026-09-29: 1/419 request
+# trả 500 đúng lúc 1 Pod cũ bị dừng). Nguyên nhân kinh điển: nhận SIGTERM là Spring `server.shutdown:
+# graceful` ngừng nhận kết nối MỚI ngay, trong khi việc gỡ Pod khỏi Endpoints → kube-proxy/gateway cần vài
+# giây mới lan tới — request trong khe hở đó rơi vào Pod đang tắt. preStop `sleep` 10s: Pod vẫn phục vụ
+# bình thường trong lúc bị gỡ khỏi Endpoints, SAU ĐÓ mới nhận SIGTERM. `sleep` là action có sẵn của
+# kubelet (K8s ≥ 1.30) — không cần binary `sleep` trong image. Tổng thời gian dừng tối đa: 10s preStop +
+# 30s Spring (timeout-per-shutdown-phase mặc định) < 45s grace → không bị SIGKILL giữa chừng.
+patches:
+  - target: { kind: Deployment }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/terminationGracePeriodSeconds
+        value: 45
+      - op: add
+        path: /spec/template/spec/containers/0/lifecycle
+        value: { preStop: { sleep: { seconds: 10 } } }
