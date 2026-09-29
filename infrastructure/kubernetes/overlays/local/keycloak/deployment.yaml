@@ -102,8 +102,12 @@ spec:
       volumes:
         - { name: data, emptyDir: {} }
         - { name: tmp, emptyDir: {} }
+        # Realm (dùng chung mọi môi trường) + user thử (chỉ local) gộp vào 1 thư mục import.
         - name: realm-import
-          configMap: { name: keycloak-realm-bss }
+          projected:
+            sources:
+              - configMap: { name: keycloak-realm-bss }
+              - configMap: { name: keycloak-realm-users }
 ---
 apiVersion: v1
 kind: Service

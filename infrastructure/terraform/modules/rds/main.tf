@@ -61,6 +61,9 @@ locals {
     product-catalog  = "product"
     order-management = "orders"
     billing-service  = "billing"
+    # Giai đoạn 9 việc 7 — Keycloak (components/keycloak-aws) dùng CHUNG instance RDS nhưng database +
+    # user RIÊNG ("keycloak"/"keycloak_svc"): least privilege như 4 service. Tách instance khi cần.
+    keycloak = "keycloak"
   }
 }
 

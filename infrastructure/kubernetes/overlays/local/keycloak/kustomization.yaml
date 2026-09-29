@@ -3,7 +3,9 @@ kind: Kustomization
 namespace: bss
 resources:
   - deployment.yaml
+# Realm dùng chung: ../../../components/keycloak-realm (khai ở overlays/local/kustomization.yaml).
+# Ở đây chỉ thêm 2 user THỬ (admin1/customer1, mật khẩu rõ) — CHỈ local, không bao giờ lên AWS.
 configMapGenerator:
-  - name: keycloak-realm-bss
+  - name: keycloak-realm-users
     files:
-      - realm-bss.json
+      - bss-users-0.json

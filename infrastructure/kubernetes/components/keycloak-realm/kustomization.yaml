@@ -1,0 +1,15 @@
+# Giai đoạn 9 việc 7 — realm `bss` DÙNG CHUNG cho mọi môi trường (kind, dev, staging, prod) và cho
+# docker-compose: cùng client, cùng role, cùng claim `realm_access.roles` → cùng code, cùng test.
+#
+# KHÔNG có user nào ở đây. Trước việc 7, file realm chứa luôn 2 user thử (admin1/customer1) kèm mật
+# khẩu rõ — không được mang lên AWS. User thử giờ nằm riêng ở overlays/local/keycloak/bss-users-0.json
+# (chỉ kind + docker-compose import). Trên AWS không có user nào sẵn: khách tự đăng ký, còn smoke test
+# tự tạo user riêng của nó qua Admin REST API (scripts/smoke.sh).
+#
+# Tên file theo quy ước import thư mục của Keycloak: `<realm>-realm.json` + `<realm>-users-<n>.json`.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+configMapGenerator:
+  - name: keycloak-realm-bss
+    files:
+      - bss-realm.json
