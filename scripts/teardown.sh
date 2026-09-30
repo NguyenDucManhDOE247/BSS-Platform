@@ -100,10 +100,41 @@ else
   echo "→ Cluster $CLUSTER not found — skipping Ingress cleanup."
 fi
 
+# Lỗi thật 2026-09-30 (rà Definition of Done): destroy dừng ở "DeleteSubnet … DependencyViolation".
+# Thủ phạm: 1 ENI phụ mà VPC CNI gắn cho node Spot do Karpenter tạo — node bị terminate (bước NodePool ở
+# trên) nhưng CNI KHÔNG thu hồi ENI (tag eks:eni:owner=amazon-vpc-cni, trạng thái `available`). ENI đó
+# còn giữ security group của cluster → EKS không xóa được SG `eks-cluster-sg-<cluster>-*` → VPC cũng kẹt.
+# Cả hai đều không nằm trong state Terraform. Dọn theo tag của ĐÚNG cluster này, rồi destroy lại 1 lần.
+cleanup_vpc_leftovers() {
+  local enis sgs id
+  enis="$(aws ec2 describe-network-interfaces --region "$REGION" \
+    --filters "Name=tag:cluster.k8s.amazonaws.com/name,Values=$CLUSTER" Name=status,Values=available \
+    --query 'NetworkInterfaces[].NetworkInterfaceId' --output text)"
+  for id in $enis; do
+    aws ec2 delete-network-interface --region "$REGION" --network-interface-id "$id" \
+      && echo "  ✓ xóa ENI sót của VPC CNI: $id"
+  done
+  # SG do EKS tự tạo cho cluster — chỉ xóa khi cluster đã không còn.
+  if ! aws eks describe-cluster --region "$REGION" --name "$CLUSTER" >/dev/null 2>&1; then
+    sgs="$(aws ec2 describe-security-groups --region "$REGION" \
+      --filters "Name=tag:aws:eks:cluster-name,Values=$CLUSTER" --query 'SecurityGroups[].GroupId' --output text)"
+    for id in $sgs; do
+      aws ec2 delete-security-group --region "$REGION" --group-id "$id" \
+        && echo "  ✓ xóa security group sót của EKS: $id"
+    done
+  fi
+}
+
 cd "$(dirname "$0")/../infrastructure/terraform/environments/$ENV"
 
+echo "→ Removing VPC-CNI ENIs left behind by terminated nodes (if any)..."
+cleanup_vpc_leftovers
 echo "→ Terraform destroy on $ENV..."
-terraform destroy -auto-approve
+if ! terraform destroy -auto-approve; then
+  echo "⚠ destroy failed — cleaning ENIs / EKS security groups that block the VPC, then retrying once..."
+  cleanup_vpc_leftovers
+  terraform destroy -auto-approve
+fi
 
 echo ""
 echo "✓ $ENV torn down."

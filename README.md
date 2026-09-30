@@ -7,12 +7,12 @@
 [![CI Terraform](https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/workflows/ci-terraform.yml/badge.svg)](https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/workflows/ci-terraform.yml)
 [![CI Kubernetes](https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/workflows/ci-k8s.yml/badge.svg)](https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/workflows/ci-k8s.yml)
 [![Java](https://img.shields.io/badge/Java-21-007396?logo=openjdk)](https://openjdk.org/projects/jdk/21/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2-6DB33F?logo=spring-boot)](https://spring.io/projects/spring-boot)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F?logo=spring-boot)](https://spring.io/projects/spring-boot)
 [![Terraform](https://img.shields.io/badge/Terraform-1.16+-7B42BC?logo=terraform)](https://www.terraform.io/)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.34-326CE5?logo=kubernetes)](https://kubernetes.io/)
 [![AWS](https://img.shields.io/badge/AWS-EKS-FF9900?logo=amazon-aws)](https://aws.amazon.com/eks/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-v1.0.0%20%E2%80%94%20Phases%200--8%20done-brightgreen)](docs/ROADMAP.md)
+[![Status](https://img.shields.io/badge/Status-v2.0.0%20%E2%80%94%20Phases%200--9%20done-brightgreen)](docs/ROADMAP.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 ## Table of contents
@@ -31,30 +31,33 @@
 
 ## What's here
 
-A complete monorepo: **2 frontends + 5 backends + shared libs + 3-env infrastructure + CI/CD**.
+A complete monorepo: **2 websites + 5 backends + Keycloak + shared libs + 4-state infrastructure + CI/CD**.
 
 ```
 bss-platform/
 ├── apps/
-│   ├── frontend/       web-portal, admin-console        (Vite + React)
-│   └── backend/        api-gateway + 4 services         (Spring Boot 3, Java 21)
-├── packages/           bss-common-java, ui-kit, api-contracts
+│   ├── frontend/       web-portal, admin-console        (Vite + React, OIDC/PKCE login)
+│   ├── backend/        api-gateway + 4 services         (Spring Boot 3.5, Java 21, JWT resource servers)
+│   └── identity/       keycloak                         (optimized image for AWS — ADR-011)
+├── packages/           bss-common-java, ui-kit, api-contracts (OpenAPI 3.1)
 ├── infrastructure/
-│   ├── terraform/      modules/ + environments/{dev,staging,prod}
-│   └── kubernetes/     base/ + overlays/{dev,staging,prod}
-├── platform/           helm values for cluster addons (ALB, ExternalDNS, Karpenter, ...)
-├── deploy/             docker-compose + LocalStack for local dev
-├── .github/workflows/  7 CI/CD pipelines (path-filter + tag-based promotion)
-└── scripts/            bootstrap-aws, teardown, smoke
+│   ├── terraform/      9 modules + environments/{shared,dev,staging,prod}
+│   └── kubernetes/     base/ + components/ (keycloak) + overlays/{local,dev,staging,prod}
+├── platform/           addon values + install scripts (ALB, Secrets CSI, Karpenter, Prometheus, Fluent Bit, OTel)
+├── deploy/             docker-compose: Postgres, Redis, LocalStack, Keycloak
+├── .github/workflows/  10 CI/CD pipelines (path-filter + tag-based promotion)
+├── scripts/            e2e-local/kind/browser, release-manifest (CD), smoke, bootstrap, teardown, …
+├── tools/ops/          Python ops tools (orphan finder, cost report, DLQ, health check)
+└── tests/              k6 load tests + Playwright browser E2E
 ```
 
 ## Architecture
 
 ```
    Internet
-      │ HTTPS
+      │ HTTP (HTTPS pending a domain — B-23)
       ▼
-  CloudFront → ALB → AWS WAF
+  AWS WAF → ALB
       │
       ▼
   ┌──────────────────────── EKS Cluster ────────────────────────┐
@@ -62,10 +65,11 @@ bss-platform/
   │  Frontend pods       Backend pods            Platform        │
   │  ─────────────       ────────────            ────────        │
   │  web-portal          api-gateway             Prometheus      │
-  │  admin-console       customer-service        Grafana         │
+  │  admin-console       Keycloak (2 on prod)    Grafana         │
+  │                      customer-service        Alertmanager    │
   │                      product-catalog         Fluent Bit      │
   │                      order-management ──┐    OTel Collector  │
-  │                      billing-service  <─┤    metrics-server  │
+  │                      billing-service  <─┤    Karpenter (dev) │
   │                                         │                    │
   └─────────────────────────────────────────┼────────────────────┘
                                             │
@@ -83,62 +87,48 @@ bss-platform/
 | `product-catalog`  | Plans, offers, pricing       | TMF620 |
 | `order-management` | Order capture + orchestration | TMF622 |
 | `billing-service`  | Charging, invoicing, payment | TMF678 |
-| `api-gateway`      | Routing, auth, rate limit    | — |
+| `api-gateway`      | Routing, coarse auth (401/403) | — |
+| Keycloak           | Identity: self-registration, OIDC/PKCE, roles `customer`/`admin` | — |
 
 ## Tech stack
 
 | Layer | Tech |
 |---|---|
-| Cloud | AWS (EKS, RDS, ECR, EventBridge, SQS, S3, ALB, CloudFront, Route 53) |
-| Backend | Java 21, Spring Boot 3.2, Spring Cloud Gateway, AWS SDK v2 |
+| Cloud | AWS (EKS, RDS, ECR, EventBridge, SQS, ALB, WAF, Secrets Manager, CloudWatch, X-Ray) |
+| Backend | Java 21, Spring Boot 3.5, Spring Cloud Gateway, Spring Security (JWT), Resilience4j, AWS SDK v2 |
+| Identity | Keycloak 26.7 (OIDC + PKCE), per-customer data ownership by `sub` ([ADR-008](docs/adr/ADR-008-danh-tinh-va-quyen-so-huu.md)) |
 | Frontend | Vite, React 18, TypeScript, react-query |
 | Container | Multi-stage Docker (distroless-style), non-root |
-| Orchestration | EKS 1.34 + Managed Node Groups (Karpenter evaluated, not adopted — see [ADR-007](docs/adr/ADR-007-karpenter.md)) |
-| IaC | Terraform 1.7 + hashicorp/aws 5.x |
-| K8s packaging | Kustomize (base + overlays/dev|staging|prod) |
+| Orchestration | EKS 1.34 + Managed Node Groups; Karpenter (Spot) on dev ([ADR-010](docs/adr/ADR-010-karpenter-lam-that-o-dev.md)) |
+| IaC | Terraform ≥ 1.10 (S3 native state locking) + hashicorp/aws |
+| K8s packaging | Kustomize (base + components + overlays/local|dev|staging|prod) |
 | CI/CD | GitHub Actions + OIDC → IAM Role (no static keys) |
 | Observability | kube-prometheus-stack (in-cluster) + Fluent Bit → CloudWatch + OTel → X-Ray |
 | Secrets | AWS Secrets Manager + Secrets Store CSI Driver |
 
 ## Quick start
 
-**Prerequisites:** `aws-cli`, `terraform 1.7+`, `kubectl`, `helm`, `kustomize`, `docker`, `jdk21`, `node 20`, `make`.
-
-### 1. Local development (no AWS needed)
-
-```bash
-make local-up                                         # Postgres + Redis + LocalStack
-cd apps/backend/customer-service && mvn spring-boot:run
-# In another shell:
-cd apps/frontend/web-portal && npm install && npm run dev
-```
-
-Open http://localhost:3000.
-
-### 2. Deploy dev infrastructure on AWS
+Full, verified walkthrough: **[docs/SETUP.md](docs/SETUP.md)** (tools → local → kind → AWS → teardown, each step
+with a check). The short version:
 
 ```bash
-make bootstrap                                        # one-time: S3 tfstate + DynamoDB + budget
-make ENV=dev tf-init && make ENV=dev tf-apply         # ~20 minutes for EKS
-make ENV=dev kube-config                              # update local kubeconfig
+./scripts/e2e-local.sh --stay-up          # docker-compose + 5 backends + Keycloak, full business flow, then keep running
+cd apps/frontend/web-portal && npm ci && npm run dev    # http://localhost:3000
 
-# Install cluster addons (see platform/README.md for full sequence)
-helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller -n kube-system ...
-# ... etc.
+# Kubernetes on your laptop ($0) — see infrastructure/kubernetes/overlays/local/README.md
+./scripts/kind-up.sh && ./scripts/auth-install.sh kind && make build-images   # then kind load + kubectl apply -k …/overlays/local
+./scripts/e2e-kind.sh && ./scripts/e2e-browser.sh
 
-# Push + deploy customer-service:
-make ENV=dev SERVICE=customer-service push set-image deploy
-make ENV=dev smoke
+# AWS (costs money — read every plan)
+./scripts/bootstrap-aws.sh                                # once per account
+make ENV=shared tf-init tf-apply                          # ECR, GitHub OIDC, deployer roles — once
+make ENV=dev tf-init tf-plan tf-apply                     # ~20 min
+./scripts/platform-install.sh dev                         # then db-bootstrap, then run "CD — dev" in GitHub Actions
+make ENV=dev tf-destroy                                   # every evening
+
+git tag rc-v2.1.0 <sha> && git push origin rc-v2.1.0      # → staging
+git tag v2.1.0 <sha>    && git push origin v2.1.0         # → prod (manual approval)
 ```
-
-### 3. Promote to staging / prod
-
-```bash
-git tag rc-v0.1.0 && git push --tags                  # → cd-staging
-git tag v0.1.0    && git push --tags                  # → cd-prod (manual approval)
-```
-
-Full step-by-step guide in [docs/SETUP.md](docs/SETUP.md).
 
 ## Project status
 
@@ -157,6 +147,7 @@ Phase-by-phase tracking lives in [docs/ROADMAP.md](docs/ROADMAP.md). Today:
 | 8 — Reliability, load test, ops tooling, docs, `v1.0.0` | ✅ Done |
 | 9 — Real product: Keycloak identity (PKCE), self-registration → admin approval, per-customer data ownership, `v2.0.0` on prod | ✅ Done |
 | Debt pass 8 → 0 — Karpenter (Spot) on dev, NetworkPolicy enforced on EKS, Spring Boot 3.5 (0 HIGH/CRITICAL CVE), orphan finder | ✅ Done |
+| Hardening after Phase 9 — production-grade Keycloak (2 replicas, read-only rootfs), auth always on, Definition of Done reviewed from a clean clone ([ROADMAP](docs/ROADMAP.md#definition-of-done-for-v100)) | ✅ Done — except HTTPS (B-23, needs a domain) |
 
 Every ✅ above was verified against **real infrastructure**, not just written and assumed working —
 see [`docs/adr/`](docs/adr/) for the decisions and [`docs/runbooks/`](docs/runbooks/) for the
