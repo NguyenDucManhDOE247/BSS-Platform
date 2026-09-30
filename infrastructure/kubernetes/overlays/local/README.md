@@ -22,16 +22,21 @@ for s in customer-service product-catalog order-management billing-service api-g
   kind load docker-image bss/$s:local --name bss
 done
 
-# 5. Apply toàn bộ overlay (namespace bss được tạo tự động cùng lần apply đầu tiên)
+# 5. Secret keycloak-admin — PHẢI có trước bước 6 (Keycloak tham chiếu nó; thiếu → Pod Keycloak
+#    CreateContainerConfigError). Idempotent. (Giai đoạn 7/9 — ADR-008)
+./scripts/auth-install.sh kind
+
+# 6. Apply toàn bộ overlay (namespace bss được tạo tự động cùng lần apply đầu tiên)
 kubectl --context kind-bss apply -k infrastructure/kubernetes/overlays/local
 
-# 6. Theo dõi tới khi đủ 9 Pod Running/Ready (7 service + postgres-0 + localstack)
+# 7. Theo dõi tới khi đủ 10 Pod Running/Ready (7 service + keycloak + postgres-0 + localstack)
 kubectl --context kind-bss -n bss get pods -w
 
-# 7. Kiểm tra end-to-end qua Ingress thật (giống hệt scripts/e2e-local.sh nhưng qua kind)
+# 8. Kiểm tra end-to-end qua Ingress thật: luồng API có token Keycloak thật + E2E trình duyệt
 ./scripts/e2e-kind.sh
+./scripts/e2e-browser.sh
 
-# 8. Web-portal: http://bss.localhost/       Admin-console: http://bss.localhost/admin/
+# 9. Web-portal: http://bss.localhost/       Admin-console: http://bss.localhost/admin/
 #    (trình duyệt + curl tự phân giải *.localhost về 127.0.0.1 — không cần sửa /etc/hosts.
 #    Giai đoạn 9: đổi từ bss.localtest.me vì đăng nhập PKCE cần "secure context" — xem ADR-008 QĐ 7)
 
