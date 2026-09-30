@@ -45,6 +45,10 @@ images:
   - name: admin-console
     newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/admin-console
     newTag: dev
+  # ADR-011: image Keycloak optimized (apps/identity/keycloak) — CD quản lý như 7 service kia.
+  - name: keycloak
+    newName: 132249065347.dkr.ecr.ap-southeast-1.amazonaws.com/bss/keycloak
+    newTag: dev
 
 configMapGenerator:
   # Giai đoạn 5 / B-20: DB_URL literal removed from all 4 — DB_HOST/DB_PORT/DB_NAME now come from

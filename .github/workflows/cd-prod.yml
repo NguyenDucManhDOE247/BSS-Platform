@@ -9,7 +9,7 @@ name: CD — prod
 #     • releases/rc-vX.Y.Z.json phải tồn tại và `verified_in` chứa "staging" (tức rc đã deploy + smoke PASS);
 #     • tag vX.Y.Z phải trỏ ĐÚNG commit của rc-vX.Y.Z (source.sha của manifest rc).
 #   deploy (environment: production → chờ duyệt)
-#     • `aws ecr put-image` gắn tag vX.Y.Z lên cùng 7 digest; deploy; smoke; rollback về prod.json cũ nếu hỏng;
+#     • `aws ecr put-image` gắn tag vX.Y.Z lên cùng 8 digest (7 service + keycloak); deploy; smoke; rollback về prod.json cũ nếu hỏng;
 #       PASS → ghi prod.json + releases/vX.Y.Z.json.
 #
 # Chạy lại / dựng lại cluster prod (ADR-006, ephemeral): Actions → CD — prod → Run workflow, chọn
@@ -109,20 +109,14 @@ jobs:
             exit 1
           fi
 
-          rc=0
-          scripts/release-manifest.sh state-get prod.json > "$RUNNER_TEMP/previous.json" || rc=$?
-          if [ "$rc" -eq 0 ]; then
-            echo "previous=$RUNNER_TEMP/previous.json" >> "$GITHUB_OUTPUT"
-          elif [ "$rc" -eq 3 ]; then
-            rm -f "$RUNNER_TEMP/previous.json"; echo "previous=" >> "$GITHUB_OUTPUT"
-            echo "::notice::Chưa có prod.json — lần deploy prod đầu tiên, chưa thể rollback."
-          else
-            echo "::error::state-get thất bại (exit $rc)"; exit "$rc"
-          fi
+          # `previous`: last-known-good, hoặc RỖNG nếu chưa có / manifest cũ trước ADR-011 (thiếu keycloak).
+          previous="$(scripts/release-manifest.sh previous prod.json "$RUNNER_TEMP/previous.json")"
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          [ -n "$previous" ] || echo "::notice::Không có last-known-good dùng được cho prod (lần deploy đầu, hoặc manifest cũ trước ADR-011) — lần này không thể rollback."
           echo "Thay đổi so với prod hiện tại:"
           scripts/release-manifest.sh diff "$RUNNER_TEMP/previous.json" "$RUNNER_TEMP/prod.json" || true
 
-      - name: Gắn tag ${{ github.ref_name }} lên 7 image (aws ecr put-image)
+      - name: Gắn tag ${{ github.ref_name }} lên 8 image (aws ecr put-image)
         run: scripts/release-manifest.sh ecr-tag "$RUNNER_TEMP/prod.json" "$GITHUB_REF_NAME"
 
       - name: Deploy prod + smoke + rollback nếu hỏng

@@ -26,15 +26,15 @@ fails() { # fails "mô tả" lệnh... — lệnh phải exit ≠ 0
 succeeds() { local d="$1"; shift; if "$@" >/dev/null 2>&1; then ok "$d"; else bad "$d" "lệnh đáng lẽ phải thành công: $*"; fi; }
 section() { echo; echo "── $1"; }
 
-SVCS="customer-service product-catalog order-management billing-service api-gateway web-portal admin-console"
+SVCS="customer-service product-catalog order-management billing-service api-gateway web-portal admin-console keycloak"
 
-# Repo giả có đủ 7 thư mục service, để thử `desired`.
+# Repo giả có đủ 8 thư mục (7 service + keycloak — ADR-011), để thử `desired`.
 mkrepo() {
   local d="$1" s
   git init -q "$d"
   git -C "$d" config core.autocrlf false
   for s in $SVCS; do
-    case "$s" in web-portal|admin-console) mkdir -p "$d/apps/frontend/$s" ;; *) mkdir -p "$d/apps/backend/$s" ;; esac
+    mkdir -p "$d/$("$RM" dir "$s")"
     echo v1 > "$d/$(cd "$d" && "$RM" dir "$s")/file"
   done
   ( cd "$d" && git add -A && git commit -q -m "c1: mọi service" )
@@ -45,9 +45,10 @@ touch_service() { # repo service msg
 
 # ═══════════════════════════════════════════════════════════════════════════
 section "services / dir"
-eq "services có đúng 7 phần tử" "$("$RM" services | jq 'length')" "7"
+eq "services có đúng 8 phần tử (7 service + keycloak)" "$("$RM" services | jq 'length')" "8"
 eq "dir backend"  "$("$RM" dir billing-service)" "apps/backend/billing-service"
 eq "dir frontend" "$("$RM" dir web-portal)"      "apps/frontend/web-portal"
+eq "dir keycloak (ADR-011)" "$("$RM" dir keycloak)" "apps/identity/keycloak"
 fails "dir từ chối service lạ" "$RM" dir khong-co
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -95,7 +96,7 @@ fails    "same: phát hiện service đổi" "$RM" same "$M" "$M2"
 fails    "same: file không tồn tại → không giống" "$RM" same "$WORK/khong-co.json" "$M"
 eq "diff liệt kê đúng 1 dòng" "$("$RM" diff "$M2" "$M" | wc -l | tr -d ' ')" "1"
 case "$("$RM" diff "$M2" "$M")" in billing-service:*) ok "diff nêu tên service đổi" ;; *) bad "diff nêu tên service đổi" ;; esac
-eq "diff với file cũ chưa tồn tại → 7 dòng (mọi service là mới)" "$("$RM" diff "" "$M" | wc -l | tr -d ' ')" "7"
+eq "diff với file cũ chưa tồn tại → 8 dòng (mọi image là mới)" "$("$RM" diff "" "$M" | wc -l | tr -d ' ')" "8"
 cp "$M" "$WORK/rel.json"
 "$RM" set-field "$WORK/rel.json" release rc-v0.1.0
 "$RM" add-verified "$WORK/rel.json" staging
@@ -126,7 +127,7 @@ section "render — overlay thật của repo (cần kubectl)"
 REG="132249065347.dkr.ecr.ap-southeast-1.amazonaws.com"
 DIR="$(cd "$REPO_ROOT" && "$RM" render "$M" dev "$REG")"
 eq "render in ra thư mục rendered/dev" "$(basename "$(dirname "$DIR")")/$(basename "$DIR")" "rendered/dev"
-eq "render ghi đủ 7 khối images" "$(grep -c '^  - name: ' "$DIR/kustomization.yaml")" "7"
+eq "render ghi đủ 8 khối images" "$(grep -c '^  - name: ' "$DIR/kustomization.yaml")" "8"
 if command -v kubectl >/dev/null 2>&1; then
   OUT="$(kubectl kustomize "$DIR" 2>&1)"; rc=$?
   eq "kubectl kustomize build được overlay đã chồng images" "$rc" "0"
@@ -135,7 +136,7 @@ if command -v kubectl >/dev/null 2>&1; then
     tag="$(jq -r --arg s "$s" '.services[$s]' "$M")"
     grep -q "image: $REG/bss/$s:$tag\$" <<<"$OUT" || { bad_count=$((bad_count + 1)); echo "      thiếu image: $s:$tag"; }
   done
-  eq "cả 7 image trong output = tag trong manifest (không còn ':dev')" "$bad_count" "0"
+  eq "cả 8 image trong output = tag trong manifest (không còn ':dev')" "$bad_count" "0"
 else
   echo "  - bỏ qua: không có kubectl trong PATH"
 fi
@@ -194,7 +195,7 @@ esac
 AWS
 chmod +x "$FAKE/bin/aws"
 export FAKE_ECR="$FAKE/ecr"
-# Kho giả: cả 7 service đều có image ĐÚNG tag trong manifest M, trừ web-portal.
+# Kho giả: cả 8 image đều có ĐÚNG tag trong manifest M, trừ web-portal.
 for s in $SVCS; do
   [ "$s" = web-portal ] && continue
   mkdir -p "$FAKE_ECR/bss_$s"; echo "sha256:digest-$s" > "$FAKE_ECR/bss_$s/$(jq -r --arg s "$s" '.services[$s]' "$M")"
@@ -216,9 +217,9 @@ exec "$(dirname "$0")/aws.real" "$@"
 SHIM
 chmod +x "$FAKE/bin/aws"
 : > "$FAKE_ECR/calls.log"
-succeeds "ecr-tag gắn rc-v0.1.0 lên cả 7 image" "$RM" ecr-tag "$M" rc-v0.1.0
-eq "sau ecr-tag: 7 lệnh put-image" "$(grep -c '^put-image' "$FAKE_ECR/calls.log")" "7"
-eq "put-image kèm media type (image OCI/manifest list không bị hỏng)" "$(grep '^put-image' "$FAKE_ECR/calls.log" | grep -c 'media=application/vnd.docker.distribution.manifest.v2+json')" "7"
+succeeds "ecr-tag gắn rc-v0.1.0 lên cả 8 image" "$RM" ecr-tag "$M" rc-v0.1.0
+eq "sau ecr-tag: 8 lệnh put-image" "$(grep -c '^put-image' "$FAKE_ECR/calls.log")" "8"
+eq "put-image kèm media type (image OCI/manifest list không bị hỏng)" "$(grep '^put-image' "$FAKE_ECR/calls.log" | grep -c 'media=application/vnd.docker.distribution.manifest.v2+json')" "8"
 : > "$FAKE_ECR/calls.log"
 succeeds "ecr-tag chạy lại lần 2 (idempotent)" "$RM" ecr-tag "$M" rc-v0.1.0
 eq "lần 2 không gọi put-image nào" "$(grep -c '^put-image' "$FAKE_ECR/calls.log")" "0"
@@ -262,6 +263,23 @@ echo '{"v":3}' > "$WORK/dev3.json"
 ( cd "$W1" && "$RM" state-put "deploy(dev): lần 3 (đua)" "dev.json=$WORK/dev3.json" ) >/dev/null 2>&1
 eq "state-put tự retry và cuối cùng thành công" "$(cd "$W1" && "$RM" state-get dev.json | jq -c .)" '{"v":3}'
 rm -f "$BARE/hooks/pre-receive"
+
+# ═══════════════════════════════════════════════════════════════════════════
+section "previous — last-known-good để rollback (kể cả manifest cũ trước ADR-011)"
+out="$(cd "$W1" && "$RM" previous staging.json "$WORK/prev.json" 2>/dev/null)"; rc=$?
+eq "previous: chưa có file → in rỗng, exit 0 (lần deploy đầu)" "$rc:$out" "0:"
+( cd "$W1" && "$RM" state-put "deploy(dev): manifest 8 image" "dev.json=$M" ) >/dev/null
+out="$(cd "$W1" && "$RM" previous dev.json "$WORK/prev.json" 2>/dev/null)"
+eq "previous: manifest hợp lệ → in đường dẫn OUT" "$out" "$WORK/prev.json"
+eq "previous: OUT chứa đúng manifest" "$(jq -cS .services "$WORK/prev.json")" "$(jq -cS .services "$M")"
+jq 'del(.services.keycloak)' "$M" > "$WORK/legacy.json"
+( cd "$W1" && "$RM" state-put "deploy(dev): manifest cũ 7 service" "dev.json=$WORK/legacy.json" ) >/dev/null
+out="$(cd "$W1" && "$RM" previous dev.json "$WORK/prev.json" 2>/dev/null)"; rc=$?
+eq "previous: manifest cũ (thiếu keycloak) → in rỗng, không rollback, exit 0" "$rc:$out" "0:"
+[ ! -e "$WORK/prev.json" ] && ok "previous: xóa OUT của manifest cũ (để 'same' thấy khác → ghi manifest mới)" || bad "previous: xóa OUT của manifest cũ"
+jq 'del(.services["api-gateway"])' "$M" > "$WORK/broken-prev.json"
+( cd "$W1" && "$RM" state-put "deploy(dev): manifest hỏng" "dev.json=$WORK/broken-prev.json" ) >/dev/null
+fails "previous: manifest hỏng kiểu KHÁC (thiếu service không phải keycloak) → exit 1" bash -c "cd '$W1' && '$RM' previous dev.json '$WORK/prev.json'"
 
 # ═══════════════════════════════════════════════════════════════════════════
 echo

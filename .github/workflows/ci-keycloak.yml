@@ -1,0 +1,93 @@
+name: CI — keycloak
+
+# ADR-011 — image Keycloak optimized (apps/identity/keycloak). Ba cổng, cùng tinh thần ci-backend:
+#   1. docker build (bước `kc.sh build` chạy ở đây — lỗi build option lộ ra ngay, không đợi tới EKS);
+#   2. Trivy HIGH/CRITICAL (ngoại lệ có lý do ở apps/identity/keycloak/.trivyignore);
+#   3. chạy THẬT 2 replica trên Postgres, rootfs chỉ đọc — đúng điều kiện của components/keycloak-aws:
+#      phải `start --optimized` được, thành cluster 2 node (jdbc-ping), và refresh token cấp ở Pod 1
+#      dùng được ở Pod 2 (session chung). Đây là bài kiểm đã làm tay ngày 2026-09-30, tự động hóa lại.
+
+on:
+  pull_request:
+    paths:
+      - 'apps/identity/keycloak/**'
+      - 'infrastructure/kubernetes/components/keycloak-realm/**'
+      - '.github/workflows/ci-keycloak.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/identity/keycloak/**'
+      - 'infrastructure/kubernetes/components/keycloak-realm/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-keycloak-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image:
+    name: Build + Trivy + chạy thử 2 replica
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Docker build
+        run: docker build -t keycloak:ci apps/identity/keycloak
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: keycloak:ci
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+          trivyignores: apps/identity/keycloak/.trivyignore
+
+      - name: Chạy thử 2 replica (Postgres, rootfs chỉ đọc)
+        run: |
+          set -euo pipefail
+          docker network create kc
+          docker run -d --name pg --network kc -e POSTGRES_USER=keycloak -e POSTGRES_PASSWORD=kcpw \
+            -e POSTGRES_DB=keycloak postgres:16-alpine
+          until docker exec pg pg_isready -U keycloak >/dev/null 2>&1; do sleep 1; done
+
+          run_kc() {
+            docker run -d --name "$1" --network kc --read-only --tmpfs /tmp --tmpfs /opt/keycloak/data:uid=1000 \
+              -v "$PWD/infrastructure/kubernetes/components/keycloak-realm/bss-realm.json:/opt/keycloak/data/import/bss-realm.json:ro" \
+              -e KC_DB_URL_HOST=pg -e KC_DB_URL_DATABASE=keycloak -e KC_DB_USERNAME=keycloak -e KC_DB_PASSWORD=kcpw \
+              -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+              -e KC_HOSTNAME=http://keycloak.bss.svc.cluster.local:8080/auth -e KC_HTTP_ENABLED=true \
+              keycloak:ci start --optimized --import-realm
+          }
+          ready() { docker run --rm --network kc curlimages/curl:8.11.1 -sf "http://$1:9000/health/ready" >/dev/null 2>&1; }
+          wait_ready() {
+            for _ in $(seq 1 60); do ready "$1" && return 0; sleep 3; done
+            docker logs "$1" | tail -60; echo "::error::$1 không Ready sau 3 phút"; return 1
+          }
+
+          # Pod 1 trước (tạo schema + import realm trên DB trống), rồi Pod 2 — giống thứ tự an toàn.
+          # (2 Pod cùng khởi động trên DB TRỐNG thì Pod thứ hai chết 1 lần vì tranh tạo bảng Liquibase;
+          # trên Kubernetes kubelet tự khởi động lại — xem ADR-011.)
+          run_kc kc1; wait_ready kc1
+          run_kc kc2; wait_ready kc2
+
+          for _ in $(seq 1 20); do
+            docker logs kc2 2>&1 | grep -q 'ISPN000094.*(2)' && break; sleep 3
+          done
+          docker logs kc2 2>&1 | grep 'ISPN000094.*(2)' || { echo "::error::2 Pod không thành cluster (jdbc-ping)"; exit 1; }
+
+          rt="$(docker run --rm --network kc curlimages/curl:8.11.1 -sf -d grant_type=password -d client_id=admin-cli \
+                -d username=admin -d password=admin http://kc1:8080/auth/realms/master/protocol/openid-connect/token \
+                | jq -r .refresh_token)"
+          code="$(docker run --rm --network kc curlimages/curl:8.11.1 -s -o /dev/null -w '%{http_code}' \
+                -d grant_type=refresh_token -d client_id=admin-cli --data-urlencode "refresh_token=$rt" \
+                http://kc2:8080/auth/realms/master/protocol/openid-connect/token)"
+          [ "$code" = 200 ] || { echo "::error::refresh token cấp ở kc1 bị kc2 từ chối ($code) — session không chung"; exit 1; }
+          echo "✓ start --optimized, rootfs chỉ đọc, cluster 2 node, session chung giữa 2 Pod"
+
+      - name: Log khi hỏng
+        if: failure()
+        run: for c in kc1 kc2; do echo "::group::$c"; docker logs "$c" 2>&1 | tail -80 || true; echo "::endgroup::"; done
