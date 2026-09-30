@@ -1,5 +1,7 @@
 package com.bss.order;
 
+import com.bss.order.client.CustomerClient;
+import com.bss.order.client.CustomerSnapshot;
 import com.bss.order.client.OfferingNotOrderableException;
 import com.bss.order.client.OfferingSnapshot;
 import com.bss.order.client.ProductCatalogClient;
@@ -9,17 +11,24 @@ import com.bss.order.repository.EventOutboxRepository;
 import com.bss.order.service.OrderService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import software.amazon.awssdk.services.eventbridge.EventBridgeClient;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -41,6 +50,27 @@ class OrderServiceIT {
     // B-13: order-management no longer trusts the caller's price — it asks product-catalog.
     // Stub that call instead of standing up a real product-catalog for this test.
     @MockBean ProductCatalogClient catalog;
+    // Auth luôn bật (ADR-008 QĐ 6): khách là người đăng nhập — customer-service trả lời "tôi là ai"
+    // bằng chính token (CustomerClient). Stub nó; phía HTTP thật của CustomerClient có CustomerClientTest.
+    @MockBean CustomerClient customers;
+
+    static final UUID CUSTOMER_ID = UUID.randomUUID();
+
+    /** Gọi thẳng service = không đi qua bộ lọc Spring Security → tự đặt JWT của 1 khách vào ngữ cảnh. */
+    @BeforeEach
+    void signedInActiveCustomer() {
+        var jwt = Jwt.withTokenValue("token-of-khach-a").header("alg", "none")
+                .subject("sub-khach-a").issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(300)).build();
+        SecurityContextHolder.getContext().setAuthentication(
+                new JwtAuthenticationToken(jwt, java.util.List.of(new SimpleGrantedAuthority("ROLE_customer"))));
+        when(customers.me("token-of-khach-a"))
+                .thenReturn(new CustomerSnapshot(CUSTOMER_ID, "Active", "a@example.com"));
+    }
+
+    @AfterEach
+    void signOut() {
+        SecurityContextHolder.clearContext();
+    }
 
     @Autowired OrderService orders;
     @Autowired EventOutboxRepository outbox;
@@ -54,7 +84,6 @@ class OrderServiceIT {
                         new BigDecimal("199000"), "VND"));
 
         var req = new CreateOrderRequest(
-                UUID.randomUUID(),
                 "new",
                 "Buy mobile plan",
                 List.of(new CreateOrderRequest.Item(offeringId, 1)));
@@ -62,6 +91,7 @@ class OrderServiceIT {
         var saved = orders.create(req);
 
         assertThat(saved.state().name()).isEqualTo("Completed");
+        assertThat(saved.customerId()).isEqualTo(CUSTOMER_ID);   // từ hồ sơ của token, không từ request
         // B-13: price came from the catalog stub (199000), NOT from the request (there is no
         // unitPrice field on the request anymore — it wouldn't compile if there were).
         assertThat(saved.totalAmount()).isEqualByComparingTo("199000");
@@ -78,6 +108,8 @@ class OrderServiceIT {
         // doesn't exist yet at this point; it's minted per PutEvents attempt).
         JsonNode payload = readTree(pending.get(0).getPayload());
         assertThat(payload.get("eventId").asText()).isEqualTo(pending.get(0).getId().toString());
+        // ADR-008 QĐ 5: chủ sở hữu (sub) luôn đi theo event để billing gắn lên hóa đơn.
+        assertThat(payload.get("customerSub").asText()).isEqualTo("sub-khach-a");
     }
 
     @Test
@@ -87,7 +119,7 @@ class OrderServiceIT {
                 new OfferingSnapshot(offeringId, "Retired plan", "Retired",
                         new BigDecimal("50000"), "VND"));
 
-        var req = new CreateOrderRequest(UUID.randomUUID(), "new", "x",
+        var req = new CreateOrderRequest("new", "x",
                 List.of(new CreateOrderRequest.Item(offeringId, 1)));
 
         assertThatThrownBy(() -> orders.create(req))
@@ -99,7 +131,7 @@ class OrderServiceIT {
         UUID offeringId = UUID.randomUUID();
         when(catalog.getOffering(offeringId)).thenThrow(new UnknownOfferingException(offeringId));
 
-        var req = new CreateOrderRequest(UUID.randomUUID(), "new", "x",
+        var req = new CreateOrderRequest("new", "x",
                 List.of(new CreateOrderRequest.Item(offeringId, 1)));
 
         assertThatThrownBy(() -> orders.create(req))

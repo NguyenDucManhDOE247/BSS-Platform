@@ -36,7 +36,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * listener gọi) với payload event như order-management phát ra — không insert thẳng vào DB.
  */
 @SpringBootTest(properties = {
-        "bss.auth.enabled=true",
         "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/unused",
         "bss.sqs.consumer.enabled=false"
 })

@@ -4,12 +4,10 @@ info:
   description: |
     TM Forum TMF629 Customer Management (tập con).
 
-    **Xác thực (Giai đoạn 9, ADR-008):** Bearer JWT do Keycloak realm `bss` phát hành. Khi
-    `bss.auth.enabled=true`, mọi endpoint cần token:
+    **Xác thực (Giai đoạn 9, ADR-008) — luôn bật:** Bearer JWT do Keycloak realm `bss` phát hành,
+    mọi endpoint cần token:
     - `/customer/me` — role `customer` (khách tự quản lý hồ sơ của CHÍNH mình);
     - mọi endpoint khác — role `admin`.
-    Khi `bss.auth.enabled=false` (dev/staging/prod cho tới GĐ9 việc 7): mọi endpoint cũ mở như
-    trước, riêng `/customer/me` luôn trả 401 (không có danh tính).
   version: 4.1.0
 
 servers:
@@ -57,7 +55,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Customer' }
-        '400': { description: Có trường không được phép (vd. `status`). }
+        '400': { description: 'Có trường không được phép (vd. `status`).' }
         '409': { description: Email đã tồn tại. }
         '422': { description: Dữ liệu không hợp lệ. }
 
@@ -85,9 +83,9 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Customer' }
-        '400': { description: Gửi kèm trường không được phép (`email`, `status`...). }
+        '400': { description: 'Gửi kèm trường không được phép (`email`, `status`...).' }
         '409': { description: Tài khoản đã có hồ sơ, hoặc email đã thuộc 1 khách khác. }
-        '422': { description: Thiếu `name`, hoặc token không có claim `email`. }
+        '422': { description: 'Thiếu `name`, hoặc token không có claim `email`.' }
     patch:
       summary: Khách tự sửa tên/SĐT (không đổi được email, trạng thái)
       requestBody:
@@ -101,7 +99,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Customer' }
-        '400': { description: Gửi kèm trường không được phép (`status`...). }
+        '400': { description: 'Gửi kèm trường không được phép (`status`...).' }
         '404': { description: Chưa có hồ sơ. }
 
   /customer/{id}:
@@ -144,7 +142,7 @@ components:
       bearerFormat: JWT
 
   responses:
-    Unauthorized: { description: Thiếu token / token không hợp lệ (sai chữ ký, sai `iss`, hết hạn). }
+    Unauthorized: { description: 'Thiếu token / token không hợp lệ (sai chữ ký, sai `iss`, hết hạn).' }
     Forbidden: { description: Token hợp lệ nhưng thiếu role cần thiết. }
 
   schemas:

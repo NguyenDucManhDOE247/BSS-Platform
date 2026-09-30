@@ -1,0 +1,10 @@
+# Test: auth luôn bật (ADR-008 QĐ 6) → context cần 1 JwtDecoder. jwk-set-uri trỏ tới cổng không ai nghe:
+# đủ để Spring dựng bean, nhưng không bao giờ bị gọi — test dùng jwt() của spring-security-test (bỏ qua
+# bước giải mã) hoặc gọi thẳng service. Nằm ở classpath:/config/ nên được GỘP với application.yml chính
+# (không che mất nó như một src/test/resources/application.yml sẽ làm).
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://localhost:1/unused

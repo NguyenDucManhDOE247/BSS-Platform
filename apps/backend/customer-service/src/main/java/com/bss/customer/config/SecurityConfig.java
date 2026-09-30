@@ -6,7 +6,6 @@ import java.util.Map;
 
 import jakarta.servlet.DispatcherType;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
@@ -21,8 +20,8 @@ import org.springframework.security.web.SecurityFilterChain;
 
 /**
  * Giai đoạn 9 việc 3 — ADR-008 quyết định 4: customer-service TỰ kiểm JWT (zero-trust), không tin
- * header do gateway chèn. Công tắc {@code bss.auth.enabled} giống hệt api-gateway (GĐ7): tắt ở
- * dev/staging/prod cho tới khi Keycloak lên AWS (GĐ9 việc 7), bật ở kind + docker-compose.
+ * header do gateway chèn. Auth luôn bật ở mọi môi trường (công tắc {@code bss.auth.enabled} đã xóa
+ * 2026-09-30 — ADR-008 quyết định 6).
  *
  * <p>Luật (ADR-008 quyết định 5):
  * <ul>
@@ -37,7 +36,6 @@ public class SecurityConfig {
     static final String BASE = "/tmf-api/customerManagement/v4/customer";
 
     @Bean
-    @ConditionalOnProperty(name = "bss.auth.enabled", havingValue = "true")
     SecurityFilterChain enforcedFilterChain(HttpSecurity http) throws Exception {
         http.csrf(csrf -> csrf.disable()) // API stateless dùng Bearer token, không có cookie phiên → không có CSRF
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -54,16 +52,6 @@ public class SecurityConfig {
                         .requestMatchers(BASE, BASE + "/**").hasRole("admin")
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(o -> o.jwt(j -> j.jwtAuthenticationConverter(keycloakAuthenticationConverter())));
-        return http.build();
-    }
-
-    /** Tắt auth: giữ NGUYÊN hành vi mở như trước GĐ9 (mọi endpoint cũ không đổi). */
-    @Bean
-    @ConditionalOnProperty(name = "bss.auth.enabled", havingValue = "false", matchIfMissing = true)
-    SecurityFilterChain openFilterChain(HttpSecurity http) throws Exception {
-        http.csrf(csrf -> csrf.disable())
-                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
         return http.build();
     }
 

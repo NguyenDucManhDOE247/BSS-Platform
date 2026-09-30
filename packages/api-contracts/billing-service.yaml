@@ -4,13 +4,12 @@ info:
   description: |
     TM Forum TMF678 Customer Bill / Billing Account (subset).
 
-    **Xác thực (Giai đoạn 9, ADR-008) khi `bss.auth.enabled=true`** — Bearer JWT Keycloak:
+    **Xác thực (Giai đoạn 9, ADR-008) — luôn bật** — Bearer JWT Keycloak:
     - `GET` — role `customer` chỉ thấy hóa đơn / billing account của CHÍNH mình (chủ sở hữu lấy từ
       `customerSub` trong event OrderCompleted, gắn ở cấp billing account); đọc của người khác → 404.
       Role `admin` thấy tất cả, lọc theo `customerId`.
     - `POST /billingAccount` — chỉ `admin` (bình thường account tự mở khi có hóa đơn đầu tiên).
     - `GET /customerBill/summary` — chỉ `admin` (doanh thu toàn hệ thống cho Dashboard admin-console).
-    Khi `bss.auth.enabled=false`: hành vi trước GĐ9 (`customerId` bắt buộc ở `GET /customerBill`).
   version: 4.1.0
 
 servers:

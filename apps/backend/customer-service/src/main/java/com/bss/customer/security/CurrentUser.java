@@ -9,7 +9,7 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Danh tính người gọi, lấy từ JWT đã được Spring Security kiểm chữ ký + {@code iss} + hạn.
  *
- * <p>Khi TẮT auth ({@code bss.auth.enabled=false}) không có JWT nào → mọi endpoint "của tôi" trả
+ * <p>Không có JWT (SecurityConfig lẽ ra đã chặn — phòng thủ thêm 1 lớp) → mọi endpoint "của tôi" trả
  * 401 thay vì đoán bừa người gọi là ai.
  */
 @Component

@@ -24,8 +24,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
-            "bss.auth.enabled=true",
-            // Bắt buộc phải có (dù không dùng thật trong test) để Spring Boot tạo bean
+                // Bắt buộc phải có (dù không dùng thật trong test) để Spring Boot tạo bean
             // ReactiveJwtDecoder — thiếu dòng này, context không khởi động được vì
             // enforcedFilterChain gọi .oauth2ResourceServer(...).
             "spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost/realms/bss"

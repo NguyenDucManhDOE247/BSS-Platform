@@ -27,7 +27,7 @@ Trình duyệt ──(Authorization Code + PKCE)──► Keycloak realm "bss"  
 
 ## 2. Luật phân quyền
 
-**Gateway** (`apps/backend/api-gateway/.../SecurityConfig.java`, khi `bss.auth.enabled=true`):
+**Gateway** (`apps/backend/api-gateway/.../SecurityConfig.java` — auth luôn bật, không có công tắc):
 
 | Route | Yêu cầu |
 |---|---|
@@ -53,7 +53,7 @@ Trình duyệt ──(Authorization Code + PKCE)──► Keycloak realm "bss"  
 | | kind (`overlays/local`) | docker-compose + `mvn` | AWS dev/staging/prod |
 |---|---|---|---|
 | Keycloak | 26.7.4 gốc, `start-dev`, H2 trong emptyDir | 26.7.4 gốc, `localhost:8180/auth` | Image riêng `bss/keycloak` (`apps/identity/keycloak`, ADR-011): `start --optimized`, rootfs chỉ đọc, Postgres riêng trên RDS, secret qua CSI; **prod 2 replica** (dev/staging 1) |
-| Auth backend | Bật | **Tắt** (`bss.auth.enabled` mặc định) | Bật |
+| Auth backend | Bật | Bật (issuer `localhost:8180` trong `application-local.yml`) | Bật |
 | `KC_HOSTNAME` / `iss` | `http://bss.localhost/auth` | `http://localhost:8180/auth` | `http://keycloak.bss.svc.cluster.local:8080/auth` (DNS nội bộ) |
 | Keycloak qua Ingress | Có, path `/auth` | — | **Không** (chưa có HTTPS — ADR-008 quyết định 8) |
 | Đăng nhập bằng trình duyệt | ✅ | ✅ | ❌ chờ HTTPS + domain |
@@ -169,5 +169,5 @@ kubectl -n bss delete pod "$(kubectl -n bss get pod -l app=keycloak -o name | he
 ## 9. Còn lại
 
 - **HTTPS + đăng nhập web trên AWS** (domain + ACM hoặc CloudFront) — mục "Để sau" trong lộ trình.
-- **Xóa công tắc `bss.auth.enabled`**: cần `e2e-local.sh` (mvn) lấy token từ Keycloak của docker-compose.
+- ~~Xóa công tắc `bss.auth.enabled`~~ — ✅ 2026-09-30: không còn chế độ "auth tắt" ở bất kỳ đâu.
 - **Chạy "Kiểm Keycloak HA trên EKS"** ở mục 8 lần đầu (cần `terraform apply` shared để có repo `bss/keycloak`).

@@ -31,6 +31,11 @@ Debt pass from Phase 8 back to 0 (after `v2.0.0`), each item verified on real in
 
 ### Changed
 
+- **Auth is always on — the `bss.auth.enabled` switch is gone** (ADR-008 decision 6): no more "open" filter
+  chains, `BSS_AUTH_ENABLED` env vars or auth-off branches in the 5 services; a service without an issuer/JWKS
+  now fails to start instead of running unauthenticated. `scripts/e2e-local.sh` (docker-compose + `mvn`) now
+  signs up a real Keycloak user, gets approved, orders and checks ownership (404) like `e2e-kind.sh`.
+  `CreateOrderRequest.customerId` removed (the customer is whoever the token says).
 - **Keycloak 26.5 → 26.7.4** everywhere (kind, docker-compose, AWS): 26.5.7 carried Keycloak CVEs incl.
   CVE-2026-18963 (CRITICAL, unauthenticated account takeover). 6 remaining CVEs in libraries bundled by
   Keycloak are listed with reasons in `apps/identity/keycloak/.trivyignore`.
@@ -41,6 +46,8 @@ Debt pass from Phase 8 back to 0 (after `v2.0.0`), each item verified on real in
 
 ### Fixed
 
+- The 4 OpenAPI contracts in `packages/api-contracts/` were not valid YAML (a backtick cannot start a token
+  inside a `{ description: … }` flow mapping) — every OpenAPI tool would reject them.
 - Rolling updates dropped requests (1/419 → 500): `preStop` sleep 10 s on every Deployment.
 - `teardown.sh`: waits for / removes leftover ALB target groups, PVC-backed EBS volumes and Karpenter
   nodes before `terraform destroy`; runs `orphan_finder` at the end.

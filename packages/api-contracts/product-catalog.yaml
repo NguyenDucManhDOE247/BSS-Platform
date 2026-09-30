@@ -4,12 +4,11 @@ info:
   description: |
     TM Forum TMF620 Product Catalog Management (subset).
 
-    **Xác thực (Giai đoạn 9, ADR-008) khi `bss.auth.enabled=true`:**
+    **Xác thực (Giai đoạn 9, ADR-008) — luôn bật:**
     - `GET` — công khai (khách chưa đăng nhập vẫn duyệt gói). Người không phải admin **chỉ thấy gói
       đang bán** (`Active`, `Launched`): danh sách lọc bỏ gói khác (kể cả khi cố truyền
       `lifecycleStatus=Retired`), còn `GET /{id}` của gói đã ngừng bán → 404.
     - `POST`/`PATCH`/`DELETE` — Bearer JWT role `admin`.
-    Khi `bss.auth.enabled=false`: mọi endpoint mở, không lọc gì (hành vi trước GĐ9).
   version: 4.1.0
 
 servers:
