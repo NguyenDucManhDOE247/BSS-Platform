@@ -45,9 +45,12 @@ KCTX="kind-$CLUSTER"
 
 log "Installing ingress-nginx (kind-specific manifest — hostPort, no cloud LoadBalancer needed)…"
 kubectl --context "$KCTX" apply -f https://raw.githubusercontent.com/kubernetes-sigs/kind/main/site/static/examples/ingress/deploy-ingress-nginx.yaml
-log "Waiting for the ingress-nginx controller pod to be Ready (up to 3 min)…"
-kubectl --context "$KCTX" -n ingress-nginx wait --for=condition=ready pod \
-  --selector=app.kubernetes.io/component=controller --timeout=180s
+log "Waiting for the ingress-nginx controller to be Ready (up to 3 min)…"
+# Lỗi thật trên cluster MỚI TINH (2026-09-30, kiểm DoD "từ repo sạch"): `kubectl wait … pod --selector`
+# chạy ngay sau `apply` khi Deployment chưa kịp tạo Pod → "error: no matching resources found" → script
+# chết (cluster cũ thì Pod đã có sẵn nên không bao giờ thấy). `rollout status` chờ theo Deployment — object
+# này tồn tại ngay khi `apply` xong — nên không có cửa sổ "chưa có gì để chờ".
+kubectl --context "$KCTX" -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=180s
 ok "ingress-nginx ready"
 
 log "Installing metrics-server (needed by every HPA in this repo — B-43)…"
@@ -57,7 +60,7 @@ helm repo update metrics-server >/dev/null
 # by default and every `kubectl top` stays empty until this flag is set.
 helm --kube-context "$KCTX" upgrade --install metrics-server metrics-server/metrics-server \
   --version 3.14.0 -n kube-system \
-  --set args={--kubelet-insecure-tls}
+  --set 'args={--kubelet-insecure-tls}'
 kubectl --context "$KCTX" -n kube-system rollout status deployment/metrics-server --timeout=120s
 ok "metrics-server installed"
 
