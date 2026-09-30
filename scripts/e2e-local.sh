@@ -66,8 +66,17 @@ ok()   { echo "✓ $*"; }
 
 cleanup() {
   local status=$?
+  # Mỗi service chạy trong PROCESS GROUP riêng (setsid ở start_service) → `kill -- -PGID` giết cả nhóm:
+  # wrapper /usr/bin/mvn + JVM của Maven + JVM app mà spring-boot:run fork ra. Giết mỗi PID của `$!`
+  # (như bản cũ) chỉ giết wrapper — Maven + app thành MỒ CÔI, giữ cổng 8080–8084 (lỗi thật 2026-09-30).
   for pid in "${PIDS[@]:-}"; do
-    kill "$pid" >/dev/null 2>&1 || true
+    [ -n "$pid" ] || continue
+    kill -TERM -- "-$pid" >/dev/null 2>&1 || true
+  done
+  sleep 2
+  for pid in "${PIDS[@]:-}"; do
+    [ -n "$pid" ] || continue
+    kill -KILL -- "-$pid" >/dev/null 2>&1 || true
   done
   if [ "$status" -ne 0 ]; then
     echo ""
@@ -137,17 +146,19 @@ start_service() {
   # "artifact has not been downloaded before" instead of fetching it. First run of the day
   # will be a bit slower; every run after that is fast because ~/.m2 is warm.
   #
-  # -Dspring-boot.run.fork=false: by default the `run` goal FORKS a second JVM for the actual
-  # Spring Boot app — `mvn` itself just supervises it. Killing that supervisor PID (which is
-  # all `$!` below gives us) does not reliably kill the forked child; found this the hard way
-  # while testing the LocalStack-outage checkpoint by hand: a killed script left 5 orphaned
-  # app JVMs running and bound to the same ports, which then silently answered health checks
-  # and API calls on the NEXT run against a stale/torn-down database connection. Running
-  # unforked means there's exactly one JVM per service, and killing its PID is enough.
-  (cd "$ROOT_DIR/apps/backend/$dir" && mvn -q spring-boot:run -Dspring-boot.run.fork=false \
-      > "$LOG_DIR/$name.log" 2>&1 &
-   echo $! > "$LOG_DIR/$name.pid")
-  PIDS+=("$(cat "$LOG_DIR/$name.pid")")
+  # Orphan JVMs — the bug this block exists for. `spring-boot:run` FORKS a second JVM for the app
+  # (Spring Boot 3's plugin has no `fork=false` any more — the flag this script used to pass was
+  # silently ignored), and `/usr/bin/mvn` is itself a bash wrapper around Maven's JVM. So `$!` is
+  # 3 processes away from the app. Killing just `$!` left Maven + app alive, still bound to
+  # 8080–8084; the NEXT run's services then failed to start ("Port already in use"), health checks
+  # were answered by the stale JVMs, and API calls hit a database that `down -v` had just wiped →
+  # HTTP 500 (found for real 2026-09-30, running the checkpoint from a clean clone).
+  # Fix: `setsid` makes each service the leader of its OWN process group (PGID = the PID we save),
+  # and cleanup() kills the whole group. The background subshell is not a group leader (no job
+  # control in a script), so setsid execs in place and keeps that PID.
+  ( cd "$ROOT_DIR/apps/backend/$dir" && exec setsid mvn -q spring-boot:run > "$LOG_DIR/$name.log" 2>&1 ) &
+  echo $! > "$LOG_DIR/$name.pid"
+  PIDS+=("$!")
 }
 
 wait_healthy() {
@@ -162,6 +173,15 @@ wait_healthy() {
   done
   fail "$name never reported UP on :$port — see $LOG_DIR/$name.log"
 }
+
+command -v setsid >/dev/null 2>&1 || fail "setsid is required (util-linux) — run this in Linux/WSL"
+# A port still taken means a JVM from an earlier run survived — fail loudly instead of letting the
+# health checks below be answered by that stale process (see the long comment in start_service).
+for port in 8080 8081 8082 8083 8084; do
+  if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+    fail "port $port is already in use — a backend from a previous run is still alive? (ss -ltnp | grep :$port)"
+  fi
+done
 
 start_service customer-service customer-service 8081
 start_service product-catalog  product-catalog  8082
