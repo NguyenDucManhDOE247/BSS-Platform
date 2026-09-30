@@ -141,6 +141,9 @@ Khách chỉ thấy gói `Active`, admin thấy cả gói đã ngừng bán (`Re
 **Chọn A.** Chi tiết triển khai (có tăng node dev hay không, số liệu RAM thật) làm ở Giai đoạn 9
 việc 7, và **hỏi trước khi `apply`**. Công tắc `bss.auth.enabled` bị **xóa** khi cả 4 môi trường
 (local, dev, staging, prod) đã có Keycloak. Từ đó auth luôn bật, không còn môi trường nào "mở".
+**✅ Đã xóa 2026-09-30:** không còn `@ConditionalOnProperty`, `BSS_AUTH_ENABLED` hay nhánh "auth tắt"
+nào trong 5 service; `e2e-local.sh` (docker-compose + `mvn`) cũng lấy token Keycloak thật. Thiếu
+cấu hình issuer/JWKS → service **không khởi động** (fail sớm) thay vì chạy mà không kiểm token.
 
 ## Quyết định 7 — Đăng nhập PKCE cần "secure context" (bổ sung 2026-09-29, GĐ9 việc 4)
 
@@ -180,7 +183,7 @@ B-18 trên AWS ngay. Câu hỏi: không có HTTPS thì 2 website trên AWS có c
 |---|---|---|
 | Keycloak | Chạy trên EKS (`components/keycloak-aws`: `start`, DB riêng trên RDS, secret qua CSI), **không** có path `/auth` trên Ingress, NetworkPolicy chỉ cho gateway + backend gọi vào | Thêm path `/auth` vào Ingress |
 | `KC_HOSTNAME` / `iss` | `http://keycloak.bss.svc.cluster.local:8080/auth` — 1 giá trị duy nhất, không phụ thuộc Host của request | `https://<domain>/auth` |
-| Backend | Auth BẬT (`BSS_AUTH_ENABLED=true`), `issuer-uri` = DNS nội bộ | Đổi `issuer-uri` |
+| Backend | Auth luôn bật, `issuer-uri` = DNS nội bộ | Đổi `issuer-uri` |
 | Smoke test (CD) | Lấy token của user riêng `smoke-bot` qua `kubectl port-forward` (API server, có TLS); mật khẩu admin đọc từ K8s Secret qua kubectl | Có thể gọi thẳng `/auth` qua ALB |
 | 2 website | Khách xem gói được; đăng nhập/mua/duyệt **chưa** dùng được | Đầy đủ như trên kind |
 

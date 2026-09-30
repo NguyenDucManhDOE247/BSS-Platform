@@ -4,8 +4,6 @@ import com.bss.order.client.CustomerClient;
 import com.bss.order.client.OfferingNotOrderableException;
 import com.bss.order.client.ProductCatalogClient;
 import com.bss.order.security.CurrentCaller;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
 import java.util.LinkedHashMap;
 import com.bss.order.dto.CreateOrderRequest;
 import com.bss.order.dto.OrderDto;
@@ -54,23 +52,15 @@ public class OrderService {
 
     public OrderDto create(CreateOrderRequest req) {
         var order = new ProductOrder();
-        if (caller.authEnabled()) {
-            // Giai đoạn 9 (ADR-008 quyết định 3, 4): khách LÀ AI do customer-service trả lời, bằng
-            // chính token của khách — body.customerId bị bỏ qua (nếu không, ai cũng đặt hàng dưới tên
-            // người khác được). Chỉ khách admin đã duyệt (Active) mới được mua.
-            var me = customers.me(caller.bearerToken());
-            if (!me.isActive()) {
-                throw new CustomerNotActiveException(me.status());
-            }
-            order.setCustomerId(me.id());
-            order.setOwnerSub(caller.subject());
-        } else {
-            // Auth tắt: hành vi trước GĐ9 (customerId từ body). Xóa nhánh này cùng công tắc.
-            if (req.customerId() == null) {
-                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "customerId: must not be null");
-            }
-            order.setCustomerId(req.customerId());
+        // Giai đoạn 9 (ADR-008 quyết định 3, 4): khách LÀ AI do customer-service trả lời, bằng chính
+        // token của khách — request không có trường customerId nào để tin (nếu có, ai cũng đặt hàng
+        // dưới tên người khác được). Chỉ khách admin đã duyệt (Active) mới được mua.
+        var me = customers.me(caller.bearerToken());
+        if (!me.isActive()) {
+            throw new CustomerNotActiveException(me.status());
         }
+        order.setCustomerId(me.id());
+        order.setOwnerSub(caller.subject());
         order.setCategory(req.category());
         order.setDescription(req.description());
 
@@ -106,11 +96,8 @@ public class OrderService {
         payload.put("eventId", eventId.toString());
         payload.put("orderId", saved.getId().toString());
         payload.put("customerId", saved.getCustomerId().toString());
-        // Giai đoạn 9 (ADR-008 quyết định 5): billing đóng dấu chủ sở hữu này lên hóa đơn. Chỉ THÊM
-        // trường (tương thích ngược) — billing bản cũ phải bỏ qua trường lạ (đã kiểm ở GĐ9 việc 3d).
-        if (saved.getOwnerSub() != null) {
-            payload.put("customerSub", saved.getOwnerSub());
-        }
+        // Giai đoạn 9 (ADR-008 quyết định 5): billing đóng dấu chủ sở hữu này lên hóa đơn.
+        payload.put("customerSub", saved.getOwnerSub());
         payload.put("amount", saved.getTotalAmount().toPlainString());
         payload.put("currency", saved.getCurrency());
         payload.put("completedAt", saved.getCompletedAt().toString());
@@ -137,7 +124,7 @@ public class OrderService {
 
     /**
      * Khách: luôn chỉ đơn của CHÍNH mình ({@code customerId} truyền vào bị bỏ qua). Admin: tất cả,
-     * lọc theo khách nếu có {@code customerId}. Auth tắt: như trước GĐ9 ({@code customerId} bắt buộc).
+     * lọc theo khách nếu có {@code customerId}.
      */
     @Transactional(readOnly = true)
     public Page<OrderDto> list(UUID customerId, int offset, int limit) {
@@ -147,9 +134,6 @@ public class OrderService {
         }
         if (customerId != null) {
             return orders.findByCustomerId(customerId, pageable).map(OrderDto::from);
-        }
-        if (!caller.authEnabled()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "customerId is required");
         }
         return orders.findAll(pageable).map(OrderDto::from);
     }

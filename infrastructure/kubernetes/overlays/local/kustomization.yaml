@@ -43,7 +43,6 @@ configMapGenerator:
       - LOGGING_LEVEL_ROOT=DEBUG
       # Giai đoạn 9 việc 3 (ADR-008 quyết định 4): service TỰ kiểm JWT — cùng công tắc + cùng cặp
       # issuer công khai / JWKS nội bộ như api-gateway (xem giải thích ở api-gateway-config).
-      - BSS_AUTH_ENABLED=true
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://bss.localhost/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: product-catalog-config
@@ -51,7 +50,6 @@ configMapGenerator:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=DEBUG
       # Giai đoạn 9 việc 3b — xem customer-service-config.
-      - BSS_AUTH_ENABLED=true
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://bss.localhost/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: order-management-config
@@ -62,7 +60,6 @@ configMapGenerator:
       - AWS_ENDPOINT_URL=http://localstack.bss.svc.cluster.local:4566
       - EVENT_BUS_NAME=bss-dev-events
       # Giai đoạn 9 việc 3c — xem customer-service-config.
-      - BSS_AUTH_ENABLED=true
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://bss.localhost/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: billing-service-config
@@ -73,7 +70,6 @@ configMapGenerator:
       - AWS_ENDPOINT_URL=http://localstack.bss.svc.cluster.local:4566
       - SQS_QUEUE_URL=http://localstack.bss.svc.cluster.local:4566/000000000000/bss-dev-billing-orders
       # Giai đoạn 9 việc 3d — xem customer-service-config.
-      - BSS_AUTH_ENABLED=true
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://bss.localhost/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: api-gateway-config
@@ -83,7 +79,6 @@ configMapGenerator:
       # Giai đoạn 7, việc 6 (B-18) — CHỈ overlay local có Keycloak, nên CHỈ ở đây mới bật auth.
       # dev/staging/prod cố tình KHÔNG có 2 dòng này (xem SecurityConfig.java) cho tới khi có
       # Keycloak/Cognito thật trên AWS — việc riêng.
-      - BSS_AUTH_ENABLED=true
       # Giai đoạn 9 việc 2 (ADR-008 quyết định 2) — 2 giá trị TÁCH BIỆT:
       #   ISSUER_URI  = địa chỉ CÔNG KHAI, chỉ để so khớp claim `iss` (trùng KC_HOSTNAME của Keycloak);
       #   JWK_SET_URI = địa chỉ NỘI BỘ cluster, để tải khóa công khai.

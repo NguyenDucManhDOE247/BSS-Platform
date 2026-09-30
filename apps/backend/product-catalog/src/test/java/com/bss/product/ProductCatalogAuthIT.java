@@ -28,7 +28,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * chạy, DB là Postgres thật (Testcontainers).
  */
 @SpringBootTest(properties = {
-        "bss.auth.enabled=true",
         "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/unused"
 })
 @AutoConfigureMockMvc

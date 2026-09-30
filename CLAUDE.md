@@ -571,7 +571,7 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 - **HTTPS + đăng nhập web trên AWS** (domain + ACM hoặc CloudFront) — B-23, và phần web của B-18.
 - ~~Keycloak production-grade~~ — ✅ 2026-09-30, [ADR-011](docs/adr/ADR-011-keycloak-production-grade.md): image optimized
   `apps/identity/keycloak` (26.7.4), rootfs chỉ đọc, prod 2 replica; **chưa chạy trên EKS** (cần apply `shared`).
-- **Xóa công tắc `bss.auth.enabled`** khi `e2e-local.sh` (mvn, auth tắt) cũng dùng token.
+- ~~Xóa công tắc `bss.auth.enabled`~~ — ✅ 2026-09-30: auth luôn bật ở mọi môi trường, kể cả `e2e-local.sh`.
 - **NetworkPolicy ở staging/prod:** đã kiểm trên dev EKS (11/11), chưa bật ở 2 môi trường kia.
 - **Tỉ lệ lỗi 7,9% dưới tải 700 req/s có Karpenter** — manh mối: `BssPodCrashLooping` của api-gateway
   bắn trong lúc đo (ADR-010).

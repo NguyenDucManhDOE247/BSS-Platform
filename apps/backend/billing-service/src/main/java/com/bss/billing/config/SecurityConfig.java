@@ -6,7 +6,6 @@ import java.util.Map;
 
 import jakarta.servlet.DispatcherType;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
@@ -35,7 +34,6 @@ public class SecurityConfig {
     static final String BILLING = "/tmf-api/billingManagement/v4";
 
     @Bean
-    @ConditionalOnProperty(name = "bss.auth.enabled", havingValue = "true")
     SecurityFilterChain enforcedFilterChain(HttpSecurity http) throws Exception {
         http.csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -51,16 +49,6 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, BILLING + "/billingAccount").hasRole("admin")
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(o -> o.jwt(j -> j.jwtAuthenticationConverter(keycloakAuthenticationConverter())));
-        return http.build();
-    }
-
-    /** Tắt auth: giữ NGUYÊN hành vi mở như trước GĐ9. */
-    @Bean
-    @ConditionalOnProperty(name = "bss.auth.enabled", havingValue = "false", matchIfMissing = true)
-    SecurityFilterChain openFilterChain(HttpSecurity http) throws Exception {
-        http.csrf(csrf -> csrf.disable())
-                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
         return http.build();
     }
 

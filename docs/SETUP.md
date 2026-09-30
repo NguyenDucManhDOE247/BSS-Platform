@@ -38,9 +38,10 @@ java -version && mvn -v && node -v && docker run --rm hello-world && kind versio
 cd apps/frontend/web-portal && npm ci && npm run dev      # http://localhost:3000 (admin-console: 3001)
 ```
 
-**Check:** the script ends with `PASS` (customer → plans → order → invoice with 10% VAT through the gateway).
-Local profile: ports 8081–8084 + gateway 8080 ([ADR-000](adr/ADR-000-local-dev.md)); backend auth is off in
-this mode (`bss.auth.enabled` default — see [runbooks/auth.md](runbooks/auth.md)).
+**Check:** the script ends with `ALL CHECKS PASSED` (new Keycloak user → own profile → blocked until approved →
+admin approves → order → invoice with 10% VAT → another customer gets 404). Local profile: ports 8081–8084 +
+gateway 8080 ([ADR-000](adr/ADR-000-local-dev.md)); auth is **always on** — tokens come from the compose
+Keycloak at `localhost:8180` ([runbooks/auth.md](runbooks/auth.md)).
 
 ## Part 2 — Kubernetes locally with kind ($0)
 

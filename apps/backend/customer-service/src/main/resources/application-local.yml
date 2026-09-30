@@ -16,3 +16,13 @@ server:
 logging:
   level:
     com.bss: DEBUG
+
+# Auth luôn bật (ADR-008 QĐ 6): token do Keycloak của docker-compose phát (KC_HOSTNAME =
+# http://localhost:8180/auth → `iss` khớp đúng chuỗi dưới đây; JWKS tải cùng địa chỉ vì service chạy
+# bằng `mvn` trên chính máy đó — khác kind, nơi phải tách iss công khai / JWKS nội bộ).
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8180/auth/realms/bss}
