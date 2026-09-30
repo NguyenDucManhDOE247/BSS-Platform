@@ -4,10 +4,10 @@ name: CD — staging
 # ADR-006 (staging là cluster riêng, dựng theo buổi).
 #
 # "Promote" KHÔNG build lại và KHÔNG pull/push layer nào:
-#   1. tính lại desired TẠI COMMIT CỦA TAG (mỗi service = commit cuối chạm thư mục của nó — cả 7 service
+#   1. tính lại desired TẠI COMMIT CỦA TAG (mỗi service = commit cuối chạm thư mục của nó — cả 8 image
 #      luôn có image, không còn "service không có image ở SHA này" — B-51);
-#   2. `aws ecr put-image` gắn thêm tag `rc-vX.Y.Z` lên đúng manifest digest của 7 image đó;
-#   3. deploy manifest 7 service lên bss-staging-eks; smoke PASS → ghi staging.json + releases/rc-vX.Y.Z.json
+#   2. `aws ecr put-image` gắn thêm tag `rc-vX.Y.Z` lên đúng manifest digest của 8 image đó;
+#   3. deploy manifest 8 image lên bss-staging-eks; smoke PASS → ghi staging.json + releases/rc-vX.Y.Z.json
 #      (`verified_in: [staging]` — cổng để cd-prod chấp nhận).
 #
 # Chạy lại / dựng lại cluster staging: Actions → CD — staging → Run workflow, chọn "Tag: rc-vX.Y.Z" làm
@@ -74,22 +74,16 @@ jobs:
           fi
 
           # last-known-good của staging (exit 3 = chưa có; mã khác là lỗi thật)
-          rc=0
-          scripts/release-manifest.sh state-get staging.json > "$RUNNER_TEMP/previous.json" || rc=$?
-          if [ "$rc" -eq 0 ]; then
-            echo "previous=$RUNNER_TEMP/previous.json" >> "$GITHUB_OUTPUT"
-          elif [ "$rc" -eq 3 ]; then
-            rm -f "$RUNNER_TEMP/previous.json"; echo "previous=" >> "$GITHUB_OUTPUT"
-            echo "::notice::Chưa có staging.json — lần deploy staging đầu tiên, chưa thể rollback."
-          else
-            echo "::error::state-get thất bại (exit $rc)"; exit "$rc"
-          fi
+          # `previous`: last-known-good, hoặc RỖNG nếu chưa có / manifest cũ trước ADR-011 (thiếu keycloak).
+          previous="$(scripts/release-manifest.sh previous staging.json "$RUNNER_TEMP/previous.json")"
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          [ -n "$previous" ] || echo "::notice::Không có last-known-good dùng được cho staging (lần deploy đầu, hoặc manifest cũ trước ADR-011) — lần này không thể rollback."
           echo "Thay đổi so với staging hiện tại:"
           scripts/release-manifest.sh diff "$RUNNER_TEMP/previous.json" "$RUNNER_TEMP/release.json" || true
 
       # Bằng `aws ecr put-image` — không docker pull/tag/push. Chạy lại vô hại (cùng digest → bỏ qua);
       # tag đã trỏ image KHÁC thì dừng (ECR tag IMMUTABLE).
-      - name: Gắn tag ${{ github.ref_name }} lên 7 image (aws ecr put-image)
+      - name: Gắn tag ${{ github.ref_name }} lên 8 image (aws ecr put-image)
         run: scripts/release-manifest.sh ecr-tag "$RUNNER_TEMP/release.json" "$GITHUB_REF_NAME"
 
       - name: Deploy staging + smoke + rollback nếu hỏng

@@ -52,7 +52,7 @@ Trình duyệt ──(Authorization Code + PKCE)──► Keycloak realm "bss"  
 
 | | kind (`overlays/local`) | docker-compose + `mvn` | AWS dev/staging/prod |
 |---|---|---|---|
-| Keycloak | `start-dev`, H2 trong emptyDir | container, `localhost:8180/auth` | `components/keycloak-aws`: `start`, Postgres riêng trên RDS, secret qua CSI |
+| Keycloak | 26.7.4 gốc, `start-dev`, H2 trong emptyDir | 26.7.4 gốc, `localhost:8180/auth` | Image riêng `bss/keycloak` (`apps/identity/keycloak`, ADR-011): `start --optimized`, rootfs chỉ đọc, Postgres riêng trên RDS, secret qua CSI; **prod 2 replica** (dev/staging 1) |
 | Auth backend | Bật | **Tắt** (`bss.auth.enabled` mặc định) | Bật |
 | `KC_HOSTNAME` / `iss` | `http://bss.localhost/auth` | `http://localhost:8180/auth` | `http://keycloak.bss.svc.cluster.local:8080/auth` (DNS nội bộ) |
 | Keycloak qua Ingress | Có, path `/auth` | — | **Không** (chưa có HTTPS — ADR-008 quyết định 8) |
@@ -126,7 +126,9 @@ kubectl -n bss port-forward svc/keycloak 18080:8080 &
 | Triệu chứng | Nguyên nhân | Sửa |
 |---|---|---|
 | `Account is not fully set up` khi xin token | Realm mặc định bật `VERIFY_PROFILE` | `requiredActions` cấp realm `VERIFY_EMAIL`/`VERIFY_PROFILE` = `enabled: false` |
-| Keycloak CrashLoop `ReadOnlyFileSystemException` | `start`/`start-dev` không `--optimized` "augment" Quarkus lúc khởi động, ghi vào `/opt/keycloak/lib` | `readOnlyRootFilesystem: false` riêng Keycloak (nợ: image `kc.sh build`) |
+| Keycloak CrashLoop `ReadOnlyFileSystemException` | `start`/`start-dev` không `--optimized` "augment" Quarkus lúc khởi động, ghi vào `/opt/keycloak/lib` | AWS: image `kc.sh build` + `start --optimized` (ADR-011) → rootfs chỉ đọc. kind vẫn `start-dev` (luôn augment) → giữ `false` ở `overlays/local` |
+| Pod Keycloak thứ hai `Error` 1 lần ngay khi dựng môi trường mới (`duplicate key … pg_type_typname_nsp_index`) | 2 Pod cùng tạo bảng Liquibase trên DB **trống** | Không cần làm gì: kubelet khởi động lại, Pod vào cluster. Chỉ xảy ra lần đầu (ADR-011 §3) |
+| Trivy báo CVE CRITICAL ở Keycloak 26.5.x (CVE-2026-18963 chiếm tài khoản) | Keycloak là image bên thứ ba, trước ADR-011 không qua Trivy | Nâng 26.7.4 + `ci-keycloak.yml` quét mỗi PR |
 | Probe 404 dù Keycloak khỏe | Keycloak 26 phục vụ `/health/*` ở cổng quản trị 9000 | Probe port 9000 + `KC_HTTP_MANAGEMENT_RELATIVE_PATH=/` |
 | Trình duyệt bị chuyển tới `keycloak.bss.svc.cluster.local` | `KC_HOSTNAME` = DNS nội bộ (GĐ7) | kind: hostname công khai + `jwk-set-uri` nội bộ; AWS: cố ý nội bộ, không có đăng nhập web |
 | Bấm "Đăng nhập" không có gì xảy ra (GĐ9) | `http://bss.localtest.me` không phải secure context → không có `crypto.subtle`, lỗi nằm im trong `auth.error` | Host kind → `bss.localhost` |
@@ -134,8 +136,38 @@ kubectl -n bss port-forward svc/keycloak 18080:8080 &
 | Hàng loạt 401 trên kind sau khi `apply` | Keycloak local rollout → Pod mới (H2 mới) có **khóa ký mới** → token của Pod cũ vô hiệu | Đặc thù local (H2 trong emptyDir) — lấy token mới; AWS dùng Postgres nên không bị |
 | Playwright đỏ ngẫu nhiên ở bước duyệt | Test đổi bộ lọc trước khi PATCH ghi xong | Chờ response 2xx trước khi thao tác tiếp (`helpers.ts`) |
 
-## 8. Còn lại
+## 8. Keycloak nhiều replica (ADR-011)
+
+- Các Pod tìm nhau qua **database** (`jdbc-ping`, bảng JGROUPSPING) — không có headless Service. Cổng
+  JGroups 7800/57800 (mTLS tự động) chỉ mở giữa Pod Keycloak (`allow-to-keycloak`).
+- Session người dùng nằm trong DB (persistent sessions) → 1 Pod chết, người dùng không phải đăng nhập lại.
+- Xem cluster: `kubectl -n bss logs deploy/keycloak | grep ISPN000094` → phải thấy `(2)` ở prod.
+
+### Kiểm Keycloak HA trên EKS (chạy khi có prod/dev thật — chưa chạy lần nào)
+
+```bash
+kubectl -n bss get pods -l app=keycloak -o wide            # prod: 2 Pod, khác node (và nếu được, khác AZ)
+kubectl -n bss logs -l app=keycloak --tail=-1 | grep ISPN000094 | tail -2   # "(2)"
+kubectl -n bss get pdb keycloak                             # ALLOWED DISRUPTIONS 1
+./scripts/netpol-matrix.sh                                  # có dòng "kẻ lạ → Pod keycloak:7800 … BLOCKED"
+# Chịu lỗi: xóa 1 Pod trong khi smoke chạy lại — không được đỏ
+kubectl -n bss delete pod "$(kubectl -n bss get pod -l app=keycloak -o name | head -1 | cut -d/ -f2)" --wait=false
+./scripts/smoke.sh prod
+```
+
+### Nâng version Keycloak
+
+1. Sửa `ARG KEYCLOAK_VERSION` ở `apps/identity/keycloak/Dockerfile` **và** image ở
+   `overlays/local/keycloak/deployment.yaml` + `deploy/docker-compose.yml` (cùng 1 bản ở mọi nơi).
+2. PR → `ci-keycloak.yml` (build + Trivy + chạy thử 2 replica) → xem lại `.trivyignore` (xóa dòng đã vá).
+3. Kiểm local: kind (`e2e-kind.sh`, `e2e-browser.sh`).
+4. **Patch** (26.7.x → 26.7.y): merge, CD rolling update bình thường. **Minor/major** (26.7 → 26.8):
+   Keycloak không hỗ trợ 2 bản khác minor chạy chung 1 cluster/DB → trước khi deploy
+   `kubectl -n bss scale deploy/keycloak --replicas=0`, để CD áp bản mới (Pod đầu migrate schema), rồi
+   mới trả số replica. Với môi trường ephemeral (ADR-006) dựng mới thì không cần.
+
+## 9. Còn lại
 
 - **HTTPS + đăng nhập web trên AWS** (domain + ACM hoặc CloudFront) — mục "Để sau" trong lộ trình.
-- **Keycloak production-grade**: image `kc.sh build` + `start --optimized`; > 1 replica ở prod (Infinispan).
 - **Xóa công tắc `bss.auth.enabled`**: cần `e2e-local.sh` (mvn) lấy token từ Keycloak của docker-compose.
+- **Chạy "Kiểm Keycloak HA trên EKS"** ở mục 8 lần đầu (cần `terraform apply` shared để có repo `bss/keycloak`).

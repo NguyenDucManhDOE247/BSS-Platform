@@ -3,7 +3,7 @@
 # Account-level resources that must exist EXACTLY ONCE and outlive any single
 # dev/staging/prod environment — see docs/adr/ADR-003-terraform-shared-state.md.
 #
-#   - ECR repositories (7, one per service — the whole point of "build once, deploy
+#   - ECR repositories (8: one per service + keycloak — ADR-011 — the whole point of "build once, deploy
 #     many" is that the SAME image, in the SAME repo, gets promoted across environments)
 #   - GitHub OIDC provider (there can only be ONE per AWS account — creating a second
 #     "token.actions.githubusercontent.com" provider fails)

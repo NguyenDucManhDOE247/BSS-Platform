@@ -1,6 +1,6 @@
 name: Deploy release manifest
 description: >
-  Áp một release manifest (7 service, mỗi service một image tag) lên cluster EKS của một môi trường,
+  Áp một release manifest (8 image: 7 service + keycloak — ADR-011; mỗi cái một tag) lên cluster EKS của một môi trường,
   chờ rollout, kiểm drift, chạy smoke test — và TỰ ROLLBACK về manifest cũ nếu bất kỳ bước nào hỏng.
   Dùng chung cho cd-dev / cd-staging / cd-prod (ADR-005). Cần: đã checkout repo (fetch-depth: 0 nếu
   còn dùng `desired`), đã cấu hình credential AWS, có kubectl + jq + aws cli (đều có sẵn trên
@@ -113,12 +113,12 @@ runs:
         dir="$(scripts/release-manifest.sh render "$MANIFEST" "$ENVIRONMENT" "$REGISTRY")"
         kubectl apply -k "$dir"
 
-    - name: Chờ rollout cả 7 deployment
+    - name: Chờ rollout cả 8 deployment
       shell: bash
       env:
         TIMEOUT: ${{ inputs.rollout-timeout }}
       run: |
-        # Chờ CẢ 7 (không chỉ service "vừa đổi"): manifest là trạng thái đầy đủ, và một service
+        # Chờ CẢ 8 (không chỉ image "vừa đổi"): manifest là trạng thái đầy đủ, và một service
         # không đổi vẫn có thể đang kẹt từ lần trước.
         for svc in $(scripts/release-manifest.sh services | jq -r '.[]'); do
           kubectl -n bss rollout status "deployment/$svc" --timeout="$TIMEOUT"

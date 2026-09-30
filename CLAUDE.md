@@ -159,6 +159,8 @@ admin-console        SHA            rc-vX           vX
 | `ci-frontend.yml` | PR đụng `apps/frontend/**` | npm lint/test/build + Trivy + docker build |
 | `ci-terraform.yml` | PR đụng `infrastructure/terraform/**` | fmt + tfsec + plan (post comment) |
 | `ci-k8s.yml` | PR đụng `infrastructure/kubernetes/**` | kustomize build + kubeconform 3 envs |
+| `ci-keycloak.yml` | PR đụng `apps/identity/keycloak/**` | docker build + Trivy + chạy thật 2 replica rootfs chỉ đọc (ADR-011) |
+| `ci-scripts.yml` | PR đụng `scripts/**` | shellcheck + test `release-manifest.sh` / `smoke.sh` |
 | `cd-dev.yml` | Merge `main` / thủ công | plan (desired từ git) → build service thiếu image → apply manifest 7 service + smoke thật → PASS thì ghi `deploy-state`; hỏng thì rollback về manifest cũ (ADR-005) |
 | `cd-staging.yml` | Tag `rc-vX.Y.Z` | Tag phải trên `main` → `ecr put-image` rc-vX → apply staging + smoke → ghi `releases/rc-vX.json` (`verified_in: staging`) |
 | `cd-prod.yml` | Tag `vX.Y.Z` | Cổng kiểm (rc đã qua staging, cùng commit) → **Approve thủ công** → `ecr put-image` vX → apply prod + smoke; hỏng thì tự rollback |
@@ -194,6 +196,8 @@ bss-platform/
 │   ├── frontend/
 │   │   ├── web-portal/                 ← Vite + React + Nginx
 │   │   └── admin-console/              ← Vite + React + Nginx
+│   ├── identity/
+│   │   └── keycloak/                   ← Image Keycloak optimized cho AWS (ADR-011)
 │   └── backend/
 │       ├── api-gateway/                ← Spring Cloud Gateway
 │       ├── customer-service/           ← TMF629
@@ -250,6 +254,8 @@ bss-platform/
 │   ├── ci-frontend.yml
 │   ├── ci-terraform.yml
 │   ├── ci-k8s.yml
+│   ├── ci-keycloak.yml                 ← build + Trivy + chạy thử 2 replica (ADR-011)
+│   ├── ci-scripts.yml                  ← shellcheck + test release-manifest/smoke
 │   ├── cd-dev.yml
 │   ├── cd-staging.yml
 │   └── cd-prod.yml
@@ -563,7 +569,8 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 ### Còn lại (có chủ đích để sau — chi tiết ở `learning/20` mục "Để sau")
 
 - **HTTPS + đăng nhập web trên AWS** (domain + ACM hoặc CloudFront) — B-23, và phần web của B-18.
-- **Keycloak production-grade:** image `kc.sh build` + `start --optimized`, > 1 replica ở prod.
+- ~~Keycloak production-grade~~ — ✅ 2026-09-30, [ADR-011](docs/adr/ADR-011-keycloak-production-grade.md): image optimized
+  `apps/identity/keycloak` (26.7.4), rootfs chỉ đọc, prod 2 replica; **chưa chạy trên EKS** (cần apply `shared`).
 - **Xóa công tắc `bss.auth.enabled`** khi `e2e-local.sh` (mvn, auth tắt) cũng dùng token.
 - **NetworkPolicy ở staging/prod:** đã kiểm trên dev EKS (11/11), chưa bật ở 2 môi trường kia.
 - **Tỉ lệ lỗi 7,9% dưới tải 700 req/s có Karpenter** — manh mối: `BssPodCrashLooping` của api-gateway

@@ -1,0 +1,15 @@
+# ADR-011. `maxUnavailable: 1` thay vì `minAvailable: 1` như 7 service kia, có chủ đích:
+#   • dev/staging (1 replica): minAvailable 1 sẽ CHẶN mọi lần drain node (ALLOWED DISRUPTIONS = 0 —
+#     đúng bài học Lab 08, docs/labs/08-chaos-engineering.md). maxUnavailable 1 cho phép evict, chấp
+#     nhận vài chục giây không đăng nhập mới được — token đã phát vẫn hợp lệ vì backend chỉ kiểm chữ ký.
+#   • prod (2 replica): tối đa 1 Pod bị evict cùng lúc → luôn còn 1 Pod phục vụ.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: keycloak
+  namespace: bss
+  labels: { app: keycloak }
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: { app: keycloak }
