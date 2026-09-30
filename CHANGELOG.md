@@ -46,6 +46,14 @@ Debt pass from Phase 8 back to 0 (after `v2.0.0`), each item verified on real in
 
 ### Fixed
 
+- Found by running the Definition-of-Done checks **from a clean clone** (existing environments hid all of them):
+  `kind-up.sh` failed on a brand-new cluster (`kubectl wait` before the ingress pod existed); 4 scripts committed without
+  the executable bit (B-07 again — `ci-scripts` now rejects any non-100755 `*.sh`); `e2e-local.sh` left Maven + app JVMs
+  orphaned on ports 8080–8084 (it killed only the `mvn` wrapper — services now run in their own process group) and
+  now refuses to start when those ports are taken.
+- `teardown.sh` got stuck on `DeleteSubnet: DependencyViolation`: a Karpenter Spot node's secondary ENI was never
+  reclaimed by the VPC CNI and kept the EKS cluster security group alive. teardown now removes those (by cluster tag)
+  and retries once; `orphan_finder.py` reports leftover EKS security groups and no longer crashes on a cp1252 console.
 - The 4 OpenAPI contracts in `packages/api-contracts/` were not valid YAML (a backtick cannot start a token
   inside a `{ description: … }` flow mapping) — every OpenAPI tool would reject them.
 - Rolling updates dropped requests (1/419 → 500): `preStop` sleep 10 s on every Deployment.

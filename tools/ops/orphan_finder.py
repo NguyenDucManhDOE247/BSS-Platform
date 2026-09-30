@@ -69,7 +69,7 @@ def find_ec2(ec2) -> list[Orphan]:
     return out
 
 
-def find_nat_eip_ebs_eni(ec2) -> list[Orphan]:
+def find_nat_eip_ebs_eni(ec2, live_clusters: set[str]) -> list[Orphan]:
     out: list[Orphan] = []
     for nat in ec2.describe_nat_gateways(Filter=[{"Name": "state", "Values": ["pending", "available"]}])["NatGateways"]:
         if _is_bss(_tags(nat.get("Tags"))):
@@ -87,6 +87,15 @@ def find_nat_eip_ebs_eni(ec2) -> list[Orphan]:
         for eni in page["NetworkInterfaces"]:
             if _is_bss(_tags(eni.get("TagSet"))) or eni.get("Description", "").startswith(("aws-K8S", "Amazon EKS " + PREFIX)):
                 out.append(Orphan("ENI", eni["NetworkInterfaceId"], eni.get("Description", "")[:60]))
+    # Không tính tiền, nhưng CHẶN xóa VPC (lỗi thật 2026-09-30: SG `eks-cluster-sg-*` sót lại vì 1 ENI của
+    # VPC CNI còn giữ nó khi cluster bị xóa). Chỉ báo SG của cluster bss-* KHÔNG còn tồn tại.
+    for page in ec2.get_paginator("describe_security_groups").paginate(
+        Filters=[{"Name": "tag-key", "Values": ["aws:eks:cluster-name"]}]
+    ):
+        for sg in page["SecurityGroups"]:
+            cluster = _tags(sg.get("Tags")).get("aws:eks:cluster-name", "")
+            if cluster.startswith(PREFIX) and cluster not in live_clusters:
+                out.append(Orphan("Security group", sg["GroupId"], f"của cluster đã xóa {cluster} — chặn xóa VPC"))
     for vpc in ec2.describe_vpcs()["Vpcs"]:
         tags = _tags(vpc.get("Tags"))
         if _is_bss(tags, tags.get("Name", "")):
@@ -127,15 +136,20 @@ def find_eks_rds(eks, rds) -> list[Orphan]:
 
 def find_all(session: boto3.session.Session) -> list[Orphan]:
     ec2 = session.client("ec2")
+    eks = session.client("eks")
     return (
-        find_eks_rds(session.client("eks"), session.client("rds"))
+        find_eks_rds(eks, session.client("rds"))
         + find_ec2(ec2)
         + find_elb(session.client("elbv2"))
-        + find_nat_eip_ebs_eni(ec2)
+        + find_nat_eip_ebs_eni(ec2, set(eks.list_clusters()["clusters"]))
     )
 
 
 def main() -> int:
+    # Console Windows (cp1252) không in được "✓/✗" + tiếng Việt → UnicodeEncodeError (lỗi thật 2026-09-30 —
+    # 3 script ops kia đã sửa ở GĐ8, script này bị sót). teardown.sh có đặt PYTHONIOENCODING, gọi tay thì không.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--region", default="ap-southeast-1")
     parser.add_argument("--profile", default=None, help="AWS CLI profile name")
