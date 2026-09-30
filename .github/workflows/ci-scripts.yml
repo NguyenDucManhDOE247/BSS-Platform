@@ -31,8 +31,17 @@ jobs:
 
       # shellcheck, jq, kubectl, git đều có sẵn trên ubuntu-latest — không cần cài thêm.
       # `-S warning`: chỉ fail khi có warning/error (bỏ qua mức info/style của các script cũ).
+      # B-07 tái phát 2026-09-30: 4 script tạo trên Windows vào git với mode 100644 → `./scripts/x.sh` báo
+      # "Permission denied" trên Linux/WSL (chỉ lộ khi làm theo tài liệu từ một clone sạch). Chặn ở đây.
+      - name: Mọi *.sh trong git phải có bit thực thi (100755)
+        run: |
+          bad="$(git ls-files -s -- '*.sh' | awk '$1 != "100755" {print $4}')"
+          if [ -n "$bad" ]; then
+            echo "::error::Thiếu bit thực thi — sửa bằng: git update-index --chmod=+x <file>"; echo "$bad"; exit 1
+          fi
+
       - name: shellcheck
-        run: shellcheck -S warning scripts/release-manifest.sh scripts/smoke.sh scripts/test-alert-rules.sh scripts/monitoring-install.sh scripts/tracing-install.sh scripts/logging-install.sh scripts/auth-install.sh scripts/tests/*.sh
+        run: shellcheck -S warning scripts/release-manifest.sh scripts/smoke.sh scripts/test-alert-rules.sh scripts/monitoring-install.sh scripts/tracing-install.sh scripts/logging-install.sh scripts/auth-install.sh scripts/e2e-local.sh scripts/kind-up.sh scripts/netpol-matrix.sh scripts/tests/*.sh
 
       - name: Test release-manifest.sh
         run: ./scripts/tests/release-manifest.test.sh
