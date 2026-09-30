@@ -9,13 +9,11 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * @param customerId Giai đoạn 9 (ADR-008): khi BẬT auth, trường này bị BỎ QUA — customerId lấy từ
- *                   hồ sơ của chính người đăng nhập ({@code GET /customer/me}); gửi id người khác cũng
- *                   vô ích. Chỉ còn dùng khi auth tắt (dev/staging/prod cho tới GĐ9 việc 7), lúc đó
- *                   service vẫn bắt buộc có. Deprecated — xóa cùng công tắc {@code bss.auth.enabled}.
+ * Không có {@code customerId}: khách là người đăng nhập, lấy từ hồ sơ của chính token
+ * ({@code GET /customer/me} — ADR-008). Trường cũ đã xóa cùng công tắc {@code bss.auth.enabled}
+ * (2026-09-30).
  */
 public record CreateOrderRequest(
-        UUID customerId,
         String category,
         String description,
         @NotEmpty @Valid List<Item> items

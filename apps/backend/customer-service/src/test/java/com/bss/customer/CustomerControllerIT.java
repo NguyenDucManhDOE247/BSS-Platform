@@ -4,6 +4,10 @@ import com.bss.customer.model.Customer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -15,6 +19,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -35,7 +41,27 @@ class CustomerControllerIT {
         r.add("spring.flyway.enabled", () -> "true");
     }
 
-    @Autowired MockMvc mvc;
+    /**
+     * Auth luôn bật (ADR-008 QĐ 6 — công tắc {@code bss.auth.enabled} đã xóa 2026-09-30). Test CRUD
+     * này chạy với vai trò admin: mọi request mặc định mang JWT role {@code admin} ({@code jwt()} chỉ
+     * bỏ qua bước giải mã chữ ký — bộ lọc Spring Security + luật phân quyền vẫn chạy thật). Luật riêng
+     * cho khách / người lạ nằm ở *AuthIT.
+     */
+    @Autowired WebApplicationContext context;
+    MockMvc mvc;
+
+    @BeforeEach
+    void adminByDefault() {
+        mvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(springSecurity())
+                .defaultRequest(get("/").with(jwt()
+                        .jwt(j -> j.subject("admin-sub").claim("email", "admin1@bss.local"))
+                        .authorities(new SimpleGrantedAuthority("ROLE_admin"))))
+                .build();
+    }
+
+    /** MockMvc KHÔNG có token — người lạ. */
+    @Autowired MockMvc anonymous;
     @Autowired ObjectMapper json;
 
     @Test
@@ -81,13 +107,11 @@ class CustomerControllerIT {
     }
 
     /**
-     * Giai đoạn 9 (ADR-008): khi TẮT auth (dev/staging/prod cho tới GĐ9 việc 7) mọi endpoint cũ giữ
-     * nguyên hành vi mở như trước — nhưng "/me" không có danh tính nào để trả, phải 401 chứ không
-     * được đoán bừa là khách nào.
+     * Không token → 401 (trước 2026-09-30 test này kiểm hành vi của chế độ "auth tắt"; chế độ đó đã xóa).
      */
     @Test
-    void me_is_401_when_auth_disabled() throws Exception {
-        mvc.perform(get("/tmf-api/customerManagement/v4/customer/me"))
+    void me_without_token_is_401() throws Exception {
+        anonymous.perform(get("/tmf-api/customerManagement/v4/customer/me"))
                 .andExpect(status().isUnauthorized());
     }
 

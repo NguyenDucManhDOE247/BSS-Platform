@@ -6,7 +6,6 @@ import java.util.Map;
 
 import jakarta.servlet.DispatcherType;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
@@ -26,7 +25,7 @@ import org.springframework.security.web.SecurityFilterChain;
  *       Việc "khách chỉ thấy gói đang bán" lọc ở service ({@code CallerAccess}), không ở đây.</li>
  *   <li>Mọi thao tác ghi (tạo, sửa giá, ngừng bán, xóa) — chỉ role {@code admin}.</li>
  * </ul>
- * Cùng công tắc {@code bss.auth.enabled} với api-gateway / customer-service; tắt = hành vi cũ.
+ * Auth luôn bật ở mọi môi trường (ADR-008 quyết định 6 — công tắc cũ đã xóa).
  */
 @Configuration
 public class SecurityConfig {
@@ -34,7 +33,6 @@ public class SecurityConfig {
     static final String CATALOG = "/tmf-api/productCatalog/v4/**";
 
     @Bean
-    @ConditionalOnProperty(name = "bss.auth.enabled", havingValue = "true")
     SecurityFilterChain enforcedFilterChain(HttpSecurity http) throws Exception {
         http.csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -47,15 +45,6 @@ public class SecurityConfig {
                         .requestMatchers(CATALOG).hasRole("admin")
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(o -> o.jwt(j -> j.jwtAuthenticationConverter(keycloakAuthenticationConverter())));
-        return http.build();
-    }
-
-    @Bean
-    @ConditionalOnProperty(name = "bss.auth.enabled", havingValue = "false", matchIfMissing = true)
-    SecurityFilterChain openFilterChain(HttpSecurity http) throws Exception {
-        http.csrf(csrf -> csrf.disable())
-                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
         return http.build();
     }
 

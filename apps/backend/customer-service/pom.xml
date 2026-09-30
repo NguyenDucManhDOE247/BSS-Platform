@@ -60,7 +60,7 @@
         </dependency>
 
         <!-- Giai đoạn 9 (ADR-008 quyết định 4): service TỰ kiểm JWT của Keycloak (zero-trust),
-             không tin header do gateway chèn. Bật/tắt bằng bss.auth.enabled — xem SecurityConfig. -->
+             không tin header do gateway chèn. Auth luôn bật (ADR-008 QĐ 6) — xem SecurityConfig. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>

@@ -61,7 +61,6 @@ configMapGenerator:
       - AWS_REGION=ap-southeast-1
       # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
       # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
-      - BSS_AUTH_ENABLED=true
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: product-catalog-config
@@ -71,7 +70,6 @@ configMapGenerator:
       - AWS_REGION=ap-southeast-1
       # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
       # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
-      - BSS_AUTH_ENABLED=true
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: order-management-config
@@ -82,7 +80,6 @@ configMapGenerator:
       - EVENT_BUS_NAME=bss-dev-events
       # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
       # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
-      - BSS_AUTH_ENABLED=true
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: billing-service-config
@@ -92,7 +89,6 @@ configMapGenerator:
       - AWS_REGION=ap-southeast-1
       # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
       # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
-      - BSS_AUTH_ENABLED=true
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
       # Giai đoạn 5: real queue URL — account id is stable (see note on `images:` above), queue
@@ -107,7 +103,6 @@ configMapGenerator:
       - LOGGING_LEVEL_ROOT=DEBUG
       # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
       # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
-      - BSS_AUTH_ENABLED=true
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
 

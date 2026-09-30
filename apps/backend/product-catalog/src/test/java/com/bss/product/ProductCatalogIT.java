@@ -1,6 +1,10 @@
 package com.bss.product;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -10,6 +14,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -26,7 +32,24 @@ class ProductCatalogIT {
     @ServiceConnection
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine");
 
-    @Autowired MockMvc mvc;
+    /**
+     * Auth luôn bật (ADR-008 QĐ 6 — công tắc {@code bss.auth.enabled} đã xóa 2026-09-30). Test CRUD
+     * này chạy với vai trò admin: mọi request mặc định mang JWT role {@code admin} ({@code jwt()} chỉ
+     * bỏ qua bước giải mã chữ ký — bộ lọc Spring Security + luật phân quyền vẫn chạy thật). Luật riêng
+     * cho khách / người lạ nằm ở *AuthIT.
+     */
+    @Autowired WebApplicationContext context;
+    MockMvc mvc;
+
+    @BeforeEach
+    void adminByDefault() {
+        mvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(springSecurity())
+                .defaultRequest(get("/").with(jwt()
+                        .jwt(j -> j.subject("admin-sub").claim("email", "admin1@bss.local"))
+                        .authorities(new SimpleGrantedAuthority("ROLE_admin"))))
+                .build();
+    }
 
     @Test
     void seed_data_loaded_via_flyway() throws Exception {

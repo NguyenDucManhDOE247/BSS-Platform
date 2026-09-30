@@ -4,12 +4,11 @@ info:
   description: |
     TM Forum TMF622 Product Order Management (subset).
 
-    **Xác thực (Giai đoạn 9, ADR-008) khi `bss.auth.enabled=true`** — Bearer JWT Keycloak:
+    **Xác thực (Giai đoạn 9, ADR-008) — luôn bật** — Bearer JWT Keycloak:
     - `POST` — chỉ role `customer`. `customerId` lấy từ hồ sơ của CHÍNH người đăng nhập
-      (customer-service `GET /customer/me`, chuyển tiếp token); trường `customerId` trong body bị bỏ qua.
+      (customer-service `GET /customer/me`, chuyển tiếp token) — request không có trường `customerId`.
       Khách phải ở trạng thái `Active` (admin đã duyệt), nếu không → 422.
     - `GET` — role `customer` chỉ thấy đơn của mình (đơn người khác → 404); role `admin` thấy tất cả.
-    Khi `bss.auth.enabled=false`: hành vi trước GĐ9 (`customerId` bắt buộc ở body và ở query list).
   version: 4.1.0
 
 servers:
@@ -117,11 +116,6 @@ components:
       type: object
       required: [items]
       properties:
-        customerId:
-          type: string
-          format: uuid
-          deprecated: true
-          description: Chỉ dùng khi auth tắt. Khi bật auth bị bỏ qua (lấy từ hồ sơ người đăng nhập). Xóa cùng công tắc bss.auth.enabled.
         category:    { type: string }
         description: { type: string }
         items:

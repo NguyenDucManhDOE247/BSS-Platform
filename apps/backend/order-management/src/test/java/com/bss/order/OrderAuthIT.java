@@ -47,7 +47,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * sang customer-service có test riêng bằng HTTP server thật ({@code CustomerClientTest}).
  */
 @SpringBootTest(properties = {
-        "bss.auth.enabled=true",
         "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/unused",
         "bss.outbox.publisher.enabled=false"
 })

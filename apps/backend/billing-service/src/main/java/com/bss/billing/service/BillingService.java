@@ -14,8 +14,6 @@ import com.bss.billing.repository.InvoiceRepository;
 import com.bss.billing.security.CurrentCaller;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -82,7 +80,7 @@ public class BillingService {
 
     /**
      * Khách: luôn chỉ hóa đơn của CHÍNH mình ({@code customerId} bị bỏ qua). Admin: tất cả, lọc theo
-     * khách nếu có {@code customerId}. Auth tắt: như trước GĐ9 ({@code customerId} bắt buộc).
+     * khách nếu có {@code customerId}.
      */
     @Transactional(readOnly = true)
     public Page<InvoiceDto> listInvoices(UUID customerId, int offset, int limit) {
@@ -92,9 +90,6 @@ public class BillingService {
         }
         if (customerId != null) {
             return invoices.findByBillingAccount_CustomerId(customerId, pageable).map(InvoiceDto::from);
-        }
-        if (!caller.authEnabled()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "customerId is required");
         }
         return invoices.findAll(pageable).map(InvoiceDto::from);
     }

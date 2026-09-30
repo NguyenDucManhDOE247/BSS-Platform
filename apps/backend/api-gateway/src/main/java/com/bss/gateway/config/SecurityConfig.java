@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
@@ -25,20 +24,16 @@ import reactor.core.publisher.Mono;
  * Giai đoạn 7, việc 6 (B-18): "Gateway không kiểm token; admin-console ai vào cũng xóa được
  * khách hàng."
  *
- * <p>Có 2 bean loại trừ nhau qua {@code bss.auth.enabled} (mặc định {@code false}) — KHÔNG có 1
- * cấu hình "bật cho mọi môi trường": Keycloak hiện chỉ tồn tại ở overlay {@code local} (kind).
- * dev/staging/prod chưa có Keycloak/Cognito (việc riêng, cần AWS thật) — nếu bắt buộc JWT ở mọi
- * môi trường ngay bây giờ, cd-dev sẽ tự phá chính nó lần deploy tới (mọi request mutating tới
- * dev/staging/prod sẽ 401 vì không nơi nào phát hành được token). {@code openFilterChain} giữ
- * đúng hành vi HIỆN TẠI (không auth — B-18 vẫn còn treo trên AWS) cho tới khi Keycloak/Cognito
- * được triển khai ở đó.
+ * <p>Auth LUÔN bật ở mọi môi trường (ADR-008 quyết định 6). Từ GĐ7 tới 2026-09-30 từng có công tắc
+ * {@code bss.auth.enabled} với 1 chuỗi "mở hết" cho môi trường chưa có Keycloak; công tắc bị xóa khi
+ * cả kind, docker-compose lẫn AWS đều có Keycloak — giữ nó chỉ còn là 1 cách để vô tình tắt bảo mật.
+ * Thiếu cấu hình issuer/JWKS thì app KHÔNG khởi động được (fail sớm), thay vì chạy mà không kiểm token.
  */
 @Configuration
 public class SecurityConfig {
 
-    /** bss.auth.enabled=true (chỉ overlays/local hiện nay) — JWT thật, có phân quyền theo role. */
+    /** JWT thật (Keycloak), phân quyền thô theo role — luật sở hữu chi tiết nằm ở từng service. */
     @Bean
-    @ConditionalOnProperty(name = "bss.auth.enabled", havingValue = "true")
     SecurityWebFilterChain enforcedFilterChain(ServerHttpSecurity http) {
         http.csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .authorizeExchange(exchanges -> exchanges
@@ -59,15 +54,6 @@ public class SecurityConfig {
                         // tiết ("chỉ xem đơn/hóa đơn của mình") nằm ở từng service (ADR-008 quyết định 4).
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(keycloakAuthoritiesConverter())));
-        return http.build();
-    }
-
-    /** bss.auth.enabled=false/chưa đặt (mặc định — dev/staging/prod hiện nay) — giữ hành vi cũ. */
-    @Bean
-    @ConditionalOnProperty(name = "bss.auth.enabled", havingValue = "false", matchIfMissing = true)
-    SecurityWebFilterChain openFilterChain(ServerHttpSecurity http) {
-        http.csrf(ServerHttpSecurity.CsrfSpec::disable)
-                .authorizeExchange(exchanges -> exchanges.anyExchange().permitAll());
         return http.build();
     }
 

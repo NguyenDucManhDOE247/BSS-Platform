@@ -1,6 +1,5 @@
 package com.bss.billing.security;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -16,26 +15,16 @@ import java.util.Optional;
 @Component
 public class CurrentCaller {
 
-    private final boolean authEnabled;
-
-    public CurrentCaller(@Value("${bss.auth.enabled:false}") boolean authEnabled) {
-        this.authEnabled = authEnabled;
-    }
-
-    public boolean authEnabled() {
-        return authEnabled;
-    }
-
-    /** Admin — hoặc auth tắt (không lọc gì, như trước GĐ9). */
+    /** Admin thấy mọi dữ liệu; khách chỉ thấy của mình (lọc ở service). */
     public boolean seesEverything() {
-        return !authEnabled || jwt().map(t -> t.getAuthorities().stream()
+        return jwt().map(t -> t.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .anyMatch("ROLE_admin"::equals)).orElse(false);
     }
 
     public String subject() {
         return jwt().map(t -> t.getToken().getSubject())
-                .orElseThrow(() -> new IllegalStateException("Không có JWT — chỉ gọi khi authEnabled()"));
+                .orElseThrow(() -> new IllegalStateException("Không có JWT — SecurityConfig lẽ ra đã trả 401 trước khi tới đây"));
     }
 
     private Optional<JwtAuthenticationToken> jwt() {

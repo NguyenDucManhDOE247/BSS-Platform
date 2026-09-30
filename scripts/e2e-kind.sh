@@ -4,13 +4,13 @@
 # instead of `mvn spring-boot:run` on bare metal. This is the Giai đoạn 2 equivalent checkpoint
 # of Giai đoạn 1's e2e-local.sh — see learning/20 Giai đoạn 2 checkpoint.
 #
-# Giai đoạn 9 (ADR-008): overlay `local` BẬT auth (BSS_AUTH_ENABLED=true + Keycloak) → bản cũ của
+# Giai đoạn 9 (ADR-008): auth luôn bật (Keycloak) → bản cũ của
 # script này (gọi API không token, admin tự tạo khách hộ) chết ngay ở bước đầu với 401. Bản này đi
 # đúng luồng thật bằng API, không cần trình duyệt (luồng trình duyệt: scripts/e2e-browser.sh):
 #   khách MỚI (user Keycloak tạo riêng cho mỗi lần chạy) → tự tạo hồ sơ → bị chặn mua (422, chưa
 #   duyệt) → admin1 duyệt → mua → thấy hóa đơn của CHÍNH mình (VAT 10%) → admin đổi giá + ngừng bán
 #   gói → đơn cũ giữ nguyên giá → khách khác (customer1) đọc đơn/hóa đơn đó → 404.
-# e2e-local.sh KHÔNG cần đổi: service chạy bằng `mvn` với profile `local`, auth tắt (mặc định).
+# e2e-local.sh đi cùng luồng này với Keycloak của docker-compose (công tắc auth đã xóa 2026-09-30).
 #
 # Same B-52 discipline as e2e-local.sh: `set -euo pipefail`, every check is `curl -f` or an
 # explicit `fail "..."` — nothing swallowed with `|| true` / `|| echo`.

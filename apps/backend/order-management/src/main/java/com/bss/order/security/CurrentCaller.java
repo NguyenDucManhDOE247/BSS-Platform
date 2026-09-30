@@ -1,6 +1,5 @@
 package com.bss.order.security;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -11,26 +10,15 @@ import java.util.Optional;
 /**
  * Giai đoạn 9 (ADR-008): người đang gọi order-management là ai.
  *
- * <p>{@link #authEnabled()} = false (dev/staging/prod cho tới GĐ9 việc 7): không có JWT nào, service
- * giữ nguyên hành vi cũ (customerId lấy từ body, không lọc theo chủ sở hữu). Công tắc này bị xóa khi
- * mọi môi trường đã có Keycloak — lúc đó mọi nhánh "auth tắt" trong service cũng xóa theo.
+ * <p>Mọi request tới đây đã qua {@code SecurityConfig} (JWT hợp lệ). Nhánh "auth tắt" (công tắc
+ * {@code bss.auth.enabled}) đã xóa 2026-09-30 khi mọi môi trường đều có Keycloak.
  */
 @Component
 public class CurrentCaller {
 
-    private final boolean authEnabled;
-
-    public CurrentCaller(@Value("${bss.auth.enabled:false}") boolean authEnabled) {
-        this.authEnabled = authEnabled;
-    }
-
-    public boolean authEnabled() {
-        return authEnabled;
-    }
-
-    /** Admin — hoặc auth tắt (không lọc gì, như trước GĐ9). */
+    /** Admin thấy mọi dữ liệu; khách chỉ thấy của mình (lọc ở service). */
     public boolean seesEverything() {
-        return !authEnabled || jwt().map(t -> t.getAuthorities().stream()
+        return jwt().map(t -> t.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .anyMatch("ROLE_admin"::equals)).orElse(false);
     }
@@ -38,13 +26,13 @@ public class CurrentCaller {
     /** {@code sub} của Keycloak — định danh chủ sở hữu đóng dấu lên đơn (ADR-008 quyết định 5). */
     public String subject() {
         return jwt().map(t -> t.getToken().getSubject())
-                .orElseThrow(() -> new IllegalStateException("Không có JWT — chỉ gọi khi authEnabled()"));
+                .orElseThrow(() -> new IllegalStateException("Không có JWT — SecurityConfig lẽ ra đã trả 401 trước khi tới đây"));
     }
 
     /** Token thô để CHUYỂN TIẾP sang customer-service (không dùng tài khoản dịch vụ). */
     public String bearerToken() {
         return jwt().map(t -> t.getToken().getTokenValue())
-                .orElseThrow(() -> new IllegalStateException("Không có JWT — chỉ gọi khi authEnabled()"));
+                .orElseThrow(() -> new IllegalStateException("Không có JWT — SecurityConfig lẽ ra đã trả 401 trước khi tới đây"));
     }
 
     private Optional<JwtAuthenticationToken> jwt() {

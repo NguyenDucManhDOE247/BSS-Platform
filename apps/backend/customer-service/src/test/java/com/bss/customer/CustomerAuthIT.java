@@ -34,7 +34,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * JwtDecoder, nhưng không bao giờ bị gọi vì {@code jwt()} bỏ qua bước giải mã.
  */
 @SpringBootTest(properties = {
-        "bss.auth.enabled=true",
         "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/unused"
 })
 @AutoConfigureMockMvc
