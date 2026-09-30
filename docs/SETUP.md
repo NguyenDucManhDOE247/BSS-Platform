@@ -136,6 +136,7 @@ git tag v2.1.0   <same>   && git push origin v2.1.0       # cd-prod: gate (rc ve
 
 ```bash
 make ENV=dev tf-destroy                    # teardown.sh deletes Ingress + Karpenter NodePool first (not in Terraform state)
+pip install -r tools/ops/requirements.txt  # once (boto3)
 python tools/ops/orphan_finder.py          # anything still billing? must be empty
 python tools/ops/cost_report.py            # last 7 days of spend
 ```
