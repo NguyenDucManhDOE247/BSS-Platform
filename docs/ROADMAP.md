@@ -29,14 +29,28 @@ verification runbooks in [`docs/runbooks/`](runbooks/) for the evidence behind e
 
 ## Definition of Done for `v1.0.0`
 
-- [ ] Clean-repo bootstrap works: `make local-up` + local e2e PASS; `kind` + e2e PASS.
-- [ ] All CI workflows green with tests actually executing; Trivy gate blocking real findings.
-- [ ] `terraform apply` on dev from zero in ≤ 30 min, `destroy` leaves no orphaned resources.
-- [ ] Merge → dev auto-deploys; tag → staging; tag + approval → prod; automatic rollback demonstrated.
-- [ ] Dashboards show real data; ≥ 3 alerts wired to a runbook and a chat channel; 1 SLO with a burn-rate alert.
-- [ ] No secrets in git; one IAM role + one DB user per service; Pod Security `restricted`.
-- [ ] ≥ 7 ADRs, ≥ 8 runbooks, 1 postmortem, `CHANGELOG.md` up to `v1.0.0`.
-- [ ] A measured p95-latency capacity threshold on real dev EKS (not estimated).
-- [ ] Chaos experiments (pod deletion, node drain) run against a real cluster with recorded results.
+Reviewed item by item on **2026-09-30** — every ✅ was re-run or re-checked that day unless the evidence date says otherwise.
+
+- [x] Clean-repo bootstrap works — fresh `git clone` → `scripts/e2e-local.sh` PASS (docker-compose + Keycloak, real tokens);
+  fresh clone → `kind-down`/`kind-up` → build → `e2e-kind.sh` PASS + Playwright 3/3 in 12.6 min. Running from a clean clone
+  surfaced 4 real bugs that existing environments hid (fixed: `kind-up.sh` wait race, 4 scripts without the executable bit,
+  `e2e-local.sh` leaving orphan JVMs, `auth-install.sh` swallowing a missing-namespace error).
+- [x] All CI workflows green with tests executing (5 services: 61 tests) and Trivy blocking real findings
+  (history: Terraform + image CVEs in Phase 3; Keycloak 26.5 CRITICAL CVE found by the new `ci-keycloak.yml` gate).
+- [x] `terraform apply` on dev from zero: **110 resources in 17.5 min** (≤ 30); `destroy`: 110 resource xong (teardown tự động mất ~34 phút rồi kẹt ở subnet vì 1 ENI của VPC CNI + 1 SG EKS mồ côi — xóa tay, destroy nốt 11 phút; teardown.sh đã sửa để tự dọn), `orphan_finder.py` clean.
+- [x] Merge → dev auto-deploy (8 images incl. Keycloak, run 36684095963); `rc-v2.0.0` → staging and `v2.0.0` + approval → prod
+  (2026-09-29); automatic rollback demonstrated (lab 06, runs 36103409336 / 36106816155).
+- [x] Dashboards with real data; 9 alerts, each with `runbook_url`, delivered to Discord (146 s on EKS, 2026-09-29);
+  `order-management` SLO with fast/slow burn-rate alerts.
+- [x] No secrets in git (gitleaks over full history: 14 hits, all commit SHAs in `deploy-state` manifests — false positives);
+  one IRSA role + one DB user per service (`customer_svc`, `product_svc`, `orders_svc`, `billing_svc`, `keycloak_svc`,
+  checked on EKS); namespace `bss` enforces Pod Security `restricted`.
+- [x] 12 ADRs, 16 runbooks, 1 postmortem, `CHANGELOG.md` with `1.0.0` and `2.0.0`.
+- [x] Measured capacity threshold on real dev EKS ([labs/07](labs/07-load-test-dev.md)).
+- [x] Chaos (pod delete, node drain) on a real cluster ([labs/08](labs/08-chaos-engineering.md)); plus 2026-09-30: deleting a
+  Keycloak pod under a 2-replica cluster kept sessions and the authenticated smoke test green.
+
+**Not met (by design, tracked):** the internal DoD also requires *all P0/P1 issues closed* — **B-23 (P1, HTTPS)** stays open
+until a domain (or CloudFront) is chosen; browser sign-in on AWS depends on it (B-18's remaining part).
 
 See [`CLAUDE.md` §13](../CLAUDE.md) for the fully detailed, always-current status write-up.

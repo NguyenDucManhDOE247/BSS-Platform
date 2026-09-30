@@ -552,6 +552,7 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 | 8 — Reliability, docs, demo | ✅ | k6 threshold, chaos (pod delete/drain node), `tools/ops/`, blog/demo có số đo thật; Karpenter làm thật ở dọn nợ (ADR-010) |
 | 9 — Sản phẩm hoàn chỉnh (danh tính) | ✅ | Keycloak + PKCE, khách tự đăng ký → admin duyệt → mua, quyền sở hữu 4 service (ADR-008); Playwright 3/3 + `e2e-kind.sh` trên kind; Keycloak trên EKS, `rc-v2.0.0` → staging → `v2.0.0` → prod (duyệt tay), smoke có token 4/4 cả 3 môi trường |
 | Dọn nợ 8 → 0 | ✅ | Karpenter Spot thật (node Ready ~36s, k6 ×2.4 request); NetworkPolicy EKS 11/11; 8 việc GĐ7 trên 1 cluster (alert → Discord 146s, log JSON + `trace_id` → X-Ray); Spring Boot 3.5 → 0 CVE; schema expand → migrate → contract trên RDS; `orphan_finder.py` bắt 3 loại tài nguyên sót |
+| Sau GĐ9 (2026-09-30) | ✅ | Keycloak production-grade trên EKS thật (ADR-011: image optimized, rootfs chỉ đọc, 2 Pod thành cluster qua RDS với NetworkPolicy bật, xóa 1 Pod vẫn giữ session + smoke xanh); auth luôn bật (bỏ `bss.auth.enabled`); rà Definition of Done — xem `docs/ROADMAP.md` |
 
 ### Quyết định kiến trúc đã chốt kể từ scaffold ban đầu (ADR đầy đủ ở `docs/adr/`)
 
@@ -563,6 +564,7 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 - **Không thêm Jenkins/Helm chart/Ansible** song song với bộ hiện tại — [ADR-009](docs/adr/ADR-009-khong-them-jenkins-helm-ansible.md).
 - **Mạng dev dùng NAT Gateway**, không phải VPC Endpoint như dự định ban đầu — [ADR-002](docs/adr/ADR-002-mang-dev.md) (VPC Endpoint vừa không đủ chạy được vừa đắt hơn ở quy mô 2 AZ).
 - **3 cluster riêng (dev/staging/prod), nhưng staging/prod ephemeral** (dựng theo buổi) — [ADR-006](docs/adr/ADR-006-staging-prod-ephemeral.md).
+- **Keycloak production-grade, CD quản lý như image thứ 8** — [ADR-011](docs/adr/ADR-011-keycloak-production-grade.md).
 - **Nguồn sự thật phiên bản CD** = commit git (desired) + release manifest ở nhánh `deploy-state`
   (last-known-good), không phải bot tự commit lại overlay — [ADR-005](docs/adr/ADR-005-nguon-su-that-phien-ban-cd.md).
 
@@ -570,9 +572,10 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 
 - **HTTPS + đăng nhập web trên AWS** (domain + ACM hoặc CloudFront) — B-23, và phần web của B-18.
 - ~~Keycloak production-grade~~ — ✅ 2026-09-30, [ADR-011](docs/adr/ADR-011-keycloak-production-grade.md): image optimized
-  `apps/identity/keycloak` (26.7.4), rootfs chỉ đọc, prod 2 replica; **chưa chạy trên EKS** (cần apply `shared`).
+  `apps/identity/keycloak` (26.7.4), rootfs chỉ đọc, prod 2 replica — đã chạy thật trên dev EKS.
 - ~~Xóa công tắc `bss.auth.enabled`~~ — ✅ 2026-09-30: auth luôn bật ở mọi môi trường, kể cả `e2e-local.sh`.
-- **NetworkPolicy ở staging/prod:** đã kiểm trên dev EKS (11/11), chưa bật ở 2 môi trường kia.
+- **NetworkPolicy ở staging/prod:** đã kiểm trên dev EKS (12/12 từ 2026-09-30), chưa bật ở 2 môi trường kia.
+- **`tests/load/plans-and-order.js`** (k6) vẫn gọi API không token như trước GĐ9 — cần lấy token trước khi dùng lại.
 - **Tỉ lệ lỗi 7,9% dưới tải 700 req/s có Karpenter** — manh mối: `BssPodCrashLooping` của api-gateway
   bắn trong lúc đo (ADR-010).
 - B-15: UUID v7, `Idempotency-Key`, `bss-common-java` chưa được mọi service dùng.
