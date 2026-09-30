@@ -11,6 +11,7 @@ variable "service_names" {
     "api-gateway",
     "web-portal",
     "admin-console",
+    "keycloak", # ADR-011 — image Keycloak optimized (apps/identity/keycloak), CD quản lý như 7 service
   ]
 }
 

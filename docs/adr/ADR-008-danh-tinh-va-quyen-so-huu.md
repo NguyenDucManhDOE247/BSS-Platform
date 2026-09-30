@@ -191,6 +191,8 @@ hơn** trước việc 7: từ việc 4 đã cần đăng nhập để mua.
 **Đánh đổi:** token của `smoke-bot` (role customer, không có dữ liệu, hết hạn sau vài phút) vẫn đi qua HTTP
 tới ALB — chấp nhận được cho tới khi có HTTPS. Keycloak 1 replica (chưa cấu hình cluster Infinispan) và
 chạy `start` không `--optimized` (cần ghi rootfs) — ghi nợ trong `learning/20`.
+**Cập nhật 2026-09-30:** nợ này đã trả ở [ADR-011](ADR-011-keycloak-production-grade.md) — image optimized,
+rootfs chỉ đọc, prod 2 replica (jdbc-ping), Keycloak 26.7.4.
 
 ## Hệ quả
 

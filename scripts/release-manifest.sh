@@ -10,13 +10,13 @@
 # Cách dùng:  scripts/release-manifest.sh <lệnh> [tham số...]
 #
 #   Danh sách/đường dẫn
-#     services                       JSON array 7 service (workflow dùng cho fromJson)
-#     dir SERVICE                    apps/backend/<svc> hoặc apps/frontend/<svc>
+#     services                       JSON array 8 image (7 service + keycloak — ADR-011)
+#     dir SERVICE                    apps/backend/<svc>, apps/frontend/<svc> hoặc apps/identity/keycloak
 #   Tính desired từ git (CẦN full history — từ chối clone nông)
 #     desired [COMMIT]               JSON {service: sha} tại COMMIT (mặc định HEAD)
 #     new ENV [COMMIT] [RUN_URL] [REF]   manifest hoàn chỉnh cho ENV từ desired(COMMIT)
 #   Đọc/so sánh manifest (chỉ cần jq)
-#     validate FILE                  đủ 7 service, tag là SHA 40 hex — sai thì exit 1
+#     validate FILE                  đủ 8 image, tag là SHA 40 hex — sai thì exit 1
 #     same OLD NEW                   exit 0 nếu phần `services` giống hệt (bỏ qua metadata)
 #     diff OLD NEW                   in các service đổi (OLD có thể không tồn tại)
 #     set-field FILE KEY VALUE       đặt trường chuỗi ở gốc (vd. release=rc-v0.1.0)
@@ -34,14 +34,20 @@
 #     ecr-tag FILE TAG               `aws ecr put-image` gắn thêm TAG lên cùng manifest digest
 #   Nhánh deploy-state (cần git + remote)
 #     state-get PATH                 in nội dung PATH ở nhánh deploy-state; exit 3 nếu chưa có
+#     previous PATH OUT              last-known-good để rollback: ghi PATH (deploy-state) vào OUT và in
+#                                    OUT; in chuỗi RỖNG nếu chưa có hoặc là manifest cũ trước ADR-011
+#                                    (thiếu keycloak — không rollback được); lỗi thật thì exit 1
 #     state-put MSG PATH=FILE...     commit + push các file lên deploy-state (tự retry khi đua)
 #
 # Biến môi trường: STATE_BRANCH (deploy-state), STATE_REMOTE (origin), RM_RETRY_SLEEP (giây, để
 # test đặt 0), RM_GIT_NAME/RM_GIT_EMAIL (danh tính commit của bot).
 set -euo pipefail
 
-SERVICES=(customer-service product-catalog order-management billing-service api-gateway web-portal admin-console)
+SERVICES=(customer-service product-catalog order-management billing-service api-gateway web-portal admin-console keycloak)
 FRONTENDS=(web-portal admin-console)
+# ADR-011: keycloak thành image thứ 8 (image optimized riêng). Manifest ghi TRƯỚC đó chỉ có 7 service
+# còn lại — `previous` nhận diện chúng để không dùng làm đích rollback (thiếu tag keycloak).
+LEGACY_ADDED=(keycloak)
 STATE_BRANCH="${STATE_BRANCH:-deploy-state}"
 STATE_REMOTE="${STATE_REMOTE:-origin}"
 
@@ -54,6 +60,7 @@ service_dir() {
   for f in "${FRONTENDS[@]}"; do
     if [ "$f" = "$s" ]; then echo "apps/frontend/$s"; return 0; fi
   done
+  if [ "$s" = keycloak ]; then echo "apps/identity/keycloak"; return 0; fi
   echo "apps/backend/$s"
 }
 
@@ -270,6 +277,32 @@ cmd_state_get() {
   git show "refs/remotes/$STATE_REMOTE/$STATE_BRANCH:$path"
 }
 
+# Manifest ghi trước ADR-011: đúng bằng SERVICES trừ LEGACY_ADDED (7 service, không có keycloak).
+is_legacy() {
+  local file="$1" legacy
+  legacy="$(printf '%s\n' "${SERVICES[@]}" | grep -vxF -f <(printf '%s\n' "${LEGACY_ADDED[@]}") | jq -R . | jq -sc 'sort')"
+  [ "$(jq -c '.services // {} | keys | sort' "$file" 2>/dev/null)" = "$legacy" ]
+}
+
+cmd_previous() {
+  local path="${1:?previous PATH OUT}" out="${2:?previous PATH OUT}" rc=0
+  cmd_state_get "$path" > "$out" || rc=$?
+  if [ "$rc" -eq 3 ]; then
+    rm -f "$out"
+    echo "previous: chưa có $path trên $STATE_BRANCH — lần deploy đầu của môi trường này, chưa thể rollback." >&2
+    return 0
+  elif [ "$rc" -ne 0 ]; then
+    die "previous: state-get $path thất bại (exit $rc)"
+  fi
+  if is_legacy "$out"; then
+    rm -f "$out"
+    echo "previous: $path là manifest cũ (trước ADR-011, thiếu ${LEGACY_ADDED[*]}) — lần này không rollback được; lần deploy PASS kế tiếp sẽ ghi manifest mới." >&2
+    return 0
+  fi
+  cmd_validate "$out"
+  echo "$out"
+}
+
 STATE_README='# deploy-state
 
 Nhánh này KHÔNG chứa mã nguồn. Nó lưu release manifest — bản ghi "môi trường nào đang chạy
@@ -355,6 +388,7 @@ main() {
     ecr-missing)    need jq; cmd_ecr_missing "$@" ;;
     ecr-tag)        need jq; cmd_ecr_tag "$@" ;;
     state-get)      need git; cmd_state_get "$@" ;;
+    previous)       need git; need jq; cmd_previous "$@" ;;
     state-put)      need git; cmd_state_put "$@" ;;
     -h|--help|help) usage ;;
     *)              usage >&2; die "lệnh không có: $cmd" ;;

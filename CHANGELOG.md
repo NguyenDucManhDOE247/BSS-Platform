@@ -11,6 +11,12 @@ Debt pass from Phase 8 back to 0 (after `v2.0.0`), each item verified on real in
 
 ### Added
 
+- **Keycloak production-grade** — [ADR-011](docs/adr/ADR-011-keycloak-production-grade.md): own image
+  `apps/identity/keycloak` (`kc.sh build` → `start --optimized`, startup ~5 s), `readOnlyRootFilesystem: true`
+  (last exception in the repo removed), **2 replicas on prod** clustered via `jdbc-ping` with DB-persisted
+  sessions, PDB `maxUnavailable: 1`, JGroups-only NetworkPolicy rule. Managed by CD as the 8th image
+  (`release-manifest.sh`; new `previous` command handles pre-ADR-011 7-service manifests). New
+  `ci-keycloak.yml` (build + Trivy + real 2-replica run).
 - **Karpenter 1.14.1 on dev** (Spot first) — [ADR-010](docs/adr/ADR-010-karpenter-lam-that-o-dev.md)
   supersedes ADR-007; IAM translated from the official template; node `Ready` ~36 s; 200→700 req/s served
   2.4× more requests than fixed nodes (p95 3.66 s vs 8.55 s, but 7.9% errors — see ADR-010).
@@ -25,6 +31,9 @@ Debt pass from Phase 8 back to 0 (after `v2.0.0`), each item verified on real in
 
 ### Changed
 
+- **Keycloak 26.5 → 26.7.4** everywhere (kind, docker-compose, AWS): 26.5.7 carried Keycloak CVEs incl.
+  CVE-2026-18963 (CRITICAL, unauthenticated account takeover). 6 remaining CVEs in libraries bundled by
+  Keycloak are listed with reasons in `apps/identity/keycloak/.trivyignore`.
 - **Spring Boot 3.2.12 → 3.5.16** (+ patch overrides for Tomcat/Jackson/pgjdbc/Netty): Trivy HIGH/CRITICAL
   34 → **0** per image; all temporary `.trivyignore` entries removed. The old "Flyway breaks on 3.5" was a
   missing `flyway-database-postgresql` module.

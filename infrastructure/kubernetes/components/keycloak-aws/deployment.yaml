@@ -5,13 +5,21 @@ metadata:
   namespace: bss
   labels: { app: keycloak, tier: auth }
 spec:
-  # 1 replica ở MỌI môi trường AWS (kể cả prod): chạy >1 cần cấu hình cluster Infinispan (headless
-  # Service + DNS_PING) — chưa làm, ghi nợ ở learning/20 GĐ9. KC_CACHE=local để 1 Pod không đi dò
-  # cluster. Session đăng nhập nằm trong bộ nhớ Pod → Pod khởi động lại thì người dùng đăng nhập lại
-  # (token đã phát vẫn hợp lệ tới khi hết hạn vì backend chỉ kiểm chữ ký).
+  # Mặc định 1 replica (dev, staging); overlays/prod đặt 2 (ADR-011). Chạy >1 replica được vì:
+  #   • cache `ispn` (mặc định của `start`) + cache-stack `jdbc-ping` (mặc định Keycloak 26.x): các Pod
+  #     tự tìm nhau qua CHÍNH database RDS (bảng JGROUPSPING) — không cần headless Service/DNS_PING;
+  #   • session người dùng lưu bền trong DB (persistent user sessions, mặc định từ Keycloak 25) —
+  #     1 Pod chết/khởi động lại, người dùng KHÔNG phải đăng nhập lại.
+  # Đã kiểm thật (2026-09-30, 2 container + Postgres, rootfs chỉ đọc): "ISPN000094 … cluster view (2)",
+  # refresh token cấp ở Pod 1 dùng được ở Pod 2.
   replicas: 1
   strategy:
-    type: Recreate # 1 replica + DB chung: không để 2 bản khác version cùng migrate schema Keycloak
+    # Trước ADR-011 là Recreate (1 replica, sợ 2 phiên bản cùng migrate). Giờ RollingUpdate để prod
+    # (2 replica) không mất đăng nhập khi deploy. Keycloak chỉ hỗ trợ rolling update giữa các bản
+    # PATCH (26.7.x → 26.7.y); nâng MINOR/MAJOR (26.7 → 26.8) phải scale về 0 rồi mới lên — xem
+    # docs/runbooks/auth.md mục "Nâng version Keycloak".
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
   selector:
     matchLabels: { app: keycloak }
   template:
@@ -19,13 +27,25 @@ spec:
       labels: { app: keycloak, tier: auth }
     spec:
       serviceAccountName: keycloak
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: { matchLabels: { app: keycloak } }
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: { matchLabels: { app: keycloak } }
       containers:
         - name: keycloak
-          image: quay.io/keycloak/keycloak:26.5 # cùng bản với overlays/local và docker-compose
-          args: ["start", "--import-realm"]
+          # Image riêng apps/identity/keycloak (đã `kc.sh build` sẵn) — placeholder `keycloak`, overlay
+          # đổi thành <ECR>/bss/keycloak, CD đặt tag = commit cuối chạm apps/identity/keycloak (ADR-005).
+          image: keycloak
+          args: ["start", "--optimized", "--import-realm"]
           env:
+            # Build option (db=postgres, health, metrics, /auth, management path) đã ĐÓNG BĂNG trong
+            # image — không đặt lại ở đây (đặt khác giá trị sẽ làm `--optimized` từ chối khởi động).
             # ── DB: Postgres trên RDS, database + user riêng của Keycloak (least privilege, B-21) ──
-            - { name: KC_DB, value: postgres }
             - name: KC_DB_URL_HOST
               valueFrom: { secretKeyRef: { name: keycloak-db, key: host } }
             - name: KC_DB_URL_PORT
@@ -49,18 +69,22 @@ spec:
             # (và issuer của backend), rồi thêm path /auth vào Ingress — không phải sửa code.
             - { name: KC_HOSTNAME, value: "http://keycloak.bss.svc.cluster.local:8080/auth" }
             - { name: KC_HTTP_ENABLED, value: "true" }
-            - { name: KC_HTTP_RELATIVE_PATH, value: "/auth" }
-            - { name: KC_HTTP_MANAGEMENT_RELATIVE_PATH, value: "/" } # xem overlays/local/keycloak
-            - { name: KC_HEALTH_ENABLED, value: "true" }
-            - { name: KC_METRICS_ENABLED, value: "true" }
-            - { name: KC_CACHE, value: local }
             - { name: KC_LOG_CONSOLE_OUTPUT, value: json } # CLAUDE.md §10: log JSON ở môi trường AWS
           ports:
             - { containerPort: 8080, name: http }
             - { containerPort: 9000, name: management }
-          # Lần khởi động ĐẦU của `start` (không --optimized) phải "augment" Quarkus + tạo schema
-          # Keycloak trên RDS + import realm → có thể > 2 phút trên t3.medium. startupProbe cho tới
-          # 5 phút; sau đó readiness/liveness mới có hiệu lực.
+            # JGroups (cluster Infinispan giữa các Pod Keycloak): 7800 dữ liệu, 57800 = 7800 + 50000
+            # dò lỗi node (FD_SOCK2). Kênh này mã hóa mTLS tự động (cache-embedded-mtls-enabled mặc định
+            # true, chứng chỉ tạm tự xoay vòng). NetworkPolicy chỉ cho Pod Keycloak gọi nhau ở 2 cổng này.
+            - { containerPort: 7800, name: jgroups }
+            - { containerPort: 57800, name: jgroups-fd }
+          # Không còn "augmentation" lúc khởi động → Pod lên trong vài giây khi DB đã có schema (đo thật:
+          # 5.8s). Lần đầu trên RDS TRỐNG (mỗi lần dựng môi trường ephemeral, ADR-006) Keycloak còn phải
+          # tạo schema + import realm → giữ trần 5 phút cho startupProbe.
+          # ⚠️ Hai Pod cùng khởi động trên DB TRỐNG: Pod thứ hai có thể chết 1 lần vì tranh tạo bảng
+          # Liquibase (lỗi thật đã tái hiện — `duplicate key … pg_type_typname_nsp_index`), kubelet khởi
+          # động lại và nó vào cluster bình thường. Chỉ xảy ra lần deploy đầu của môi trường mới, không
+          # xảy ra khi rolling update. Cách tránh hẳn là StatefulSet OrderedReady — xem ADR-011.
           startupProbe:
             httpGet: { path: /health/started, port: 9000 }
             periodSeconds: 10
@@ -73,28 +97,28 @@ spec:
             periodSeconds: 20
             failureThreshold: 3
           resources:
-            # Đo trên kind (GĐ7/9): ~600–700Mi lúc chạy. Keycloak đặt heap = 70% limit mặc định.
+            # Đo trên kind (GĐ7/9) + EKS dev (GĐ9: 538Mi). Keycloak đặt heap = 70% limit mặc định.
             requests: { cpu: "250m", memory: "768Mi" }
             limits: { cpu: "1000m", memory: "1Gi" }
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
             allowPrivilegeEscalation: false
-            # Ngoại lệ DUY NHẤT với quy ước readOnlyRootFilesystem (CLAUDE.md §7): `start` không
-            # --optimized chạy bước "augmentation" Quarkus LÚC KHỞI ĐỘNG, ghi vào /opt/keycloak/lib
-            # (lỗi thật đã gặp ở kind: ReadOnlyFileSystemException). Cách đúng: image riêng chạy
-            # `kc.sh build` lúc build + `start --optimized` — ghi nợ ở learning/20 GĐ9.
-            readOnlyRootFilesystem: false
+            # ADR-011: bỏ ngoại lệ cũ (`false`) — image đã augment sẵn nên rootfs chỉ cần đọc. Chỗ Keycloak
+            # cần ghi: /tmp và /opt/keycloak/data (emptyDir bên dưới).
+            readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
             seccompProfile: { type: RuntimeDefault }
           volumeMounts:
             - { name: tmp, mountPath: /tmp }
+            - { name: data, mountPath: /opt/keycloak/data }
             - { name: realm-import, mountPath: /opt/keycloak/data/import, readOnly: true }
             # Mount CSI chỉ để driver sync 2 K8s Secret keycloak-db + keycloak-admin (secretObjects)
             # — Keycloak đọc chúng qua env, không đọc file.
             - { name: secrets-store, mountPath: /mnt/secrets-store, readOnly: true }
       volumes:
         - { name: tmp, emptyDir: {} }
+        - { name: data, emptyDir: {} }
         - name: realm-import
           configMap: { name: keycloak-realm-bss } # ../keycloak-realm — KHÔNG có user thử
         - name: secrets-store

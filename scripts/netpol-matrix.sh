@@ -52,6 +52,17 @@ probe_from_intruder() { # HOST PORT
   case "$code" in 000|"") echo BLOCKED ;; *) echo OPEN ;; esac
 }
 
+# probe_tcp_from_intruder IP PORT → OPEN|BLOCKED|REFUSED — cho cổng KHÔNG phải HTTP (vd. JGroups): chỉ xét
+# bắt tay TCP. curl `telnet://` in time_connect > 0 khi đã kết nối; exit 7 = bị từ chối (cổng đóng).
+probe_tcp_from_intruder() {
+  local out rc=0
+  out="$(K -n bss exec "$INTRUDER" -- curl -s --connect-timeout 3 -m 4 -o /dev/null -w '%{time_connect}' \
+    "telnet://$1:$2" </dev/null 2>/dev/null)" || rc=$?
+  if [ "$rc" -eq 7 ]; then echo REFUSED
+  elif [ -n "$out" ] && [ "$out" != "0.000000" ] && [ "$out" != "0.000" ]; then echo OPEN
+  else echo BLOCKED; fi
+}
+
 echo ""
 echo "── Luồng service → service THẬT (phải OPEN / BLOCKED đúng như policy)"
 record "api-gateway → billing-service (allow-gateway-to-backends)" OPEN    "$(probe_from_deploy api-gateway billing-service 80)"
@@ -74,6 +85,10 @@ if K -n bss get svc keycloak >/dev/null 2>&1; then
   if [ "$tier" = "auth" ]; then
     record "kẻ lạ → keycloak (AWS: chỉ gateway + backend)"          BLOCKED "$(probe_from_intruder keycloak 8080)"
     record "api-gateway → keycloak (tải JWKS)"                       OPEN    "$(probe_from_deploy api-gateway keycloak 8080)"
+    # ADR-011: cổng JGroups (cluster Infinispan) chỉ mở giữa các Pod Keycloak với nhau. Thử thẳng IP Pod
+    # (Service chỉ khai cổng 8080 — thử qua Service sẽ "chặn" giả vì cổng không tồn tại ở Service).
+    kc_ip="$(K -n bss get pod -l app=keycloak -o jsonpath='{.items[0].status.podIP}')"
+    record "kẻ lạ → Pod keycloak:7800 (JGroups — chỉ Pod Keycloak)"  BLOCKED "$(probe_tcp_from_intruder "$kc_ip" 7800)"
   else
     record "kẻ lạ → keycloak (kind: tier=$tier, công khai qua ingress)" OPEN  "$(probe_from_intruder keycloak 8080)"
   fi

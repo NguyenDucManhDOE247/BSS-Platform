@@ -7,7 +7,7 @@ name: CD — dev
 #            trong ECR (→ cần build), dò xem cluster dev có đang tồn tại không (nightly destroy).
 #   build  — chỉ build+push các service thiếu image; tag = commit cuối chạm service (không phải SHA
 #            của lần merge này) nên "cùng source ⇒ cùng tag ⇒ không build lại" (B-51).
-#   deploy — áp manifest ĐẦY ĐỦ 7 service (không chỉ service vừa đổi — B-50), chờ rollout, kiểm drift,
+#   deploy — áp manifest ĐẦY ĐỦ 8 image (7 service + keycloak, ADR-011; không chỉ cái vừa đổi — B-50), chờ rollout, kiểm drift,
 #            smoke test THẬT; hỏng thì rollback về last-known-good; thành công thì ghi manifest mới
 #            vào nhánh deploy-state.
 #
@@ -140,12 +140,12 @@ jobs:
 
           aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
           # --secret: chỉ Dockerfile của customer-service mount `github_token` (GitHub Packages);
-          # truyền đồng nhất cho mọi service vô hại với 6 service còn lại (giống ci-backend.yml).
+          # truyền đồng nhất cho mọi image vô hại với các image còn lại (giống ci-backend.yml).
           docker build --secret id=github_token,env=GITHUB_TOKEN -t "$image" "$dir"
           docker push "$image"
 
   deploy:
-    name: Deploy dev (áp manifest 7 service)
+    name: Deploy dev (áp manifest 8 image)
     needs: [plan, build]
     # `build` có thể bị skipped (không có gì cần build) — vẫn phải deploy. Nhưng nếu build FAIL thì dừng.
     if: >-
@@ -174,20 +174,11 @@ jobs:
             "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" "$GITHUB_REF" \
             > "$RUNNER_TEMP/desired.json"
 
-          # exit 3 = chưa có (lần deploy đầu). Mọi mã khác là lỗi thật, không được coi là "chưa có".
-          rc=0
-          scripts/release-manifest.sh state-get dev.json > "$RUNNER_TEMP/previous.json" || rc=$?
-          if [ "$rc" -eq 0 ]; then
-            scripts/release-manifest.sh validate "$RUNNER_TEMP/previous.json"
-            echo "previous=$RUNNER_TEMP/previous.json" >> "$GITHUB_OUTPUT"
-          elif [ "$rc" -eq 3 ]; then
-            rm -f "$RUNNER_TEMP/previous.json"
-            echo "previous=" >> "$GITHUB_OUTPUT"
-            echo "::notice::Chưa có dev.json trên nhánh deploy-state — đây là lần deploy đầu tiên, chưa thể rollback."
-          else
-            echo "::error::state-get thất bại (exit $rc)"
-            exit "$rc"
-          fi
+          # `previous` in đường dẫn last-known-good, hoặc chuỗi RỖNG nếu chưa có / là manifest cũ trước
+          # ADR-011 (thiếu keycloak → không dùng làm đích rollback). Lỗi thật (quyền, mạng) → exit 1.
+          previous="$(scripts/release-manifest.sh previous dev.json "$RUNNER_TEMP/previous.json")"
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          [ -n "$previous" ] || echo "::notice::Không có last-known-good dùng được (lần deploy đầu, hoặc manifest cũ trước ADR-011) — lần này không thể rollback."
 
           echo "Thay đổi so với last-known-good:"
           scripts/release-manifest.sh diff "$RUNNER_TEMP/previous.json" "$RUNNER_TEMP/desired.json" || true

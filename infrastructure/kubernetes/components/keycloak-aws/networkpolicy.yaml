@@ -23,3 +23,10 @@ spec:
             matchLabels: { app: api-gateway }
       ports:
         - { protocol: TCP, port: 8080 }
+    # ADR-011: các Pod Keycloak nói chuyện với nhau qua JGroups (cluster Infinispan) — chỉ chính chúng.
+    - from:
+        - podSelector:
+            matchLabels: { app: keycloak }
+      ports:
+        - { protocol: TCP, port: 7800 }
+        - { protocol: TCP, port: 57800 }
