@@ -136,6 +136,15 @@ module "eventbridge" {
   tags = local.common_tags
 }
 
+# ── Tên miền công khai (B-23, ADR-012) ──
+# Zone + cert ACM nằm ở state shared (sống lâu hơn môi trường). null khi shared chưa có zone → không tạo
+# role ExternalDNS.
+locals {
+  dns_zone_id     = try(data.terraform_remote_state.shared.outputs.dns_zone_id, null)
+  dns_zone_name   = try(data.terraform_remote_state.shared.outputs.dns_zone_name, null)
+  public_hostname = local.dns_zone_name == null ? null : "dev.${local.dns_zone_name}"
+}
+
 # ── Platform addon IAM (B-35) ────────────────────────────────────────────
 module "platform_iam" {
   source = "../../modules/platform-iam"
@@ -148,6 +157,10 @@ module "platform_iam" {
   enable_karpenter = true
   cluster_name     = module.eks.cluster_name
   node_role_arn    = module.eks.node_role_arn
+
+  # B-23 / ADR-012: ExternalDNS chỉ được ghi bản ghi của host môi trường này (zone dùng chung ở shared).
+  external_dns_zone_id   = local.dns_zone_id
+  external_dns_hostnames = local.public_hostname == null ? [] : [local.public_hostname]
 
   tags = local.common_tags
 }

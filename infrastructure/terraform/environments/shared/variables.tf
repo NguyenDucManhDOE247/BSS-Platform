@@ -27,3 +27,16 @@ variable "github_extra_sub_prefixes" {
   EOT
   default     = []
 }
+
+# ── Tên miền (B-23, ADR-012) — xem dns.tf ──
+variable "domain_name" {
+  type        = string
+  default     = "bssplatform.dpdns.org"
+  description = "Tên miền công khai (đăng ký ở DigitalPlat, NS trỏ về Route 53). \"\" = không tạo zone/cert (fork chưa có miền)."
+}
+
+variable "dns_delegated" {
+  type        = bool
+  default     = false
+  description = "true SAU KHI đã nhập NS của zone vào nhà đăng ký và `dig NS` thấy awsdns-* — khi đó Terraform mới chờ ACM cấp cert."
+}

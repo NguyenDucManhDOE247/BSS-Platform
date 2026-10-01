@@ -169,6 +169,10 @@ hiện ở đâu cả.
 
 ## Quyết định 8 — AWS trước khi có HTTPS: Keycloak chỉ trong cluster, `iss` = DNS nội bộ (bổ sung 2026-09-29, GĐ9 việc 7)
 
+> **Đã thay bởi [ADR-012](ADR-012-https-ten-mien.md) (2026-10-01):** có tên miền `bssplatform.dpdns.org` + cert ACM →
+> Keycloak ra ALB qua HTTPS (chỉ `/auth/realms`, `/auth/resources`), `iss = https://<host>/auth/realms/bss`. Giữ
+> nguyên phần dưới làm lịch sử.
+
 **Bối cảnh:** quyết định 7 cho thấy đăng nhập bằng trình duyệt trên AWS cần HTTPS. Chủ repo chọn **để
 HTTPS về sau** (mua domain + ACM, hoặc CloudFront — việc riêng trong `learning/20`), nhưng vẫn muốn đóng
 B-18 trên AWS ngay. Câu hỏi: không có HTTPS thì 2 website trên AWS có chạy "bình thường" được không?

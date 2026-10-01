@@ -21,3 +21,7 @@ output "fluent_bit_role_arn" {
 output "otel_collector_role_arn" {
   value = aws_iam_role.otel_collector.arn
 }
+
+output "external_dns_role_arn" {
+  value = one(aws_iam_role.external_dns[*].arn)
+}

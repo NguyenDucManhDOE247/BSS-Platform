@@ -565,8 +565,9 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 - **Karpenter chỉ ở dev** — [ADR-010](docs/adr/ADR-010-karpenter-lam-that-o-dev.md) thay
   [ADR-007](docs/adr/ADR-007-karpenter.md) (lúc đầu chọn không dùng). Staging/prod giữ node group cố định.
 - **Danh tính: Keycloak + OIDC/PKCE, quyền sở hữu theo `sub`** — [ADR-008](docs/adr/ADR-008-danh-tinh-va-quyen-so-huu.md).
-  Trên AWS **chưa có HTTPS** (quyết định 8): Keycloak không mở ra ALB, auth bật ở tầng API, đăng nhập web
-  chỉ chạy trên kind cho tới khi có domain.
+  Quyết định 8 (AWS chưa có HTTPS) đã được [ADR-012](docs/adr/ADR-012-https-ten-mien.md) thay.
+- **HTTPS + tên miền `bssplatform.dpdns.org`** — [ADR-012](docs/adr/ADR-012-https-ten-mien.md): zone Route 53 + cert ACM
+  wildcard ở state shared, ExternalDNS (quyền theo tên bản ghi), Keycloak ra ALB chỉ `/auth/realms` + `/auth/resources`.
 - **Không thêm Jenkins/Helm chart/Ansible** song song với bộ hiện tại — [ADR-009](docs/adr/ADR-009-khong-them-jenkins-helm-ansible.md).
 - **Mạng dev dùng NAT Gateway**, không phải VPC Endpoint như dự định ban đầu — [ADR-002](docs/adr/ADR-002-mang-dev.md) (VPC Endpoint vừa không đủ chạy được vừa đắt hơn ở quy mô 2 AZ).
 - **3 cluster riêng (dev/staging/prod), nhưng staging/prod ephemeral** (dựng theo buổi) — [ADR-006](docs/adr/ADR-006-staging-prod-ephemeral.md).
@@ -576,10 +577,10 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 
 ### Còn lại (có chủ đích để sau — chi tiết ở `learning/20` mục "Để sau")
 
-- **HTTPS + đăng nhập web trên AWS** (domain + ACM hoặc CloudFront) — B-23 (**hạ P1 → P2 ngày 2026-09-30**, chủ repo quyết:
-  "HTTPS chờ domain" — API đã có auth, Keycloak không mở ra ALB, Ingress không còn đòi cert), và phần web của B-18.
+- **HTTPS + đăng nhập web trên AWS** — B-23 + phần web của B-18: **code xong 2026-10-01** ([ADR-012](docs/adr/ADR-012-https-ten-mien.md),
+  miền `bssplatform.dpdns.org`), chờ chạy thật (shared DNS → NS ở DigitalPlat → dev → staging/prod).
 - ~~Keycloak production-grade~~ — ✅ 2026-09-30, [ADR-011](docs/adr/ADR-011-keycloak-production-grade.md): image optimized
-  `apps/identity/keycloak` (26.7.4), rootfs chỉ đọc, prod 2 replica — đã chạy thật trên dev EKS.
+  `apps/identity/keycloak` (26.7.4 → 26.7.5 ở B-23), rootfs chỉ đọc, prod 2 replica — đã chạy thật trên dev EKS.
 - ~~Xóa công tắc `bss.auth.enabled`~~ — ✅ 2026-09-30: auth luôn bật ở mọi môi trường, kể cả `e2e-local.sh`.
 - ~~NetworkPolicy ở staging/prod~~ — ✅ 2026-10-01 (B-25, #198): bật `enable_network_policy` cả 2 môi trường;
   `netpol-matrix.sh` 12/12 trên staging và 12/12 trên prod (Keycloak 2 replica, ô JGroups 7800) trong đợt
