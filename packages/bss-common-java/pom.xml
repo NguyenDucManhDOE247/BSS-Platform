@@ -4,33 +4,45 @@
 
     <groupId>com.bss</groupId>
     <artifactId>bss-common-java</artifactId>
-    <!-- 0.2.0 (2026-10-01, B-15): thêm com.bss.common.id.UuidV7 + UuidV7Generator (PK UUID v7). -->
+    <!--
+      0.2.0 (2026-10-01, B-15): UuidV7 + UuidV7Generator (PK UUID v7), OffsetPageRequest (4 bản sao giống
+      hệt ở 4 service), CurrentCaller (danh tính người gọi từ JWT — 3 bản gần giống ở customer/order/billing).
+    -->
     <version>0.2.0</version>
     <packaging>jar</packaging>
     <name>bss-common-java</name>
-    <description>Shared Java code for BSS backend services: DTOs, exceptions, security, AWS helpers</description>
+    <description>Shared Java code for BSS backend services: exceptions, paging, identity, ids</description>
 
     <properties>
         <java.version>21</java.version>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <!--
-          Khớp đúng bản mà Spring Boot 3.5.16 (parent của mọi service) quản lý. Tất cả là `provided`:
-          lúc chạy, service dùng bản của chính nó — ở đây chỉ để biên dịch, nên lệch bản = rủi ro biên dịch
-          được ở đây nhưng NoSuchMethodError ở service (0.1.0 từng ghim Spring 6.1.5 từ thời Boot 3.2).
-        -->
-        <spring.version>6.2.19</spring.version>
-        <hibernate.version>6.6.53.Final</hibernate.version>
-        <junit.version>5.12.2</junit.version>
     </properties>
 
+    <!--
+      Mọi phiên bản lấy từ ĐÚNG BOM của Spring Boot mà các service dùng làm parent (3.5.16). Mọi dependency
+      bên dưới là `provided`: lúc chạy, service dùng bản của chính nó — ở đây chỉ để biên dịch + test. Lệch
+      bản giữa thư viện và service = biên dịch được ở đây nhưng NoSuchMethodError ở service (0.1.0 từng ghim
+      tay Spring 6.1.5 từ thời Boot 3.2 trong khi service đã lên 6.2). Nâng Boot ở service ⇒ nâng dòng này.
+    -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>3.5.16</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
-        <!-- ProblemDetail (RFC 7807) responses, validation -->
+        <!-- ProblemDetail (RFC 7807), ResponseStatusException -->
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-web</artifactId>
-            <version>${spring.version}</version>
             <scope>provided</scope>
         </dependency>
         <!--
@@ -43,34 +55,46 @@
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-context</artifactId>
-            <version>${spring.version}</version>
             <scope>provided</scope>
         </dependency>
         <!-- DataIntegrityViolationException (org.springframework.dao) lives in spring-tx -->
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-tx</artifactId>
-            <version>${spring.version}</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>jakarta.validation</groupId>
             <artifactId>jakarta.validation-api</artifactId>
-            <version>3.1.1</version>
             <scope>provided</scope>
         </dependency>
-        <!-- UuidV7Generator implements org.hibernate.id.uuid.UuidValueGenerator (B-15) -->
+        <!-- OffsetPageRequest implements org.springframework.data.domain.Pageable -->
+        <dependency>
+            <groupId>org.springframework.data</groupId>
+            <artifactId>spring-data-commons</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <!-- CurrentCaller đọc JwtAuthenticationToken (resource server) + Jwt (jose) -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-resource-server</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-jose</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <!-- UuidV7Generator implements org.hibernate.id.uuid.UuidValueGenerator -->
         <dependency>
             <groupId>org.hibernate.orm</groupId>
             <artifactId>hibernate-core</artifactId>
-            <version>${hibernate.version}</version>
             <scope>provided</scope>
         </dependency>
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
