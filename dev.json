@@ -1,20 +1,20 @@
 {
-  "deployed_at": "2026-09-30T07:34:53Z",
+  "deployed_at": "2026-10-01T09:49:06Z",
   "environment": "dev",
   "schema": 1,
   "services": {
     "admin-console": "a6ca9e9bd5ba97b2e2d5a3fd00cb6f4c98ecfb2f",
-    "api-gateway": "d1c133cab8f0dfdb3632b1943f05a873981e0cca",
-    "billing-service": "d1c133cab8f0dfdb3632b1943f05a873981e0cca",
-    "customer-service": "d1c133cab8f0dfdb3632b1943f05a873981e0cca",
+    "api-gateway": "5f0c98ab39e92a797ca7389ed0aed2d727c5f674",
+    "billing-service": "3cf938417c9b94b34c5012e529723dae93721a60",
+    "customer-service": "3cf938417c9b94b34c5012e529723dae93721a60",
     "keycloak": "1737271a313b5839d27cc129808213bebaad24ad",
-    "order-management": "d1c133cab8f0dfdb3632b1943f05a873981e0cca",
-    "product-catalog": "d1c133cab8f0dfdb3632b1943f05a873981e0cca",
-    "web-portal": "78a319d7f750a653af216ce95e09c5d84103d82e"
+    "order-management": "3cf938417c9b94b34c5012e529723dae93721a60",
+    "product-catalog": "3cf938417c9b94b34c5012e529723dae93721a60",
+    "web-portal": "3cf938417c9b94b34c5012e529723dae93721a60"
   },
   "source": {
     "ref": "refs/heads/main",
-    "run_url": "https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/runs/36684095963",
-    "sha": "d1c133cab8f0dfdb3632b1943f05a873981e0cca"
+    "run_url": "https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/runs/36845099030",
+    "sha": "3cf938417c9b94b34c5012e529723dae93721a60"
   }
 }
