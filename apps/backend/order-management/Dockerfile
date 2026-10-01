@@ -9,6 +9,11 @@ COPY src/ src/
 RUN --mount=type=cache,target=/root/.m2 mvn -B clean package -DskipTests
 
 FROM eclipse-temurin:21-jre-jammy
+# CVE-2026-84782 (libssl3, HIGH — 2026-10-01): bản vá đã có trong apt của Ubuntu jammy nhưng tag
+# eclipse-temurin:21-jre-jammy chưa được build lại → Trivy (ci-backend) chặn mọi PR backend. Nâng đúng 2 gói
+# OpenSSL ở đây (stage này đang chạy root, trước USER bss); bỏ khi base upstream đã có >= 3.0.2-0ubuntu1.30.
+RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade libssl3 openssl \
+    && rm -rf /var/lib/apt/lists/*
 RUN groupadd --system bss && useradd --system --gid bss bss
 USER bss
 WORKDIR /app
