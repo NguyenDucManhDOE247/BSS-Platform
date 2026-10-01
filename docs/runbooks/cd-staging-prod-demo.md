@@ -102,6 +102,14 @@ git tag v0.1.0 <cùng commit> && git push origin v0.1.0        # → cd-prod: ch
 Cluster dựng **sau** khi đã có tag: chạy lại workflow bằng *Run workflow → Use workflow from: Tag* (không tag lại).
 Kiểm ALB: `kubectl -n bss get ingress bss-ingress` → `ADDRESS`; `./scripts/smoke.sh <env>`.
 
+Kiểm NetworkPolicy **được thi hành thật** (từ 2026-10-01 staging/prod bật `enable_network_policy` như dev —
+`kubectl apply` policy luôn "thành công" kể cả khi CNI không chặn gì, nên phải đo bằng Pod thật):
+
+```bash
+kubectl -n kube-system get pods -l k8s-app=aws-node -o jsonpath='{.items[0].spec.containers[*].name}'   # phải có aws-eks-nodeagent
+./scripts/netpol-matrix.sh "$(kubectl config current-context)"                                         # dev đạt 12/12 (30/9)
+```
+
 ## 4. API endpoint của cluster ↔ runner của GitHub
 
 **Vấn đề.** CLAUDE.md §10 yêu cầu EKS public endpoint **giới hạn CIDR** ở prod. Nhưng runner của GitHub

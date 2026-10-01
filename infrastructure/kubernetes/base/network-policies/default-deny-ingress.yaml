@@ -12,10 +12,12 @@
 #
 # ⚠️ Enforcement (thực thi luật) do CNI đảm nhiệm, NetworkPolicy chỉ là API record — object này
 # APPLY thành công trên MỌI cluster (kể cả kind mặc định), nhưng CHỈ CÓ TÁC DỤNG THẬT khi CNI hỗ
-# trợ NetworkPolicy. kind mặc định dùng `kindnet` — KHÔNG thực thi NetworkPolicy (xác nhận thật:
-# apply object này lên cluster kind-bss, `kubectl exec` vẫn gọi xuyên được — không có gì bị chặn).
-# EKS: bật bằng `network_policy_configuration { enabled = true }` trên VPC CNI (aws-node) — xem
-# comment trong infrastructure/terraform/modules/eks/main.tf khi bật (chưa bật — Terraform riêng).
+# trợ NetworkPolicy. kind: `kindnet` bản CŨ (GĐ7) KHÔNG thực thi (đã thử: `kubectl exec` gọi xuyên được);
+# bản kindnetd MỚI (dùng từ GĐ9) CÓ thực thi — lộ ra bug thật ở allow-order-to-dependencies.yaml, và
+# scripts/netpol-matrix.sh đạt 10/10 trên kind. Luôn ĐO bằng netpol-matrix, đừng suy ra từ "apply thành công".
+# EKS: bật bằng biến Terraform `enable_network_policy = true` (addon VPC CNI nhận
+# `configuration_values = { enableNetworkPolicy = "true" }` — modules/eks/main.tf). Dev bật từ dọn nợ GĐ7
+# (netpol-matrix 12/12 trên dev EKS, 2026-09-30); staging/prod bật từ 2026-10-01.
 # Xác minh THẬT cơ chế deny/allow của chính các luật này (không phải khả năng của CNI) dùng 1
 # cluster kind tạm CÓ Calico — xem docs/runbooks/network-policy.md mục 2.
 apiVersion: networking.k8s.io/v1
