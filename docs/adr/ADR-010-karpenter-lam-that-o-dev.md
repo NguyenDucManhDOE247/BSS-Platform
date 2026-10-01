@@ -80,6 +80,14 @@ Discord nhận alert `BssPodCrashLooping` cho 2 Pod `api-gateway` ("restarting r
 restart (OOMKilled hay liveness fail khi CPU bão hòa). Việc tiếp: đo lại, xem `kubectl describe pod`
 (`Last State`), và thử `instance-memory` ≥ 4 GiB.
 
+> **Đã giải thích + sửa (2026-10-01, đo lại đúng bậc 200→700, chi tiết `docs/labs/07-load-test-dev.md` mục 2c).**
+> Không phải OOMKilled và không phải node 2 GiB: (A) **liveness/readiness timeout mặc định 1s** — CPU bão hòa →
+> kubelet giết Pod gateway đang phục vụ (`exit 143`) → **502**; (B) **hết kết nối RDS** — 8 Pod product-catalog ×
+> HikariCP giữ sẵn 10 kết nối trên `db.t3.micro` (~70 kết nối) → Pod mới chết khi khởi động, Pod cũ trả **500**.
+> Sửa probe timeout + pool 5/min-idle 1 → **0% lỗi ở 3 lần đo liền**, 0 restart. Thông lượng/p95 giữa các lần dao
+> động quá lớn (72k–170k request cùng cấu hình) để kết luận gì thêm — máy đo nằm ngoài region.
+> Bonus từ cùng buổi: PDB `minAvailable: 1` + 1 replica chặn Karpenter gom node ở dev → overlay dev `maxUnavailable: 1`.
+
 **Gom node khi hết tải:** ~6 phút sau khi k6 dừng (chờ HPA thu Pod), Karpenter xóa 2/4 NodeClaim. Log có
 cảnh báo `TopologySpreadConstraint` dạng preferred có thể cản việc gom.
 

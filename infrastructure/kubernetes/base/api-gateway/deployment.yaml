@@ -70,12 +70,20 @@ spec:
             httpGet: { path: /actuator/health/liveness, port: 8080 }
             failureThreshold: 30
             periodSeconds: 5
+          # Đo thật 2026-10-01 (dev EKS, 200→700 req/s — ADR-010 "7,9% lỗi"): thiếu timeoutSeconds = mặc định 1s.
+          # CPU bão hòa ở limit → /actuator/health/liveness trả chậm > 1s → kubelet báo "context deadline
+          # exceeded" 3 lần → GIẾT Pod đang phục vụ (exit 143) → ALB trả 502 cho request đang bay (1.902/79.364)
+          # và Pod còn lại gánh thêm. Liveness chỉ nên giết Pod TREO THẬT, không phải Pod đang bận: 5s × 6 lần
+          # (60s). Readiness 3s: bận thì tạm rút khỏi ALB, không bị giết. Áp cho mọi service JVM.
           livenessProbe:
             httpGet: { path: /actuator/health/liveness, port: 8080 }
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
           readinessProbe:
             httpGet: { path: /actuator/health/readiness, port: 8080 }
             periodSeconds: 5
+            timeoutSeconds: 3
           resources:
             requests: { cpu: "200m", memory: "384Mi" }
             limits:   { cpu: "1000m", memory: "768Mi" }
