@@ -86,6 +86,19 @@ discovery có `issuer == https://<host>/auth/realms/bss`; `/auth/admin/realms` *
 - Rủi ro chấp nhận: nhà cung cấp miền miễn phí có thể thu hồi/ngừng dịch vụ — mất miền thì chỉ cần đổi
   `domain_name` + host trong 3 overlay + realm, kiến trúc không đổi.
 
-## Bằng chứng
+## Bằng chứng (chạy thật — không suy đoán)
 
-Điền sau khi chạy thật (dev trước, rồi staging/prod theo ADR-006).
+| Bước (2026-10-01) | Kết quả |
+|---|---|
+| `terraform plan` shared lần đầu | 2 lỗi thật `Invalid for_each argument` (khóa theo tên bản ghi xác thực, rồi theo `dvo.domain_name` — cert dùng `count` nên cả tập unknown lúc plan) → khóa theo 2 tên khai báo |
+| Apply 1 (shared) | 4 resource: zone `Z0030846ZUQU1KLU0V2B`, cert, 2 bản ghi xác thực — **cùng 1 CNAME** cho apex + wildcard (`allow_overwrite` đúng là cần) |
+| NS ở DigitalPlat | `ns1.dpdns.org` ủy quyền ngay; Cloudflare + Google thấy NS mới sau **~200 s** |
+| Apply 2 (`dns_delegated = true`) | Cert **ISSUED sau 44 s**, hạn 2027-04-17 |
+| Dev EKS | _(điền khi chạy)_ |
+
+### Lưu ý gia hạn cert
+
+`RenewalEligibility = INELIGIBLE` lúc mới cấp: ACM chỉ tự gia hạn cert **đang gắn vào tài nguyên AWS** (ALB).
+ALB của dự án là ephemeral (ADR-006) → nếu tới khoảng 60 ngày trước 2027-04-17 không môi trường nào đang chạy,
+cert có thể hết hạn. Cách xử lý (đã ghi ở runbook): `terraform apply -replace=aws_acm_certificate.main[0]`
+trong shared — `create_before_destroy` cấp cert mới qua cùng bản ghi CNAME, không phải đụng NS.

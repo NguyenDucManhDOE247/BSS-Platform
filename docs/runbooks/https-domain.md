@@ -62,7 +62,20 @@ aws route53 list-resource-record-sets --hosted-zone-id <zone-id> --query "Resour
 # rồi change-resource-record-sets với Action=DELETE và đúng nguyên giá trị vừa liệt kê
 ```
 
-## 4. Sự cố thường gặp
+## 4. Cert hết hạn (2027-04-17) — ACM có tự gia hạn không?
+
+Chỉ khi cert **đang gắn vào ALB** lúc ACM xét gia hạn (từ ~60 ngày trước hạn). Môi trường ephemeral nên có thể
+không. Kiểm:
+
+```bash
+aws acm describe-certificate --region ap-southeast-1 --certificate-arn "$(terraform -chdir=infrastructure/terraform/environments/shared output -raw acm_certificate_arn)" \
+  --query 'Certificate.[Status,NotAfter,RenewalEligibility,RenewalSummary.RenewalStatus]' --output text
+```
+
+Sắp hết hạn mà chưa gia hạn: `terraform -chdir=infrastructure/terraform/environments/shared apply -replace='aws_acm_certificate.main[0]'`
+(`create_before_destroy` → cert mới trước, cùng bản ghi CNAME xác thực; ALB Controller tự chọn cert mới theo host).
+
+## 5. Sự cố thường gặp
 
 | Triệu chứng | Nguyên nhân | Kiểm / sửa |
 |---|---|---|
