@@ -25,12 +25,20 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import software.amazon.awssdk.services.eventbridge.EventBridgeClient;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -129,12 +137,14 @@ class OrderAuthIT {
                 .andExpect(jsonPath("$.totalAmount", equalTo(199000)))
                 .andReturn().getResponse().getContentAsString();
         UUID orderId = UUID.fromString(json.readTree(res).get("id").asText());
+        assertThat(orderId.version()).as("B-15: PK là UUID v7 (bss-common-java UuidV7Generator)").isEqualTo(7);
 
         // Event mang customerSub để billing đóng dấu chủ sở hữu lên hóa đơn (ADR-008 quyết định 5).
         EventOutbox row = outbox.findAll().stream()
                 .filter(e -> e.getAggregateId().equals(orderId)).findFirst().orElseThrow();
         var payload = json.readTree(row.getPayload());
         assertThat(payload.get("customerSub").asText()).isEqualTo(sub);
+        assertThat(row.getId().version()).as("id outbox = khóa chống trùng B-11, giờ là v7").isEqualTo(7);
         assertThat(payload.get("customerId").asText()).isEqualTo(realCustomerId.toString());
     }
 
@@ -199,5 +209,136 @@ class OrderAuthIT {
         mvc.perform(get(BASE + "/{id}", orderA).with(admin())).andExpect(status().isOk());
 
         mvc.perform(get(BASE)).andExpect(status().isUnauthorized());
+    }
+
+    // ---------- B-15: Idempotency-Key ----------
+
+    static String orderBodyQty(int quantity) {
+        return """
+                {"category":"new","description":"Dang ky","items":[{"productOfferingId":"%s","quantity":%d}]}
+                """.formatted(OFFERING, quantity);
+    }
+
+    long ordersOf(String sub) throws Exception {
+        String res = mvc.perform(get(BASE + "?limit=100").with(customer(sub)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return json.readTree(res).size();
+    }
+
+    @Test
+    void same_idempotency_key_twice_creates_one_order_and_replays_it() throws Exception {
+        String sub = UUID.randomUUID().toString();
+        givenProfile(sub, "Active");
+
+        String first = mvc.perform(post(BASE).with(customerWithToken(sub)).header("Idempotency-Key", "dbl-click-1")
+                        .contentType(APPLICATION_JSON).content(orderBodyQty(1)))
+                .andExpect(status().isCreated())
+                .andExpect(header().doesNotExist("Idempotent-Replayed"))
+                .andReturn().getResponse().getContentAsString();
+        String orderId = json.readTree(first).get("id").asText();
+
+        // Bấm lần 2 (hoặc trình duyệt tự gửi lại): cùng đơn, cùng 201, có dấu replayed — không đơn mới.
+        mvc.perform(post(BASE).with(customerWithToken(sub)).header("Idempotency-Key", "dbl-click-1")
+                        .contentType(APPLICATION_JSON).content(orderBodyQty(1)))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Idempotent-Replayed", "true"))
+                .andExpect(header().string("Location", endsWith(orderId)))
+                .andExpect(jsonPath("$.id", equalTo(orderId)));
+
+        assertThat(ordersOf(sub)).isEqualTo(1);
+        assertThat(outbox.findAll().stream().filter(e -> e.getAggregateId().toString().equals(orderId))).hasSize(1);
+        // Lần replay không gọi lại customer-service / catalog.
+        verify(customers, times(1)).me("token-" + sub);
+    }
+
+    @Test
+    void same_key_with_different_body_is_422_and_creates_nothing() throws Exception {
+        String sub = UUID.randomUUID().toString();
+        givenProfile(sub, "Active");
+        mvc.perform(post(BASE).with(customerWithToken(sub)).header("Idempotency-Key", "k-1")
+                        .contentType(APPLICATION_JSON).content(orderBodyQty(1)))
+                .andExpect(status().isCreated());
+
+        mvc.perform(post(BASE).with(customerWithToken(sub)).header("Idempotency-Key", "k-1")
+                        .contentType(APPLICATION_JSON).content(orderBodyQty(2)))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.detail", containsString("key mới")));
+        assertThat(ordersOf(sub)).isEqualTo(1);
+    }
+
+    @Test
+    void keys_are_scoped_per_user_and_requests_without_a_key_are_not_deduplicated() throws Exception {
+        String subA = UUID.randomUUID().toString(), subB = UUID.randomUUID().toString();
+        givenProfile(subA, "Active");
+        givenProfile(subB, "Active");
+        for (String sub : new String[]{subA, subB}) {
+            mvc.perform(post(BASE).with(customerWithToken(sub)).header("Idempotency-Key", "shared-key")
+                            .contentType(APPLICATION_JSON).content(orderBodyQty(1)))
+                    .andExpect(status().isCreated())
+                    .andExpect(header().doesNotExist("Idempotent-Replayed"));
+        }
+        assertThat(ordersOf(subA)).isEqualTo(1);
+        assertThat(ordersOf(subB)).isEqualTo(1);
+
+        // Không có header → hành vi cũ: mỗi request một đơn.
+        for (int i = 0; i < 2; i++) {
+            mvc.perform(post(BASE).with(customerWithToken(subA)).contentType(APPLICATION_JSON).content(orderBodyQty(1)))
+                    .andExpect(status().isCreated());
+        }
+        assertThat(ordersOf(subA)).isEqualTo(3);
+    }
+
+    @Test
+    void malformed_key_is_400() throws Exception {
+        String sub = UUID.randomUUID().toString();
+        givenProfile(sub, "Active");
+        for (String bad : new String[]{"has space", "x".repeat(256)}) {
+            mvc.perform(post(BASE).with(customerWithToken(sub)).header("Idempotency-Key", bad)
+                            .contentType(APPLICATION_JSON).content(orderBodyQty(1)))
+                    .andExpect(status().isBadRequest());
+        }
+        assertThat(ordersOf(sub)).isZero();
+    }
+
+    /**
+     * Race thật, không trông may rủi: latch giữ CẢ HAI request ở customers.me() — tức là sau khi cả hai
+     * đã tra key và không thấy gì — rồi thả cùng lúc. Cả hai tạo đơn; PRIMARY KEY (owner_sub, idem_key)
+     * để đúng một bên commit, bên kia rollback toàn bộ đơn + outbox của nó và nhận 409.
+     */
+    @Test
+    void concurrent_duplicates_create_exactly_one_order() throws Exception {
+        String sub = UUID.randomUUID().toString();
+        UUID customerId = UUID.randomUUID();
+        var bothInside = new CountDownLatch(2);
+        when(customers.me(eq("token-" + sub))).thenAnswer(inv -> {
+            bothInside.countDown();
+            assertThat(bothInside.await(20, TimeUnit.SECONDS)).as("request thứ 2 không tới kịp").isTrue();
+            return new CustomerSnapshot(customerId, "Active", sub + "@example.com");
+        });
+
+        var pool = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<Integer>> results = new ArrayList<>();
+            for (int i = 0; i < 2; i++) {
+                results.add(pool.submit(() -> mvc.perform(post(BASE).with(customerWithToken(sub))
+                                .header("Idempotency-Key", "race-1")
+                                .contentType(APPLICATION_JSON).content(orderBodyQty(1)))
+                        .andReturn().getResponse().getStatus()));
+            }
+            var statuses = new ArrayList<Integer>();
+            for (var r : results) {
+                statuses.add(r.get(60, TimeUnit.SECONDS));
+            }
+            assertThat(statuses).containsExactlyInAnyOrder(201, 409);
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(ordersOf(sub)).isEqualTo(1);
+
+        // Gửi lại sau 409 → nhận đúng đơn đã thắng.
+        mvc.perform(post(BASE).with(customerWithToken(sub)).header("Idempotency-Key", "race-1")
+                        .contentType(APPLICATION_JSON).content(orderBodyQty(1)))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Idempotent-Replayed", "true"));
     }
 }

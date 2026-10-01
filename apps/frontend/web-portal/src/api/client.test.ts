@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { User } from 'oidc-client-ts';
 import type { InternalAxiosRequestConfig } from 'axios';
-import { api, formatVND } from './client';
+import { api, formatVND, newIdempotencyKey } from './client';
 import { OIDC_AUTHORITY, OIDC_CLIENT_ID } from '../auth/oidcConfig';
 
 // B-04 fix: ci-frontend.yml runs `npm test` (vitest run) and there wasn't a single test file
@@ -23,6 +23,25 @@ describe('formatVND', () => {
 
   it('formats zero', () => {
     expect(formatVND(0)).toBe(`0${NBSP}₫`);
+  });
+});
+
+describe('newIdempotencyKey (B-15)', () => {
+  it('is unique per call and fits the server rule (1-255 printable ASCII)', () => {
+    const a = newIdempotencyKey();
+    expect(a).not.toBe(newIdempotencyKey());
+    expect(a).toMatch(/^[\x21-\x7e]{1,255}$/);
+  });
+
+  it('still works without crypto.randomUUID (plain-HTTP page = not a secure context)', () => {
+    const original = Object.getOwnPropertyDescriptor(crypto, 'randomUUID');
+    Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true, writable: true });
+    try {
+      expect(newIdempotencyKey()).toMatch(/^[0-9a-f]{32}$/);
+    } finally {
+      if (original) Object.defineProperty(crypto, 'randomUUID', original);
+      else delete (crypto as { randomUUID?: unknown }).randomUUID; // về lại bản trên prototype
+    }
   });
 });
 

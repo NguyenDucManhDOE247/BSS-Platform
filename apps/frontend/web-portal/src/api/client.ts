@@ -31,5 +31,19 @@ export function problemDetail(err: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * B-15: giá trị cho header `Idempotency-Key` — sinh 1 lần cho mỗi "ý định đặt hàng"; gửi lại cùng key thì
+ * order-management trả lại đúng đơn cũ thay vì tạo đơn thứ 2 (bấm đúp, mạng chập chờn).
+ *
+ * `crypto.randomUUID()` chỉ có trong SECURE CONTEXT (HTTPS hoặc *.localhost) — cùng loại bẫy với PKCE ở
+ * GĐ9 (bài 18). Trên AWS hiện chạy HTTP (chưa có domain, B-23) nó là `undefined` → dự phòng bằng
+ * `crypto.getRandomValues`, hàm này có ở mọi context.
+ */
+export function newIdempotencyKey(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export const formatVND = (amount: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);

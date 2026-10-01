@@ -1,19 +1,23 @@
 package com.bss.product.service;
 
+import com.bss.common.exception.NotFoundException;
+import com.bss.common.paging.OffsetPageRequest;
 import com.bss.product.dto.CreateOfferingRequest;
 import com.bss.product.dto.PatchOfferingRequest;
 import com.bss.product.dto.ProductOfferingDto;
-import com.bss.product.exception.NotFoundException;
 import com.bss.product.model.LifecycleStatus;
 import com.bss.product.model.ProductOffering;
 import com.bss.product.model.ProductOffering.RecurringPeriod;
-import com.bss.product.paging.OffsetPageRequest;
 import com.bss.product.repository.ProductOfferingRepository;
+import org.openapitools.jackson.nullable.JsonNullable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -54,17 +58,36 @@ public class ProductOfferingService {
                 .orElseThrow(() -> new NotFoundException("ProductOffering", id.toString()));
     }
 
-    /** Giai đoạn 9: admin sửa giá / mô tả / ngừng bán. Trường null = giữ nguyên (merge-patch). */
+    /**
+     * Giai đoạn 9: admin sửa giá / mô tả / ngừng bán. merge-patch đúng RFC 7396 (B-15): không gửi = giữ
+     * nguyên; {@code null} = xóa ({@code description}, {@code validForStart/End}); trường bắt buộc + null = 422.
+     */
     public ProductOfferingDto patch(UUID id, PatchOfferingRequest req) {
         var o = repo.findById(id)
                 .orElseThrow(() -> new NotFoundException("ProductOffering", id.toString()));
-        if (req.name() != null && !req.name().isBlank()) o.setName(req.name().trim());
-        if (req.description() != null) o.setDescription(req.description());
-        if (req.priceAmount() != null) o.setPriceAmount(req.priceAmount());
-        if (req.lifecycleStatus() != null) o.setLifecycleStatus(req.lifecycleStatus());
-        if (req.validForStart() != null) o.setValidForStart(req.validForStart());
-        if (req.validForEnd() != null) o.setValidForEnd(req.validForEnd());
+        present(req.name()).ifPresent(n -> {
+            String name = n.orElseThrow(() -> cannotRemove("name"));
+            if (name.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "name: must not be blank");
+            }
+            o.setName(name.trim());
+        });
+        present(req.description()).ifPresent(d -> o.setDescription(d.orElse(null)));
+        present(req.priceAmount()).ifPresent(p -> o.setPriceAmount(p.orElseThrow(() -> cannotRemove("priceAmount"))));
+        present(req.lifecycleStatus()).ifPresent(s -> o.setLifecycleStatus(s.orElseThrow(() -> cannotRemove("lifecycleStatus"))));
+        present(req.validForStart()).ifPresent(v -> o.setValidForStart(v.orElse(null)));
+        present(req.validForEnd()).ifPresent(v -> o.setValidForEnd(v.orElse(null)));
         return ProductOfferingDto.from(repo.save(o));
+    }
+
+    /** Trường CÓ trong body → {@code Optional.of(giá trị-có-thể-null)}; không gửi → {@code Optional.empty()}. */
+    private static <T> Optional<Optional<T>> present(JsonNullable<T> field) {
+        return field != null && field.isPresent() ? Optional.of(Optional.ofNullable(field.get())) : Optional.empty();
+    }
+
+    private static ResponseStatusException cannotRemove(String field) {
+        return new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                field + ": bắt buộc — merge-patch gửi null nghĩa là xóa, trường này không xóa được");
     }
 
     public ProductOfferingDto create(CreateOfferingRequest req) {

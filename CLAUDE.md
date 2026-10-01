@@ -293,14 +293,20 @@ bss-platform/
 - Logging SLF4J structured JSON ở prod; không log PII (CCCD, OTP, mật khẩu).
 - Validation qua Bean Validation (`@Valid`, `@NotNull`, `@Size`).
 - **Flyway migration** `db/migration/V<ts>__<desc>.sql`.
-- PK = UUID v7.
+- PK = UUID v7: `@Id @UuidGenerator(algorithm = UuidV7Generator.class)` (bss-common-java — Hibernate 6.6 chưa có sẵn v7).
+- Code dùng chung (handler RFC 7807, `NotFoundException`, `OffsetPageRequest`, `CurrentCaller`, `UuidV7`) nằm ở
+  `packages/bss-common-java` và được `@Import` — **không chép vào service** (B-15). Đổi thư viện = bump version.
 
 ### REST API
 - Path: `/tmf-api/<resource>Management/v<n>/<resource>` (chuẩn TM Forum).
 - HTTP status nghiêm túc: 201/204/409/422.
 - Error body theo **RFC 7807 ProblemDetail** (đã có sẵn handler trong `packages/bss-common-java`).
 - Pagination: `?offset=0&limit=20`, header `X-Total-Count`.
-- Idempotency-Key header cho mọi POST mutating.
+- PATCH = **JSON Merge Patch đúng RFC 7396**: không gửi = giữ nguyên, `null` = xóa (trường bắt buộc → 422). DTO dùng
+  `JsonNullable<T>` — `Optional<T>` trong record KHÔNG phân biệt được "không gửi" với `null`.
+- `Idempotency-Key` (B-15): bắt buộc hỗ trợ ở POST tạo thứ **tính tiền** hoặc không có khóa tự nhiên — hiện là
+  `productOrder`. Các POST còn lại tự idempotent nhờ UNIQUE (`/customer/me` theo `sub`, email) hoặc chỉ admin gọi.
+  Thêm POST mới thuộc loại đầu → phải hỗ trợ header này (mẫu: order-management `IdempotencyKey`).
 
 ### Frontend (React/TS)
 - TypeScript **strict mode** — không `any`.
@@ -578,4 +584,5 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 - **NetworkPolicy ở staging/prod:** đã kiểm trên dev EKS (12/12 từ 2026-09-30), chưa bật ở 2 môi trường kia.
 - **Tỉ lệ lỗi 7,9% dưới tải 700 req/s có Karpenter** — manh mối: `BssPodCrashLooping` của api-gateway
   bắn trong lúc đo (ADR-010).
-- B-15: UUID v7, `Idempotency-Key`, `bss-common-java` chưa được mọi service dùng.
+- ~~B-15~~ — ✅ code xong 2026-10-01 (PR bss-common-java 0.2.0 + PR các service): UUID v7, `Idempotency-Key` cho
+  `productOrder`, merge-patch `null` = xóa, 4 service dùng `bss-common-java`. Đóng issue khi 2 PR đã merge.

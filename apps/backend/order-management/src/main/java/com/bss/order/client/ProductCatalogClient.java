@@ -30,7 +30,7 @@ import java.util.UUID;
  *
  * A real 404 (offering doesn't exist) is a client error, not a transient fault — it's declared
  * `ignore-exceptions` in application.yml so Resilience4j doesn't retry it or count it against
- * the circuit breaker; it becomes a 422 in {@link com.bss.order.exception.GlobalExceptionHandler}.
+ * the circuit breaker; it becomes a 422 in {@link com.bss.order.exception.OrderExceptionHandler}.
  */
 @Component
 public class ProductCatalogClient {

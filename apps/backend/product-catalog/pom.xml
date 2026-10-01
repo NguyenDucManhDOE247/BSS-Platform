@@ -25,7 +25,19 @@
         <tomcat.version>10.1.60</tomcat.version>
         <postgresql.version>42.7.12</postgresql.version>
     </properties>
+    <!-- B-15: bss-common-java từ GitHub Packages (cần auth kể cả repo public) — giải thích đầy đủ ở
+         customer-service/pom.xml; Dockerfile nhận token qua BuildKit secret. -->
+    <repositories>
+        <repository>
+            <id>github</id>
+            <url>https://maven.pkg.github.com/NguyenDucManhDOE247/BSS-Platform</url>
+        </repository>
+    </repositories>
     <dependencies>
+        <!-- B-15: exception handler, phân trang offset/limit, UUID v7 — thay bản sao riêng của service. -->
+        <dependency><groupId>com.bss</groupId><artifactId>bss-common-java</artifactId><version>0.2.0</version></dependency>
+        <!-- B-15: PATCH merge-patch phân biệt "không gửi" với "gửi null" — xem customer-service/pom.xml. -->
+        <dependency><groupId>org.openapitools</groupId><artifactId>jackson-databind-nullable</artifactId><version>0.2.9</version></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-jpa</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>

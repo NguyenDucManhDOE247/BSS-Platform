@@ -94,6 +94,26 @@ class ProductCatalogAuthIT {
     }
 
     @Test
+    void merge_patch_null_clears_description_and_required_null_is_422() throws Exception {
+        // B-15 (RFC 7396): trước đây null = giữ nguyên → không có cách nào xóa mô tả / ngày hết hạn.
+        String id = createAsAdmin("Merge patch " + UUID.randomUUID(), 50000);
+        String res = mvc.perform(patch(BASE + "/{id}", id).with(admin())
+                        .contentType("application/merge-patch+json").content("{\"description\":null}"))
+                .andExpect(status().isOk())
+                // không gửi → giữ nguyên (đọc lại từ NUMERIC(12,2) nên JSON là 50000.00 → Double)
+                .andExpect(jsonPath("$.priceAmount", closeTo(50000.0, 0.001)))
+                .andReturn().getResponse().getContentAsString();
+        var description = json.readTree(res).get("description");
+        org.assertj.core.api.Assertions.assertThat(description == null || description.isNull()).isTrue();
+
+        for (String body : new String[]{"{\"name\":null}", "{\"priceAmount\":null}", "{\"lifecycleStatus\":null}"}) {
+            mvc.perform(patch(BASE + "/{id}", id).with(admin())
+                            .contentType("application/merge-patch+json").content(body))
+                    .andExpect(status().isUnprocessableEntity());
+        }
+    }
+
+    @Test
     void admin_patch_rejects_negative_price() throws Exception {
         String id = createAsAdmin("Gia am " + UUID.randomUUID(), 10000);
         mvc.perform(patch(BASE + "/{id}", id).with(admin())
