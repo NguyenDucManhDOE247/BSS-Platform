@@ -581,7 +581,9 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 - ~~Keycloak production-grade~~ — ✅ 2026-09-30, [ADR-011](docs/adr/ADR-011-keycloak-production-grade.md): image optimized
   `apps/identity/keycloak` (26.7.4), rootfs chỉ đọc, prod 2 replica — đã chạy thật trên dev EKS.
 - ~~Xóa công tắc `bss.auth.enabled`~~ — ✅ 2026-09-30: auth luôn bật ở mọi môi trường, kể cả `e2e-local.sh`.
-- **NetworkPolicy ở staging/prod:** đã kiểm trên dev EKS (12/12 từ 2026-09-30), chưa bật ở 2 môi trường kia.
+- ~~NetworkPolicy ở staging/prod~~ — ✅ 2026-10-01 (B-25, #198): bật `enable_network_policy` cả 2 môi trường;
+  `netpol-matrix.sh` 12/12 trên staging và 12/12 trên prod (Keycloak 2 replica, ô JGroups 7800) trong đợt
+  release `rc-v2.1.0` → `v2.1.0`.
 - **Tỉ lệ lỗi 7,9% dưới tải 700 req/s có Karpenter** — manh mối: `BssPodCrashLooping` của api-gateway
   bắn trong lúc đo (ADR-010).
 - ~~B-15~~ — ✅ code xong 2026-10-01 (PR bss-common-java 0.2.0 + PR các service): UUID v7, `Idempotency-Key` cho

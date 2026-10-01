@@ -20,8 +20,10 @@ Debt pass from Phase 8 back to 0 (after `v2.0.0`), each item verified on real in
 - **Karpenter 1.14.1 on dev** (Spot first) — [ADR-010](docs/adr/ADR-010-karpenter-lam-that-o-dev.md)
   supersedes ADR-007; IAM translated from the official template; node `Ready` ~36 s; 200→700 req/s served
   2.4× more requests than fixed nodes (p95 3.66 s vs 8.55 s, but 7.9% errors — see ADR-010).
-- **NetworkPolicy enforcement on EKS** (VPC CNI `enableNetworkPolicy`, dev) + `scripts/netpol-matrix.sh`
-  run from inside real service pods (11/11 on EKS, 10/10 on kind).
+- **NetworkPolicy enforcement on EKS** (VPC CNI `enableNetworkPolicy`, dev → staging + prod) +
+  `scripts/netpol-matrix.sh` run from inside real service pods (10/10 on kind; 12/12 on dev EKS 2026-09-30,
+  12/12 on staging and 12/12 on prod 2026-10-01 during the `rc-v2.1.0` → `v2.1.0` release, incl. the
+  Keycloak JGroups port 7800 cell on the 2-replica prod Keycloak).
 - **IRSA for Fluent Bit and the OTel Collector** — logs reach CloudWatch as JSON with `trace_id`, traces
   reach X-Ray (a log's `trace_id` resolves to a 13-segment trace across EventBridge → SQS).
 - `tools/ops/orphan_finder.py` — lists anything still billing after `terraform destroy`.

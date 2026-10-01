@@ -100,7 +100,9 @@ kind delete cluster --name netpol-test   # dọn ngay sau khi xong — cluster n
 
 VPC CNI (`aws-node`) hỗ trợ NetworkPolicy từ bản `v1.14+`. Bật bằng biến `enable_network_policy` của
 module `eks` (addon `vpc-cni`, `configuration_values = {"enableNetworkPolicy":"true"}`) — **dev bật từ
-đợt dọn nợ GĐ7**; staging/prod bật sau khi dev đã qua ma trận. Kiểm (kind hoặc EKS, cùng 1 script):
+đợt dọn nợ GĐ7**; staging/prod bật từ 2026-10-01 (B-25) sau khi dev đã qua ma trận — kết quả thật:
+dev 12/12 (30/9), staging 12/12 và prod 12/12 (1/10, đợt `rc-v2.1.0` → `v2.1.0`; prod có Keycloak 2 replica nên
+ô JGroups 7800 là thật). Kiểm (kind hoặc EKS, cùng 1 script):
 
 ```bash
 ./scripts/netpol-matrix.sh kind-bss                                       # kind
