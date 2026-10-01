@@ -89,12 +89,14 @@ def find_nat_eip_ebs_eni(ec2, live_clusters: set[str]) -> list[Orphan]:
                 out.append(Orphan("ENI", eni["NetworkInterfaceId"], eni.get("Description", "")[:60]))
     # Không tính tiền, nhưng CHẶN xóa VPC (lỗi thật 2026-09-30: SG `eks-cluster-sg-*` sót lại vì 1 ENI của
     # VPC CNI còn giữ nó khi cluster bị xóa). Chỉ báo SG của cluster bss-* KHÔNG còn tồn tại.
+    # Nhận diện theo TÊN EKS đặt (`eks-cluster-sg-<cluster>-<số>`) — tag `aws:eks:cluster-name` chỉ dịch vụ AWS
+    # gắn được, không tái hiện được khi kiểm thử (xem teardown.sh cleanup_vpc_leftovers).
     for page in ec2.get_paginator("describe_security_groups").paginate(
-        Filters=[{"Name": "tag-key", "Values": ["aws:eks:cluster-name"]}]
+        Filters=[{"Name": "group-name", "Values": [f"eks-cluster-sg-{PREFIX}*"]}]
     ):
         for sg in page["SecurityGroups"]:
-            cluster = _tags(sg.get("Tags")).get("aws:eks:cluster-name", "")
-            if cluster.startswith(PREFIX) and cluster not in live_clusters:
+            cluster = sg["GroupName"][len("eks-cluster-sg-"):].rsplit("-", 1)[0]
+            if cluster not in live_clusters:
                 out.append(Orphan("Security group", sg["GroupId"], f"của cluster đã xóa {cluster} — chặn xóa VPC"))
     for vpc in ec2.describe_vpcs()["Vpcs"]:
         tags = _tags(vpc.get("Tags"))

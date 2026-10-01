@@ -570,12 +570,12 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 
 ### Còn lại (có chủ đích để sau — chi tiết ở `learning/20` mục "Để sau")
 
-- **HTTPS + đăng nhập web trên AWS** (domain + ACM hoặc CloudFront) — B-23, và phần web của B-18.
+- **HTTPS + đăng nhập web trên AWS** (domain + ACM hoặc CloudFront) — B-23 (**hạ P1 → P2 ngày 2026-09-30**, chủ repo quyết:
+  "HTTPS chờ domain" — API đã có auth, Keycloak không mở ra ALB, Ingress không còn đòi cert), và phần web của B-18.
 - ~~Keycloak production-grade~~ — ✅ 2026-09-30, [ADR-011](docs/adr/ADR-011-keycloak-production-grade.md): image optimized
   `apps/identity/keycloak` (26.7.4), rootfs chỉ đọc, prod 2 replica — đã chạy thật trên dev EKS.
 - ~~Xóa công tắc `bss.auth.enabled`~~ — ✅ 2026-09-30: auth luôn bật ở mọi môi trường, kể cả `e2e-local.sh`.
 - **NetworkPolicy ở staging/prod:** đã kiểm trên dev EKS (12/12 từ 2026-09-30), chưa bật ở 2 môi trường kia.
-- **`tests/load/plans-and-order.js`** (k6) vẫn gọi API không token như trước GĐ9 — cần lấy token trước khi dùng lại.
 - **Tỉ lệ lỗi 7,9% dưới tải 700 req/s có Karpenter** — manh mối: `BssPodCrashLooping` của api-gateway
   bắn trong lúc đo (ADR-010).
 - B-15: UUID v7, `Idempotency-Key`, `bss-common-java` chưa được mọi service dùng.
