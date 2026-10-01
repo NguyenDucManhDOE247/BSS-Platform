@@ -249,6 +249,17 @@ patches:
   - target: { kind: HorizontalPodAutoscaler, name: admin-console }
     patch: |-
       - { op: replace, path: /spec/minReplicas, value: 1 }
+  # PDB cho dev 1 replica (đo thật 2026-10-01): base `minAvailable: 1` + 1 replica = ALLOWED DISRUPTIONS 0 → mọi
+  # lần evict bị chặn → Karpenter KHÔNG BAO GIỜ gom được node Spot đã tạo lúc tải (node t3a.medium nằm lại sau
+  # khi mọi HPA đã về 1 — tính tiền âm thầm), và teardown kẹt drain (ADR-010 "Lỗi thật #2"). Dev chấp nhận vài
+  # giây gián đoạn khi node bị gom; staging (2) / prod (3, minAvailable 2) giữ nguyên. Cùng lý do Keycloak đã
+  # dùng maxUnavailable (components/keycloak-aws/pdb.yaml, ADR-011).
+  - target:
+      kind: PodDisruptionBudget
+      name: "^(admin-console|api-gateway|web-portal|customer-service|product-catalog|order-management|billing-service)$"
+    patch: |-
+      - { op: remove, path: /spec/minAvailable }
+      - { op: add, path: /spec/maxUnavailable, value: 1 }
 
   # B-23: base ingress.yaml turns on the HTTPS listener + ssl-redirect and expects a real
   # hostname + ACM certificate ARN. Dev has neither yet (no domain registered, ExternalDNS isn't

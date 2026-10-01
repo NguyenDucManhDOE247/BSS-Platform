@@ -103,6 +103,54 @@ pod. Nói cách khác: câu trả lời đúng cho "hệ thống chịu được
 cố định của code, mà là **hàm số của số node đang chạy** — thêm node (hoặc Karpenter tự thêm) sẽ
 đẩy ngưỡng này lên, không cần đổi 1 dòng code nào.
 
+## 2c. Lỗi dưới tải: giải thích "7,9%" và sửa (dev EKS + Karpenter, 2026-10-01)
+
+ADR-010 đo 200→700 req/s có Karpenter: lượng request ×2.4 nhưng **7,9% lỗi**, chưa giải thích được (chỉ có
+manh mối: alert `BssPodCrashLooping` của api-gateway). Lần này đo lại với 2 công cụ mới:
+
+```bash
+STAGES=200,325,450,575,700   # bậc của GĐ8/ADR-010 — trước đây là "script tạm không commit"
+./scripts/load-watch.sh '' 14 > results/load-watch.log &      # mỗi 15s: node, Pending, HPA, Pod restart + LÝ DO
+k6 run -e BASE_URL=http://<alb> -e STAGES=$STAGES tests/load/dev-threshold.js   # có đếm theo MÃ HTTP
+```
+
+**Lần 1 (code `main`, 2026-10-01): 79.364 request, 4,21% lỗi, p95 7,79s** — phân theo mã: **502 = 1.902**,
+**500 = 1.447**, 503/504/timeout = 0. Hai nguyên nhân, mỗi cái có bằng chứng trực tiếp:
+
+| | Bằng chứng | Gây ra |
+|---|---|---|
+| **A. Probe timeout mặc định 1s** | Event `Liveness probe failed … context deadline exceeded` ở 6 Pod api-gateway; container chết `exit 143` (SIGTERM của kubelet) | CPU bão hòa → health check trả > 1s → kubelet **giết Pod đang phục vụ** → ALB trả **502** cho request đang bay; readiness timeout rút Pod khỏi ALB → Pod còn lại gánh thêm |
+| **B. Hết kết nối RDS** | CloudWatch `DatabaseConnections` đứng ở **70–72** (trần `db.t3.micro`); 105 dòng `remaining connection slots are reserved`; Pool `total=10/10, idle=10, active=0` | HPA đẩy product-catalog lên 8 Pod × HikariCP **mặc định 10 kết nối giữ sẵn** = 80 → Pod mới chết lúc khởi động (`exit 1`), Pod cũ trả **500** (`Cannot acquire connection`) |
+
+**Sửa** (PR "fix(load)…"): liveness `timeoutSeconds: 5, failureThreshold: 6`, readiness `timeoutSeconds: 3` cho 5
+service JVM; HikariCP `maximum-pool-size: 5, minimum-idle: 1` (quy tắc: Σ maxReplicas × pool ≤ max_connections −
+dự trữ). Lần 2–4 thử thêm tắt Open Session In View.
+
+| Lần | Cấu hình | Request | Lỗi | p95 | Pod restart |
+|---|---|---|---|---|---|
+| 1 | `main` | 79.364 | **4,21%** (502 + 500) | 7,79s | 6+ |
+| 2 | + probe + pool 5 | 64.994 | **0%** | 9,08s | **0** |
+| 3 | + OSIV tắt | 169.923 | **0%** | 3,09s | **0** |
+| 4 | **lặp lại đúng lần 3** | 72.455 | **0%** | 6,61s | **0** |
+
+**Kết luận được và không được:**
+- ✅ **Lỗi**: 4,21% → **0% ở cả 3 lần sau khi sửa**, 0 restart. Hai nguyên nhân đã đóng.
+- ❌ **Thông lượng / p95 KHÔNG kết luận được**: cùng cấu hình (lần 3 và 4) ra 170k và 72k request. Dao động
+  giữa các lần (máy đo ở nhà, qua Internet tới Singapore; `maxVUs: 300` nên khi chậm k6 tự hụt nhịp —
+  `dropped_iterations` 26k–131k; cụm luôn kẹt ở trần 8 vCPU Spot với 4–9 Pod Pending) lớn hơn mọi khác biệt
+  do cấu hình. OSIV giữ tắt vì đúng khuyến nghị + 59 test xanh, **không** vì đã chứng minh tăng tốc. Muốn đo
+  thông lượng nghiêm túc: đặt máy k6 **trong cùng region** (EC2/Pod), tăng `maxVUs`, lặp ≥ 3 lần mỗi cấu hình.
+- Pod "nóng" (Pod đầu tiên, gánh hết tải trước khi HPA kịp thêm Pod) vẫn chờ kết nối trung bình ~1s ở pool 5 —
+  dấu hiệu CPU của Pod đó bão hòa trong ~1 phút đầu (HPA + JVM khởi động chậm hơn đỉnh tải), không phải lỗi.
+
+**Lỗi thật lộ thêm khi đưa cụm về trạng thái nghỉ giữa các lần đo:**
+- **HPA memory của customer-service kẹt chiều tăng**: lúc NGHỈ (CPU 3%), JVM giữ ~370Mi = 72% request → mỗi lần
+  khởi động vượt 80% → 1→6 Pod trong 4 phút, rồi không bao giờ giảm (cần < ~67%). Sửa: chỉ scale theo CPU.
+- **PDB `minAvailable: 1` + 1 replica ở dev chặn Karpenter gom node**: node Spot nằm lại vô thời hạn sau tải
+  (ALLOWED DISRUPTIONS = 0). Sửa: overlay dev `maxUnavailable: 1` — node được gom **trong < 1 phút** sau đó.
+- `scripts/smoke.sh` chạy tay từ Windows luôn báo "Keycloak chưa sẵn sàng": cổng port-forward 18080 nằm trong
+  dải Hyper-V giữ (18028–18127). Sửa: `SMOKE_KC_PORT`.
+
 ## 3. (Tùy chọn) Tìm nút thắt cổ chai
 
 Nếu `order-management` chạm `maxReplicas` trước khi p95 vỡ ngưỡng ở `api-gateway`, đó là nút thắt.

@@ -121,16 +121,20 @@ spec:
               port: 8080
             failureThreshold: 30
             periodSeconds: 5
+          # timeoutSeconds/failureThreshold: lý do + số đo ở base/api-gateway/deployment.yaml (2026-10-01).
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
               port: 8080
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness
               port: 8080
             periodSeconds: 5
+            timeoutSeconds: 3
           resources:
             requests:
               cpu: "250m"

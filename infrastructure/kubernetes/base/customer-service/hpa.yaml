@@ -10,6 +10,10 @@ spec:
     name: customer-service
   minReplicas: 2
   maxReplicas: 10
+  # Chỉ CPU (2026-10-01). Từng có thêm metric memory 80% — đo thật trên dev EKS: lúc NGHỈ (CPU 3%), mỗi JVM vẫn
+  # giữ ~360–400Mi = 72% request; JVM khởi động vượt 80% → HPA thêm Pod → Pod mới cũng khởi động cao → 1→6 Pod
+  # trong 4 phút, rồi KẸT: muốn về 5 thì trung bình phải < ~67%, mà JVM không trả heap → 6 Pod + 1 node Spot
+  # thừa mãi mãi. Memory của JVM không phản ánh tải (bài 13 mục 2.2 đã cảnh báo) — 4 service kia vốn chỉ CPU.
   metrics:
     - type: Resource
       resource:
@@ -17,12 +21,6 @@ spec:
         target:
           type: Utilization
           averageUtilization: 70
-    - type: Resource
-      resource:
-        name: memory
-        target:
-          type: Utilization
-          averageUtilization: 80
   behavior:
     scaleDown:
       stabilizationWindowSeconds: 300

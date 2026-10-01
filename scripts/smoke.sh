@@ -46,7 +46,11 @@ trap cleanup EXIT
 
 # Lấy token user `smoke-bot` qua Keycloak trong cluster (chế độ AWS). In token ra stdout.
 aws_smoke_token() {
-  local kc_port=18080 admin_user admin_pass master uid pass tok body
+  # SMOKE_KC_PORT: cổng local cho port-forward. 18080 chạy được trên runner Linux, nhưng trên Windows nó nằm
+  # trong dải cổng Hyper-V/WSL giữ riêng (18028–18127 trên máy dev, 2026-10-01: "bind: forbidden by its access
+  # permissions") → smoke chạy tay từ Windows luôn báo "Keycloak chưa sẵn sàng" dù Keycloak khỏe. Xem dải bị
+  # giữ: `netsh interface ipv4 show excludedportrange protocol=tcp`.
+  local kc_port="${SMOKE_KC_PORT:-18080}" admin_user admin_pass master uid pass tok body
   kubectl -n bss rollout status deployment/keycloak --timeout="${TIMEOUT}s" >&2
   kubectl -n bss port-forward svc/keycloak "$kc_port:8080" >/dev/null 2>&1 &
   PF_PID=$!

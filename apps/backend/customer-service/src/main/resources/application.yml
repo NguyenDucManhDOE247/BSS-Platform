@@ -16,7 +16,23 @@ spring:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:customer}
     username: ${DB_USER:bss}
     password: ${DB_PASSWORD:bss}
+    # NGÂN SÁCH KẾT NỐI (đo thật 2026-10-01, dev EKS 200→700 req/s): HikariCP mặc định giữ SẴN 10 kết nối/Pod
+    # (minimum-idle = maximum-pool-size = 10) dù không dùng. HPA đẩy product-catalog lên 8 Pod = 80 kết nối,
+    # trong khi db.t3.micro chỉ cho ~70 kết nối thường cho CẢ 5 database → Pod mới chết lúc khởi động
+    # ("remaining connection slots are reserved"), Pod cũ trả 500 ("Cannot acquire connection") — 1.447/79.364
+    # request. Đo lúc đó: total=10/10, idle=10, active=0 — kết nối bị GIỮ chứ không phải DB chậm.
+    # Quy tắc: Σ (maxReplicas × maximum-pool-size) của mọi service dùng chung instance ≤ max_connections − dự trữ.
+    # 5 kết nối dư cho 1 Pod (truy vấn vài ms); idle tối thiểu 1 → Pod rảnh chỉ giữ 1.
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
   jpa:
+    # Tắt Open Session In View (Boot bật mặc định). Bật thì MỖI request giữ 1 kết nối DB suốt đường đi, kể cả
+    # lúc chuyển kết quả thành JSON — đo thật 2026-10-01: Pod gánh tải đầu tiên với pool 5 phải CHỜ kết nối
+    # trung bình 874ms/lần khi CPU bão hòa (serialize chậm → kết nối bị giữ lâu). Tắt thì kết nối trả về ngay
+    # sau truy vấn; điều kiện: service map entity → DTO BÊN TRONG @Transactional (đã đúng ở cả 4 service — IT
+    # sẽ báo LazyInitializationException nếu có chỗ nào sai).
+    open-in-view: false
     hibernate:
       ddl-auto: validate # schema owned by Flyway
     properties:
