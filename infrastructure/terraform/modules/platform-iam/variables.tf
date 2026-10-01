@@ -33,3 +33,16 @@ variable "node_role_arn" {
   default     = ""
   description = "Role của node (modules/eks) — Karpenter được iam:PassRole đúng role này"
 }
+
+# ── ExternalDNS (B-23, ADR-012) — external-dns.tf ──
+variable "external_dns_zone_id" {
+  type        = string
+  default     = null
+  description = "Route 53 zone (state shared). null = không tạo role ExternalDNS"
+}
+
+variable "external_dns_hostnames" {
+  type        = list(string)
+  default     = []
+  description = "Tên miền cluster này được ghi (vd. [\"dev.bssplatform.dpdns.org\"]) — kèm bản ghi TXT `*-<tên>` của registry"
+}

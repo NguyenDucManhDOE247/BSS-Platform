@@ -8,13 +8,14 @@
 #     do CD build/promote như 7 service kia; chạy được >1 replica (prod: 2) — ADR-011.
 #   • Secret DB + admin lấy từ Secrets Manager qua CSI (ADR-004) — SecretProviderClass
 #     `keycloak-credentials` ở overlays/<env>/secrets/ (tên secret có tiền tố môi trường).
-#   • KHÔNG đi qua ALB (không có path /auth trên Ingress AWS) và KHÔNG mang nhãn `tier: edge`: chưa có
-#     HTTPS trên AWS (ADR-008 quyết định 8) → không mở trang đăng nhập/admin console của Keycloak ra
-#     internet bằng HTTP. Chỉ gateway + backend (tải JWKS) gọi được vào; smoke test đi bằng
-#     `kubectl port-forward` (qua API server, có TLS).
+#   • Đi qua ALB bằng HTTPS (B-23, ADR-012) nhưng CHỈ 2 path trình duyệt cần: /auth/realms (đăng nhập,
+#     đăng ký, token, JWKS) và /auth/resources (CSS/JS của trang đăng nhập). Admin console /auth/admin
+#     KHÔNG có route ra internet — quản trị đi bằng `kubectl port-forward` (docs/runbooks/auth.md).
+#     NetworkPolicy: gateway + backend (JWKS) + subnet public của VPC (nơi ALB đặt ENI) được vào 8080.
 #
 # Overlay dùng component này phải: thêm SecretProviderClass `keycloak-credentials`, gắn IRSA role cho
-# ServiceAccount `keycloak`, và dùng kèm ../keycloak-realm (realm dùng chung, không có user).
+# ServiceAccount `keycloak`, dùng kèm ../keycloak-realm (realm dùng chung, không có user), và đặt
+# KC_HOSTNAME + path /auth/* trên Ingress + dải subnet public vào NetworkPolicy (xem overlays/dev).
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 resources:

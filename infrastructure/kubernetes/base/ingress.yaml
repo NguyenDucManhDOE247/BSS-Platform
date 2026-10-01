@@ -15,8 +15,8 @@ metadata:
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
     alb.ingress.kubernetes.io/ssl-redirect: '443'
     alb.ingress.kubernetes.io/healthcheck-path: /actuator/health
-    # Cert ARN injected per env via overlay (acm.aws/listener-arn or certificate-arn).
-    # external-dns annotation creates a Route 53 record automatically.
+    # B-23 / ADR-012: no certificate-arn — the ALB Controller discovers the ACM cert matching the rule
+    # host (overlays set it). ExternalDNS creates the Route 53 alias record from that same host.
 spec:
   ingressClassName: alb # overridden to "nginx" by overlays/local
   rules:

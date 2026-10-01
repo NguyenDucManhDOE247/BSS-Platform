@@ -22,12 +22,12 @@
 #   • không token → 401 (B-18 thật sự đóng — nếu ai lỡ tắt auth, smoke ĐỎ và CD rollback);
 #   • token user `customer` → vào được `/customer/me` (200 có hồ sơ / 404 chưa có — cả 2 đều nghĩa là
 #     token được customer-service chấp nhận), nhưng API quản trị `GET /customer` → 403 (phân quyền role).
-# Token (chế độ AWS): Keycloak KHÔNG mở ra ALB khi chưa có HTTPS (ADR-008 quyết định 8), nên smoke đi
-# vào Keycloak bằng `kubectl port-forward` (qua API server, có TLS); mật khẩu admin master realm đọc từ
-# K8s Secret `keycloak-admin` cũng qua kubectl — không mật khẩu nào đi qua HTTP ngoài internet. Smoke
+# Token (chế độ AWS): smoke cần API QUẢN TRỊ của Keycloak (tạo user `smoke-bot`, đặt lại mật khẩu) mà
+# /auth/admin cố ý KHÔNG có route ra ALB (B-23, ADR-012) → vẫn đi bằng `kubectl port-forward` (qua API
+# server, có TLS); mật khẩu admin master realm đọc từ K8s Secret `keycloak-admin` cũng qua kubectl. Smoke
 # dùng user riêng `smoke-bot` (role customer mặc định, không có hồ sơ/dữ liệu), đặt lại mật khẩu ngẫu
-# nhiên mỗi lần chạy. Token của nó (hết hạn sau vài phút, không có quyền quản trị) mới đi qua HTTP tới
-# ALB — rủi ro chấp nhận được cho tới khi có HTTPS.
+# nhiên mỗi lần chạy. `iss` của token vẫn là https://<host>/auth/realms/bss vì KC_HOSTNAME là URL đầy đủ.
+# Từ B-23 token đi tới ALB bằng HTTPS (trước đó là HTTP).
 #
 # Lịch sử (B-52): bản đầu có 2 lỗi khiến script KHÔNG BAO GIỜ fail — (1) `curl | jq || echo` nuốt
 # exit code; (2) gọi `/api/actuator/health` mà gateway không hề có route. Bản Giai đoạn 5 sửa cả
@@ -39,6 +39,8 @@ REGION="${AWS_REGION:-ap-southeast-1}"
 TIMEOUT="${SMOKE_TIMEOUT_SECONDS:-300}"
 INTERVAL="${SMOKE_INTERVAL_SECONDS:-10}"
 TOKEN="${SMOKE_TOKEN:-}"
+PUBLIC_HOST=""
+CURL_OPTS=()
 
 PF_PID=""
 cleanup() { [ -z "$PF_PID" ] || kill "$PF_PID" 2>/dev/null || true; }
@@ -97,6 +99,15 @@ else
     sleep "$INTERVAL"
   done
   BASE="http://$HOST"
+  # B-23 / ADR-012: Ingress có host thật → kiểm qua https://<host> với cert ACM thật (curl KHÔNG có -k).
+  # `--connect-to` nối TCP thẳng vào ALB nhưng giữ nguyên SNI/Host = tên miền: smoke không phụ thuộc DNS
+  # công khai. Bản ghi do ExternalDNS tạo ~1 phút sau ALB; nếu resolver của runner hỏi trước đó, nó nhớ
+  # NXDOMAIN tới 15 phút (TTL âm của SOA Route 53 = 900 s) → smoke đỏ oan và CD rollback oan.
+  PUBLIC_HOST="$(kubectl -n bss get ingress bss-ingress -o jsonpath='{.spec.rules[0].host}' 2>/dev/null || true)"
+  if [ -n "$PUBLIC_HOST" ]; then
+    BASE="https://$PUBLIC_HOST"
+    CURL_OPTS=(--connect-to "$PUBLIC_HOST:443:$HOST:443" --connect-to "$PUBLIC_HOST:80:$HOST:80")
+  fi
   echo "→ Lấy token user smoke-bot qua Keycloak trong cluster (port-forward)…"
   TOKEN="$(aws_smoke_token)" || { echo "✗ Smoke test FAILED — không lấy được token (Keycloak chưa sẵn sàng?)."; exit 1; }
 fi
@@ -107,16 +118,18 @@ fail=0
 
 # check LABEL PATH WANT JQ_FILTER MÔ_TẢ [curl args…] — đạt khi HTTP status khớp regex WANT VÀ
 # `jq -e FILTER` đúng trên body (FILTER = "-": không xét body — 401/403 của Spring có body rỗng);
-# thử lại tới hết TIMEOUT.
+# thử lại tới hết TIMEOUT. PATH bắt đầu bằng http:// hoặc https:// = URL đầy đủ (không ghép BASE).
 check() {
-  local label="$1" path="$2" want="$3" filter="$4" desc="$5" deadline attempt=0 out body code reason=""
+  local label="$1" path="$2" want="$3" filter="$4" desc="$5" deadline attempt=0 out body code reason="" url
   shift 5
+  url="$BASE$path"
+  [[ "$path" != http://* && "$path" != https://* ]] || url="$path"
   echo ""
   echo "→ $label"
   deadline=$((SECONDS + TIMEOUT))
   while :; do
     attempt=$((attempt + 1))
-    if out="$(curl -sS --max-time 10 -w '\n%{http_code}' "$@" "$BASE$path" 2>&1)"; then
+    if out="$(curl -sS --max-time 10 -w '\n%{http_code}' ${CURL_OPTS[@]+"${CURL_OPTS[@]}"} "$@" "$url" 2>&1)"; then
       code="${out##*$'\n'}"; body="${out%$'\n'*}"
       if [[ "$code" =~ ^($want)$ ]]; then
         if [ "$filter" = "-" ] || jq -e "$filter" >/dev/null 2>&1 <<<"$body"; then
@@ -143,6 +156,19 @@ check "productOffering (product-catalog qua api-gateway, công khai)" \
   "/api/tmf-api/productCatalog/v4/productOffering" "200" 'type == "array" and length > 0' "mảng có ≥ 1 gói cước" || fail=1
 check "customer KHÔNG token → 401 (auth bật, B-18)" \
   "/api/tmf-api/customerManagement/v4/customer" "401" - "gateway từ chối khi không có token" || fail=1
+
+if [ -n "$PUBLIC_HOST" ]; then
+  # B-23 / ADR-012 — 3 cam kết của lớp HTTPS, mỗi cái hỏng là một lỗi bảo mật/đăng nhập thật:
+  check "HTTP → HTTPS (ssl-redirect của ALB)" \
+    "http://$PUBLIC_HOST/" "301" - "cổng 80 chỉ chuyển hướng, không phục vụ nội dung" || fail=1
+  check "Keycloak công khai qua HTTPS, iss = host thật (trùng issuer của backend)" \
+    "/auth/realms/bss/.well-known/openid-configuration" "200" ".issuer == \"https://$PUBLIC_HOST/auth/realms/bss\"" \
+    "issuer https://$PUBLIC_HOST/auth/realms/bss" || fail=1
+  # Admin REST API của Keycloak trả 401 JSON khi không token. Không có route → rơi vào `/` (web-portal):
+  # 200 (index.html của SPA) hoặc 404 — miễn KHÔNG phải 401 của Keycloak.
+  check "Admin API Keycloak KHÔNG mở ra internet" \
+    "/auth/admin/realms" "200|404" - "/auth/admin không đi tới Keycloak" || fail=1
+fi
 
 if [ -n "$TOKEN" ]; then
   AUTH=(-H "Authorization: Bearer $TOKEN")

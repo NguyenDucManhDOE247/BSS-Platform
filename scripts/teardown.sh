@@ -53,6 +53,27 @@ if aws eks describe-cluster --region "$REGION" --name "$CLUSTER" >/dev/null 2>&1
     for arn in $mine; do
       aws elbv2 delete-target-group --region "$REGION" --target-group-arn "$arn" && echo "  ✓ xóa Target Group sót: ${arn##*/targetgroup/}"
     done
+    # B-23 / ADR-012: zone Route 53 ở state shared SỐNG TIẾP sau destroy, nhưng bản ghi alias của môi trường
+    # do ExternalDNS (policy sync, chu kỳ 1 phút) xóa khi thấy Ingress biến mất. Destroy giết ExternalDNS
+    # trước lúc đó → bản ghi treo trỏ vào ALB đã chết. Chờ tối đa 3 phút theo TXT "sở hữu" của cluster.
+    zone_name="$(terraform -chdir="$ROOT/infrastructure/terraform/environments/$ENV" output -raw dns_zone_name 2>/dev/null || true)"
+    zone=""
+    if [[ "$zone_name" == *.* ]]; then
+      zone="$(aws route53 list-hosted-zones-by-name --dns-name "$zone_name" \
+        --query "HostedZones[?Name=='$zone_name.'] | [0].Id" --output text 2>/dev/null || true)"
+    fi
+    if kubectl -n kube-system get deploy external-dns >/dev/null 2>&1 && [ -n "$zone" ] && [ "$zone" != "None" ]; then
+      echo "→ Waiting for ExternalDNS to remove $CLUSTER's Route 53 records..."
+      left=""
+      for _ in $(seq 1 36); do
+        left="$(aws route53 list-resource-record-sets --hosted-zone-id "$zone" \
+          --query "ResourceRecordSets[?Type=='TXT' && contains(join(',', ResourceRecords[].Value), 'external-dns/owner=$CLUSTER,')].Name" \
+          --output text 2>/dev/null || true)"
+        [ -z "$left" ] && break
+        sleep 5
+      done
+      if [ -z "$left" ]; then echo "  ✓ DNS records gone"; else echo "  ⚠ Records still there: $left — orphan_finder will list them"; fi
+    fi
   else
     echo "  ⚠ Could not delete the Ingress (endpoint unreachable / no permission / controller down)."
     echo "    Check after destroy for a leftover ALB:  aws elbv2 describe-load-balancers --region $REGION"

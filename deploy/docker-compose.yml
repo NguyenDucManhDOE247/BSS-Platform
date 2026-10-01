@@ -88,7 +88,7 @@ services:
   # chỉ để vào http://localhost:8180/auth/admin trên máy mình — cùng mức "không phải bí mật" với
   # bss/bss của Postgres ở trên.
   keycloak:
-    image: quay.io/keycloak/keycloak:26.7.4 # cùng bản với apps/identity/keycloak/Dockerfile (ADR-011 — 26.5 có CVE-2026-18963)
+    image: quay.io/keycloak/keycloak:26.7.5 # cùng bản với apps/identity/keycloak/Dockerfile (ADR-011 — 26.5 có CVE-2026-18963)
     container_name: bss-keycloak
     command: ["start-dev", "--import-realm"]
     environment:

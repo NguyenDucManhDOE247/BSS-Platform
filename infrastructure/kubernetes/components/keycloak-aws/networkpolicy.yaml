@@ -1,6 +1,12 @@
 # Ai được gọi vào Keycloak trên AWS: gateway + các backend (tải JWKS để kiểm chữ ký token; order-
 # management không cần nhưng tier backend gộp chung cho gọn). default-deny-ingress (base) chặn phần
-# còn lại — kể cả 2 frontend và ALB: Keycloak chưa được mở ra ngoài khi chưa có HTTPS.
+# còn lại — kể cả 2 frontend.
+#
+# ALB (B-23, ADR-012): mỗi overlay AWS THÊM 1 luật `ipBlock` = dải subnet PUBLIC của VPC môi trường đó
+# (10.<x>.0.0/22 — modules/vpc cấp public = cidrsubnet(vpc, 8, 0..2), private = …10..12). ALB target-type
+# `ip` gọi thẳng IP Pod từ ENI của nó trong subnet public; Pod và node đều ở subnet private nên Pod lạ
+# trong cluster vẫn bị chặn (ô "kẻ lạ → keycloak" của scripts/netpol-matrix.sh vẫn phải BLOCKED).
+# Dải CIDR khác nhau theo môi trường → không viết chung ở component được.
 #
 # `kubectl port-forward` (smoke test) KHÔNG bị NetworkPolicy chặn: kubelet đưa kết nối vào thẳng
 # network namespace của Pod qua localhost, không đi qua mạng Pod. Probe của kubelet cũng vậy.

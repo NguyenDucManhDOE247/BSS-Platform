@@ -66,3 +66,17 @@ output "fluent_bit_role_arn" {
 output "otel_collector_role_arn" {
   value = module.platform_iam.otel_collector_role_arn
 }
+
+# B-23 / ADR-012 — scripts/platform-install.sh đọc 2 output này để cài ExternalDNS.
+output "external_dns_role_arn" {
+  value = module.platform_iam.external_dns_role_arn
+}
+
+output "public_hostname" {
+  description = "Host công khai của môi trường (Ingress + Keycloak KC_HOSTNAME + issuer của backend) — null nếu chưa có zone"
+  value       = local.public_hostname
+}
+output "dns_zone_name" {
+  description = "Zone Route 53 dùng chung (state shared) — --domain-filter của ExternalDNS"
+  value       = local.dns_zone_name
+}

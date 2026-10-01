@@ -1,25 +1,15 @@
-# Trivy — ngoại lệ có lý do cho image Keycloak (ADR-011). Quét 2026-09-30, Keycloak 26.7.4 (bản mới nhất
-# lúc đó). Mỗi dòng dưới đây là thư viện ĐÓNG GÓI SẴN trong bản phát hành chính thức của Keycloak: bản vá
-# có ở thư viện gốc nhưng CHƯA có bản Keycloak nào đóng gói nó. Thay jar thủ công trong image không được
+# Trivy — ngoại lệ có lý do cho image Keycloak (ADR-011). Mỗi dòng là thư viện ĐÓNG GÓI SẴN trong bản phát
+# hành chính thức của Keycloak mà chưa có bản Keycloak nào vá. Thay jar thủ công trong image không được
 # Keycloak hỗ trợ (Quarkus đã "augment" và lập chỉ mục classpath lúc `kc.sh build`) → cách đúng là nâng
 # Keycloak khi upstream phát hành bản vá, rồi XÓA dòng tương ứng.
 #
-# Ghi nhớ: việc nâng 26.5 → 26.7.4 trong chính PR này đã vá các CVE của CHÍNH Keycloak, trong đó có
-# CVE-2026-18963 (CRITICAL — chiếm tài khoản không cần xác thực qua luồng reset-credentials) — không
-# được ignore những cái đó.
-#
-# Rủi ro còn lại được giảm nhờ: Keycloak trên AWS KHÔNG mở ra ALB (ADR-008 quyết định 8) — chỉ gateway +
-# backend gọi được (NetworkPolicy allow-to-keycloak). Xem lại mỗi lần có bản Keycloak 26.7.x/26.8 mới.
+# 2026-10-01 (B-23, ADR-012): Keycloak sắp mở ra internet qua ALB → lý do cũ "không mở ra ALB" hết hiệu lực.
+# Nâng 26.7.4 → 26.7.5 (bản vá cùng nhánh, ra 30/9) — quét thật bằng Trivy:
+#   26.7.4: 6 CVE đã ghi ở đây + 2 CVE HIGH MỚI của jackson-databind (CVE-2026-91776/91777);
+#   26.7.5: chỉ còn dòng mssql-jdbc dưới đây. → Xóa 5 dòng netty/freemarker/bouncycastle×2/jackson.
+#   (26.8.0 sạch hẳn nhưng là bản .0 ra sáng 1/10 và nâng MINOR phải scale về 0 — xem auth.md.)
 
-# io.netty:netty-handler 4.1.136 (vá ở 4.1.137) — Keycloak 26.7.4 đóng gói qua Quarkus.
-CVE-2026-75595
-# org.freemarker:freemarker 2.3.32 (vá ở 2.3.35) — engine theme của Keycloak.
-CVE-2026-84939
-# org.bouncycastle:bcprov-jdk18on 1.84 (vá ở 1.85) — nhà cung cấp crypto của Keycloak.
-CVE-2026-8763
-CVE-2026-13506
-# com.fasterxml.jackson.core:jackson-databind 2.21.5 (vá ở 2.21.6).
-CVE-2026-68497
 # com.microsoft.sqlserver:mssql-jdbc — driver SQL Server có sẵn trong image nhưng KHÔNG được nạp: image
-# build với KC_DB=postgres (đóng băng lúc `kc.sh build`), không có đường nào dùng driver này.
+# build với KC_DB=postgres (đóng băng lúc `kc.sh build`), không có đường nào dùng driver này — kể cả khi
+# Keycloak mở ra internet. Xóa dòng này khi lên 26.8.x.
 CVE-2025-59250

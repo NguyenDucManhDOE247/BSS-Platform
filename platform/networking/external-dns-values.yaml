@@ -1,32 +1,42 @@
-# Helm values for external-dns (creates Route 53 records from Ingress/Service annotations).
-# Install:
-#   helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/
-#   helm upgrade --install external-dns external-dns/external-dns -n kube-system \
-#     -f platform/networking/external-dns-values.yaml \
-#     --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::ACCOUNT_ID:role/bss-dev-external-dns
+# Helm values for ExternalDNS (B-23, ADR-012) — tạo bản ghi alias A trong Route 53 từ host của Ingress.
+# Cài bằng scripts/platform-install.sh (bước 7), chart external-dns/external-dns 1.23.0 (app 0.23.0):
+#   --set txtOwnerId=<cluster>            bản ghi TXT "sở hữu" — 3 cluster dùng chung 1 zone mà không giẫm nhau
+#   --set domainFilters={<zone>}          chỉ đụng zone của dự án
+#   --set serviceAccount.annotations…     IRSA role bss-<env>-external-dns (modules/platform-iam/external-dns.tf
+#                                         — chỉ được ghi đúng host của môi trường đó)
+#
+# Bản cũ của file này (`provider: aws` + khối `aws:`) là cú pháp chart ≤ 1.13 — chart mới đã đổi `provider`
+# thành object và bỏ khối `aws:` (vùng + loại zone đi qua env/args), nên file cũ chưa từng cài được thật.
 
-provider: aws
+provider:
+  name: aws
 
-aws:
-  region: ap-southeast-1
-  zoneType: public
+env:
+  - name: AWS_DEFAULT_REGION
+    value: ap-southeast-1
 
-policy: sync # also delete records when Ingress is removed
+extraArgs:
+  - --aws-zone-type=public
 
+# sync = xóa luôn bản ghi khi Ingress bị xóa — teardown.sh xóa Ingress TRƯỚC destroy để ExternalDNS kịp dọn.
+policy: sync
+registry: txt
 sources:
-  - service
-  - ingress
+  - ingress # Service type LoadBalancer không dùng trong dự án
+interval: 1m
 
-txtOwnerId: "" # set to your cluster name on install
+txtOwnerId: "" # đặt lúc cài = tên cluster
+domainFilters: [] # đặt lúc cài = zone
 
 serviceAccount:
   create: true
-  name: external-dns
-  annotations: {} # set IRSA role-arn on install
+  name: external-dns # khớp điều kiện `sub` của IRSA role
+  annotations: {} # đặt lúc cài
 
 resources:
   requests:
-    cpu: 50m
-    memory: 100Mi
+    cpu: 20m
+    memory: 64Mi
   limits:
-    memory: 200Mi
+    cpu: 200m
+    memory: 128Mi

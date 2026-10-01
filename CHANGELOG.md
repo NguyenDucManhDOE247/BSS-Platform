@@ -11,6 +11,19 @@ Debt pass from Phase 8 back to 0 (after `v2.0.0`), each item verified on real in
 
 ### Added
 
+- **HTTPS + custom domain on AWS (B-23)** — [ADR-012](docs/adr/ADR-012-https-ten-mien.md): `bssplatform.dpdns.org`
+  (prod at the apex, `dev.` / `staging.`). Route 53 hosted zone + ACM cert (apex + wildcard) live in the
+  `shared` state (outlive every ephemeral environment — NS entered at the registrar once); ALB discovers the
+  cert by host (no ARN in manifests), TLS 1.2+/1.3 policy, port 80 → 301. ExternalDNS 0.23 (chart 1.23.0)
+  installed by `platform-install.sh` step 7/7, its IRSA role limited to the environment's own record names
+  (`ChangeResourceRecordSetsNormalizedRecordNames`). **Browser login now works on AWS** (B-18 web part).
+- Keycloak reachable through the ALB on `/auth/realms` + `/auth/resources` only (no `/auth/admin`);
+  `KC_HOSTNAME` / backend `issuer-uri` = `https://<host>/auth/realms/bss`; NetworkPolicy `ipBlock` for the
+  VPC's public subnets (ALB ENIs) so in-cluster strangers stay blocked; ALB health check `/auth/realms/bss`.
+- `smoke.sh` on AWS goes through `https://<host>` with the real cert via `curl --connect-to` (independent
+  of public DNS / negative caching) and adds 3 checks: HTTP→HTTPS 301, OIDC `issuer`, `/auth/admin` not
+  exposed. `teardown.sh` waits for ExternalDNS to delete the environment's records; `orphan_finder.py`
+  reports DNS records owned by deleted clusters. `ci-k8s` fails if a rendered overlay still has `REPLACE_ME`.
 - **Keycloak production-grade** — [ADR-011](docs/adr/ADR-011-keycloak-production-grade.md): own image
   `apps/identity/keycloak` (`kc.sh build` → `start --optimized`, startup ~5 s), `readOnlyRootFilesystem: true`
   (last exception in the repo removed), **2 replicas on prod** clustered via `jdbc-ping` with DB-persisted
@@ -39,6 +52,12 @@ Debt pass from Phase 8 back to 0 (after `v2.0.0`), each item verified on real in
   `Idempotent-Replayed: true`); same key with a different body → 422; a concurrent duplicate loses on the
   `(owner_sub, idem_key)` primary key, rolls back its whole order and gets 409. web-portal sends one key per
   order page (with a `getRandomValues` fallback, since `crypto.randomUUID` needs a secure context).
+
+### Security
+
+- **Keycloak 26.7.4 → 26.7.5** before exposing it to the internet: Trivy found 2 new HIGH CVEs in the
+  bundled jackson-databind (CVE-2026-91776/91777) on 26.7.4; 26.7.5 also clears the 5 previously ignored
+  netty/freemarker/bouncycastle/jackson CVEs. `.trivyignore` keeps only the never-loaded mssql-jdbc driver.
 
 ### Fixed
 

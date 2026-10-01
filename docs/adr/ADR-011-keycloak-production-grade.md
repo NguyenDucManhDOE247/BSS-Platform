@@ -96,6 +96,9 @@ nhưng chưa có bản Keycloak nào đóng gói. Thay jar thủ công không đ
 và lập chỉ mục) → ghi `apps/identity/keycloak/.trivyignore` kèm lý do, xem lại mỗi bản Keycloak mới. Rủi
 ro còn lại được giảm vì Keycloak trên AWS không mở ra ALB (ADR-008 quyết định 8).
 
+> **2026-10-01 — [ADR-012](ADR-012-https-ten-mien.md):** Keycloak mở ra internet (HTTPS) → lý do trên hết hiệu lực.
+> Nâng 26.7.5, `.trivyignore` chỉ còn driver mssql-jdbc không được nạp.
+
 ## Bằng chứng (chạy thật, 2026-09-30 — không suy đoán)
 
 | Kiểm | Kết quả |

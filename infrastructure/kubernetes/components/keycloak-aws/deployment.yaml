@@ -61,13 +61,18 @@ spec:
               valueFrom: { secretKeyRef: { name: keycloak-admin, key: username } }
             - name: KC_BOOTSTRAP_ADMIN_PASSWORD
               valueFrom: { secretKeyRef: { name: keycloak-admin, key: password } }
-            # ── Địa chỉ (ADR-008 quyết định 8) ──
-            # Chưa có HTTPS/domain trên AWS → `iss` = DNS NỘI BỘ. Backend so khớp đúng chuỗi này
-            # (SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI ở overlay). Token lấy qua
-            # port-forward (smoke) vẫn mang iss này vì KC_HOSTNAME là URL đầy đủ — Keycloak không
-            # suy ra từ Host của request. Khi có domain + HTTPS: đổi thành https://<domain>/auth
-            # (và issuer của backend), rồi thêm path /auth vào Ingress — không phải sửa code.
-            - { name: KC_HOSTNAME, value: "http://keycloak.bss.svc.cluster.local:8080/auth" }
+            # ── Địa chỉ công khai (B-23, ADR-012 — thay ADR-008 quyết định 8) ──
+            # KC_HOSTNAME là URL ĐẦY ĐỦ https://<host môi trường>/auth → `iss` của mọi token cố định là
+            # https://<host>/auth/realms/bss, bất kể request đi vào bằng đường nào (trình duyệt qua ALB,
+            # smoke qua port-forward, JWKS qua DNS nội bộ). Backend so khớp đúng chuỗi này
+            # (…_JWT_ISSUER_URI ở overlay). Placeholder dưới đây CỐ Ý sai: mỗi overlay AWS phải ghi đè
+            # (ci-k8s fail nếu bản render còn chữ REPLACE_ME).
+            - { name: KC_HOSTNAME, value: "https://REPLACE_ME_HOST/auth" }
+            # ALB kết thúc TLS rồi gọi Pod bằng HTTP; X-Forwarded-Proto/For cho Keycloak biết request gốc là
+            # HTTPS + IP thật của khách. Thiếu dòng này: sslRequired=external (realm) thấy "HTTP từ IP lạ"
+            # → trang đăng nhập trả "HTTPS required". Pod chỉ nhận traffic từ ALB + gateway/backend
+            # (NetworkPolicy) nên không ai ngoài ALB giả được header này.
+            - { name: KC_PROXY_HEADERS, value: xforwarded }
             - { name: KC_HTTP_ENABLED, value: "true" }
             - { name: KC_LOG_CONSOLE_OUTPUT, value: json } # CLAUDE.md §10: log JSON ở môi trường AWS
           ports:

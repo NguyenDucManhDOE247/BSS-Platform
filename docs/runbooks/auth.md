@@ -52,18 +52,17 @@ Trình duyệt ──(Authorization Code + PKCE)──► Keycloak realm "bss"  
 
 | | kind (`overlays/local`) | docker-compose + `mvn` | AWS dev/staging/prod |
 |---|---|---|---|
-| Keycloak | 26.7.4 gốc, `start-dev`, H2 trong emptyDir | 26.7.4 gốc, `localhost:8180/auth` | Image riêng `bss/keycloak` (`apps/identity/keycloak`, ADR-011): `start --optimized`, rootfs chỉ đọc, Postgres riêng trên RDS, secret qua CSI; **prod 2 replica** (dev/staging 1) |
+| Keycloak | 26.7.5 gốc, `start-dev`, H2 trong emptyDir | 26.7.5 gốc, `localhost:8180/auth` | Image riêng `bss/keycloak` (`apps/identity/keycloak`, ADR-011): `start --optimized`, rootfs chỉ đọc, Postgres riêng trên RDS, secret qua CSI; **prod 2 replica** (dev/staging 1) |
 | Auth backend | Bật | Bật (issuer `localhost:8180` trong `application-local.yml`) | Bật |
-| `KC_HOSTNAME` / `iss` | `http://bss.localhost/auth` | `http://localhost:8180/auth` | `http://keycloak.bss.svc.cluster.local:8080/auth` (DNS nội bộ) |
-| Keycloak qua Ingress | Có, path `/auth` | — | **Không** (chưa có HTTPS — ADR-008 quyết định 8) |
-| Đăng nhập bằng trình duyệt | ✅ | ✅ | ❌ chờ HTTPS + domain |
+| `KC_HOSTNAME` / `iss` | `http://bss.localhost/auth` | `http://localhost:8180/auth` | `https://<host môi trường>/auth` (B-23, ADR-012 — `dev.`/`staging.`/apex `bssplatform.dpdns.org`) |
+| Keycloak qua Ingress | Có, path `/auth` | — | Có, **chỉ** `/auth/realms` + `/auth/resources` qua HTTPS — không có `/auth/admin` (ADR-012) |
+| Đăng nhập bằng trình duyệt | ✅ | ✅ | ✅ (từ B-23 — [https-domain.md](https-domain.md)) |
 
 Vì sao `bss.localhost` mà không phải `bss.localtest.me`: PKCE cần `crypto.subtle`, trình duyệt chỉ cấp
-trong **secure context** (HTTPS hoặc `*.localhost`) — ADR-008 quyết định 7. Cùng lý do đó AWS chưa có
-đăng nhập web.
-
-Khi có HTTPS trên AWS, đổi 3 chỗ (không sửa code): `KC_HOSTNAME` → `https://<domain>/auth`, `issuer-uri`
-của 5 service, thêm path `/auth` vào Ingress AWS (+ redirect URI của 2 client SPA).
+trong **secure context** (HTTPS hoặc `*.localhost`) — ADR-008 quyết định 7. Cùng lý do đó AWS chỉ có
+đăng nhập web từ khi có tên miền + HTTPS (B-23, [ADR-012](../adr/ADR-012-https-ten-mien.md)): đúng 3 chỗ như dự tính, không sửa
+code — `KC_HOSTNAME` + `issuer-uri` của 5 service theo host, path `/auth/realms` + `/auth/resources` trên Ingress,
+redirect URI của 2 client SPA.
 
 ## 4. Cài đặt
 
@@ -92,14 +91,14 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST http://bss.localhost/api/tmf-ap
 curl -s -H "Authorization: Bearer $TOK" http://bss.localhost/api/tmf-api/customerManagement/v4/customer | jq length
 ```
 
-**AWS** — Keycloak không mở ra ALB, nên đi qua `kubectl port-forward` (API server, có TLS; mật khẩu admin
-không đi qua HTTP ngoài internet). `scripts/smoke.sh <env>` làm đúng việc này: tạo/đặt lại mật khẩu user
+**AWS** — API quản trị Keycloak (`/auth/admin`) cố ý không có route ra ALB (ADR-012), nên đi qua
+`kubectl port-forward` (API server, có TLS). `scripts/smoke.sh <env>` làm đúng việc này: tạo/đặt lại mật khẩu user
 `smoke-bot` (role customer) qua Admin REST API rồi kiểm: công khai 200, không token 401, `/me` 200|404,
 API quản trị 403.
 
 ```bash
 kubectl -n bss port-forward svc/keycloak 18080:8080 &
-# token: http://127.0.0.1:18080/auth/realms/bss/protocol/openid-connect/token (iss vẫn là DNS nội bộ)
+# token: http://127.0.0.1:18080/auth/realms/bss/protocol/openid-connect/token (iss vẫn là https://<host>/auth/realms/bss — KC_HOSTNAME là URL đầy đủ)
 ```
 
 **Bộ kiểm tự động** (chạy theo thứ tự, mỗi cái bắt 1 loại lỗi khác):
