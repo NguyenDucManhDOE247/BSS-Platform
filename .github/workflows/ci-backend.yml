@@ -46,6 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       services: ${{ steps.matrix.outputs.services }}
+      common: ${{ steps.filter.outputs.bss-common-java }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: filter
@@ -74,6 +75,29 @@ jobs:
           else
             echo "services=$changes" >> "$GITHUB_OUTPUT"
           fi
+
+  # B-15 (0.2.0): thư viện có code thật (UuidV7) + unit test riêng. Job build-and-test bên dưới chỉ kiểm
+  # các service — và chúng kéo bản ĐÃ PUBLISH từ GitHub Packages, không phải bản trong PR này — nên trước
+  # đây không có gì chạy test của chính thư viện.
+  common-lib:
+    name: Build + test bss-common-java
+    needs: detect
+    if: needs.detect.outputs.common == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Maven verify
+        working-directory: packages/bss-common-java
+        run: mvn -B verify
 
   build-and-test:
     name: Build + test ${{ matrix.service }}
