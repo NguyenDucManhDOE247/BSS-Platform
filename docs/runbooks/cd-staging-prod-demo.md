@@ -107,7 +107,7 @@ Kiểm NetworkPolicy **được thi hành thật** (từ 2026-10-01 staging/prod
 
 ```bash
 kubectl -n kube-system get pods -l k8s-app=aws-node -o jsonpath='{.items[0].spec.containers[*].name}'   # phải có aws-eks-nodeagent
-./scripts/netpol-matrix.sh "$(kubectl config current-context)"                                         # dev đạt 12/12 (30/9)
+./scripts/netpol-matrix.sh "$(kubectl config current-context)"                                         # dev 12/12 (30/9); staging + prod 12/12 (1/10)
 ```
 
 ## 4. API endpoint của cluster ↔ runner của GitHub
