@@ -559,6 +559,7 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 | 9 — Sản phẩm hoàn chỉnh (danh tính) | ✅ | Keycloak + PKCE, khách tự đăng ký → admin duyệt → mua, quyền sở hữu 4 service (ADR-008); Playwright 3/3 + `e2e-kind.sh` trên kind; Keycloak trên EKS, `rc-v2.0.0` → staging → `v2.0.0` → prod (duyệt tay), smoke có token 4/4 cả 3 môi trường |
 | Dọn nợ 8 → 0 | ✅ | Karpenter Spot thật (node Ready ~36s, k6 ×2.4 request); NetworkPolicy EKS 11/11; 8 việc GĐ7 trên 1 cluster (alert → Discord 146s, log JSON + `trace_id` → X-Ray); Spring Boot 3.5 → 0 CVE; schema expand → migrate → contract trên RDS; `orphan_finder.py` bắt 3 loại tài nguyên sót |
 | Sau GĐ9 (2026-09-30) | ✅ | Keycloak production-grade trên EKS thật (ADR-011: image optimized, rootfs chỉ đọc, 2 Pod thành cluster qua RDS với NetworkPolicy bật, xóa 1 Pod vẫn giữ session + smoke xanh); auth luôn bật (bỏ `bss.auth.enabled`); rà Definition of Done — xem `docs/ROADMAP.md` |
+| HTTPS + tên miền (2026-10-01) | ✅ | `bssplatform.dpdns.org` (ADR-012): zone Route 53 + cert ACM ở shared, ExternalDNS (IAM theo tên bản ghi); dev EKS: TLS 1.3, smoke 7/7 qua HTTPS, NetworkPolicy 12/12, đăng ký + đăng nhập web thật; Keycloak 26.7.5 |
 
 ### Quyết định kiến trúc đã chốt kể từ scaffold ban đầu (ADR đầy đủ ở `docs/adr/`)
 
@@ -577,8 +578,10 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 
 ### Còn lại (có chủ đích để sau — chi tiết ở `learning/20` mục "Để sau")
 
-- **HTTPS + đăng nhập web trên AWS** — B-23 + phần web của B-18: **code xong 2026-10-01** ([ADR-012](docs/adr/ADR-012-https-ten-mien.md),
-  miền `bssplatform.dpdns.org`), chờ chạy thật (shared DNS → NS ở DigitalPlat → dev → staging/prod).
+- ~~HTTPS + đăng nhập web trên AWS~~ — ✅ 2026-10-01 (B-23 + phần web của B-18, #205, [ADR-012](docs/adr/ADR-012-https-ten-mien.md)):
+  `https://dev.bssplatform.dpdns.org` thật — TLS 1.3 cert ACM, smoke 7/7 qua HTTPS, NetworkPolicy 12/12, chủ repo tự đăng ký +
+  đăng nhập bằng trình duyệt. Staging/prod dùng cùng cơ chế (`staging.`/apex) — chạy lần tới khi dựng (ADR-006).
+- **Cert ACM hết hạn 2027-04-17**, chỉ tự gia hạn khi đang gắn vào ALB — xem `docs/runbooks/https-domain.md` mục 4.
 - ~~Keycloak production-grade~~ — ✅ 2026-09-30, [ADR-011](docs/adr/ADR-011-keycloak-production-grade.md): image optimized
   `apps/identity/keycloak` (26.7.4 → 26.7.5 ở B-23), rootfs chỉ đọc, prod 2 replica — đã chạy thật trên dev EKS.
 - ~~Xóa công tắc `bss.auth.enabled`~~ — ✅ 2026-09-30: auth luôn bật ở mọi môi trường, kể cả `e2e-local.sh`.

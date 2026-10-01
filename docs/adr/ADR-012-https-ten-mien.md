@@ -94,7 +94,14 @@ discovery có `issuer == https://<host>/auth/realms/bss`; `/auth/admin/realms` *
 | Apply 1 (shared) | 4 resource: zone `Z0030846ZUQU1KLU0V2B`, cert, 2 bản ghi xác thực — **cùng 1 CNAME** cho apex + wildcard (`allow_overwrite` đúng là cần) |
 | NS ở DigitalPlat | `ns1.dpdns.org` ủy quyền ngay; Cloudflare + Google thấy NS mới sau **~200 s** |
 | Apply 2 (`dns_delegated = true`) | Cert **ISSUED sau 44 s**, hạn 2027-04-17 |
-| Dev EKS | _(điền khi chạy)_ |
+| Dev EKS — apply | 112 resource / 17 phút (thêm role `bss-dev-external-dns`, policy chỉ `dev.…` + `*-dev.…`); ExternalDNS 0.23.0 lên bằng IRSA, đọc được zone |
+| Merge #205 → `cd-dev` (run 36889754707) | Build Keycloak 26.7.5; ALB Controller **tự tìm cert** theo host (listener 443 = cert `37986cfa…`, `ELBSecurityPolicy-TLS13-1-2-2021-06`; 80 = redirect); smoke **7/7 lần thử đầu** qua `https://dev.bssplatform.dpdns.org` (301, issuer, `/auth/admin` không lộ, 200/401/404/403) |
+| ExternalDNS | `CREATE dev A`, `dev AAAA` (alias → ALB), TXT `a-dev` / `aaaa-dev` — IAM theo tên cho qua, 0 `AccessDenied` |
+| TLS thật (openssl qua DNS công khai) | `TLSv1.3`, `CN=bssplatform.dpdns.org`, SAN apex + wildcard, issuer Amazon RSA 2048 M04, `Verify return code: 0` |
+| `/auth/admin/master/console/` | 200 nhưng là `<title>BSS Web Portal</title>` (rơi vào `/`), không có chuỗi "keycloak" |
+| `netpol-matrix.sh` dev | **12/12** — "kẻ lạ → keycloak" vẫn BLOCKED dù đã mở `ipBlock` cho subnet public |
+| Trình duyệt | `isSecureContext = true`, có `crypto.subtle`; "Đăng nhập" → trang Keycloak đủ CSS (`/auth/resources`), PKCE `S256`, `redirect_uri=https://dev…/`. **Chủ repo tự đăng ký + đăng nhập thành công**; customer-service nhận 8 JWT hợp lệ, 0 lỗi `iss` |
+| `teardown.sh dev` | Xóa Ingress → **`✓ DNS records gone`** (zone chỉ còn NS/SOA/CNAME xác thực) → destroy 112/112 trong 12 phút; `orphan_finder.py` (có kiểm DNS) sạch |
 
 ### Lưu ý gia hạn cert
 
