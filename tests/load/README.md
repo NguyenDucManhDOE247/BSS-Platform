@@ -7,8 +7,14 @@ giảm sau ~5 phút".
 
 ```bash
 # Cluster kind đã dựng (scripts/kind-up.sh) + overlays/local đã apply + metrics-server sẵn sàng.
-k6 run tests/load/plans-and-order.js
+# Auth luôn bật (ADR-008): script tạo user Keycloak thật trong setup() nên cần mật khẩu admin master realm.
+KC_ADMIN_PASSWORD=$(kubectl --context kind-bss -n bss get secret keycloak-admin -o jsonpath='{.data.password}' | base64 -d)
+k6 run -e KC_ADMIN_PASSWORD="$KC_ADMIN_PASSWORD" tests/load/plans-and-order.js
 ```
+
+Mỗi VU là một khách **đã được admin duyệt**, đặt hàng bằng token của chính mình. `setup()` đăng nhập bằng
+mật khẩu đúng 1 lần/khách, sau đó VU chỉ gia hạn bằng `refresh_token`. Lý do: password grant bắt Keycloak băm
+mật khẩu, nên 50 VU cùng đăng nhập sẽ làm Keycloak 1 CPU trên kind nghẽn (đo thật, xem bảng dưới).
 
 Mở 1 terminal khác, quan sát trong lúc k6 chạy:
 
@@ -29,7 +35,32 @@ kubectl --context kind-bss -n bss get pods -w
   tự trả lời câu hỏi capacity-planning của `learning/13` mục 4: "ở 50 VU trên 1 node kind, hệ
   thống có bắt đầu chậm đi không?".
 
-## Kết quả 1 lần chạy thật (cluster kind 1 node, `bss-control-plane`)
+## Kết quả có auth (2026-10-01, kind 1 node, trần HPA local = 2)
+
+```
+checks_succeeded...: 100.00% 20922 out of 20922   http_req_failed: 0.00% (20934 request)
+http_req_duration..: avg=61.61ms p(90)=145.17ms p(95)=287.45ms max=2.41s
+✓ token refresh: 200   ✓ create order: 201   (10411 đơn hàng, mỗi đơn qua đủ JWT + /customer/me + giá catalog)
+```
+
+RAM máy ảo WSL lấy mẫu mỗi 30 s: 5,3 GB lúc nghỉ → **ổn định ~7,6 GB** ở 50 VU (còn trống ~8,2 GB); HPA của
+api-gateway, order-management, product-catalog, customer-service lên 2 trong ~2 phút đầu.
+
+Ba lần thử trước đó, mỗi lần lộ ra một lỗi thật:
+
+| Lần chạy | Kết quả | Nguyên nhân → cách sửa |
+|---|---|---|
+| Bản trước GĐ9 (không token) | "xanh" | Từ GĐ9 mọi lệnh đặt hàng là **401** nhưng script không có ngưỡng cho nó → thêm `checks{kind:order}` và `checks{kind:login}` > 99% |
+| Mỗi VU tự đăng nhập bằng mật khẩu | 97,96% đơn thành công, 5/55 lần đăng nhập timeout 60 s | Keycloak (1 CPU) nghẽn vì băm mật khẩu → `setup()` đăng nhập 1 lần, VU dùng `refresh_token` |
+| Trần HPA như base (tổng 46 Pod JVM) | **Cả máy ảo WSL hết RAM**, Docker Engine trả 500 | Pod JVM xin 512Mi nhưng limit 1Gi, nên scheduler xếp quá sức 1 node → overlay local đặt `maxReplicas: 2` (xem comment trong `overlays/local/kustomization.yaml`) |
+
+> Bài học về **overcommit**: scheduler chỉ cộng `requests`, còn thực tế Pod dùng tới `limits`. Trên EKS nhiều
+> node thì Karpenter/node group bù được, nhưng trên 1 node, tổng `limits` ở trần HPA phải vừa RAM node. Nếu không,
+> thứ chết sẽ là cả node chứ không chỉ một Pod bị OOMKilled.
+
+## Kết quả bản cũ — trước GĐ9, không auth (trần HPA base: api-gateway 12)
+
+Giữ lại để so sánh. Lưu ý: hồi đó máy chưa chạy Keycloak, và đường đặt hàng chưa đi qua kiểm tra JWT.
 
 ```
 checks_succeeded...: 100.00% 21073 out of 21073   http_req_failed: 0.00%

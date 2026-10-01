@@ -114,10 +114,13 @@ cleanup_vpc_leftovers() {
     aws ec2 delete-network-interface --region "$REGION" --network-interface-id "$id" \
       && echo "  ✓ xóa ENI sót của VPC CNI: $id"
   done
-  # SG do EKS tự tạo cho cluster — chỉ xóa khi cluster đã không còn.
+  # SG do EKS tự tạo cho cluster — chỉ xóa khi cluster đã không còn. Lọc theo TÊN EKS đặt cố định
+  # (`eks-cluster-sg-<cluster>-<số>`), không theo tag `aws:eks:cluster-name`: tag `aws:*` chỉ dịch vụ AWS gắn
+  # được nên không tái hiện được để kiểm thử (gặp khi mô phỏng lỗi này 2026-09-30), còn tên thì chính xác
+  # tới đúng 1 cluster và không bao giờ trùng SG do Terraform quản lý.
   if ! aws eks describe-cluster --region "$REGION" --name "$CLUSTER" >/dev/null 2>&1; then
     sgs="$(aws ec2 describe-security-groups --region "$REGION" \
-      --filters "Name=tag:aws:eks:cluster-name,Values=$CLUSTER" --query 'SecurityGroups[].GroupId' --output text)"
+      --filters "Name=group-name,Values=eks-cluster-sg-$CLUSTER-*" --query 'SecurityGroups[].GroupId' --output text)"
     for id in $sgs; do
       aws ec2 delete-security-group --region "$REGION" --group-id "$id" \
         && echo "  ✓ xóa security group sót của EKS: $id"
