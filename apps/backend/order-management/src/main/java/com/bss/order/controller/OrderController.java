@@ -27,12 +27,21 @@ public class OrderController {
         this.service = service;
     }
 
+    /**
+     * B-15: header {@code Idempotency-Key} (tùy chọn, web-portal luôn gửi) — gửi lại cùng key + cùng nội
+     * dung trả lại ĐÚNG đơn đã tạo, cùng mã 201, kèm {@code Idempotent-Replayed: true} để client biết
+     * không có đơn mới.
+     */
     @PostMapping
-    public ResponseEntity<OrderDto> create(@Valid @RequestBody CreateOrderRequest req) {
-        var created = service.create(req);
-        return ResponseEntity
-                .created(URI.create("/tmf-api/orderManagement/v4/productOrder/" + created.id()))
-                .body(created);
+    public ResponseEntity<OrderDto> create(@Valid @RequestBody CreateOrderRequest req,
+                                           @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        var result = service.create(req, idempotencyKey);
+        var response = ResponseEntity
+                .created(URI.create("/tmf-api/orderManagement/v4/productOrder/" + result.order().id()));
+        if (result.replayed()) {
+            response.header("Idempotent-Replayed", "true");
+        }
+        return response.body(result.order());
     }
 
     @GetMapping("/{id}")

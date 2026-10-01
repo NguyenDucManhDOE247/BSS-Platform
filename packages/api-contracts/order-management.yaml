@@ -18,7 +18,18 @@ paths:
   /productOrder:
     post:
       summary: Create a product order
-      description: Order is created in Acknowledged state; outbox emits OrderCompleted on commit.
+      description: |
+        Order is created in Acknowledged state; outbox emits OrderCompleted on commit.
+
+        **Idempotency-Key (B-15)** — tùy chọn, web-portal luôn gửi (1 key cho 1 lần mở trang đặt hàng).
+        Mỗi (người dùng, key) tạo tối đa MỘT đơn: gửi lại cùng key + cùng nội dung → trả lại đúng đơn
+        đã tạo (cùng `201`, kèm header `Idempotent-Replayed: true`), không tạo đơn/hóa đơn mới.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          description: '1–255 ký tự ASCII in được (khuyến nghị UUID). Phạm vi: từng người dùng.'
+          schema: { type: string, minLength: 1, maxLength: 255, pattern: '^[\x21-\x7E]+$' }
       requestBody:
         required: true
         content:
@@ -26,13 +37,20 @@ paths:
             schema: { $ref: '#/components/schemas/CreateOrder' }
       responses:
         '201':
-          description: Created.
+          description: Created — hoặc trả lại đơn đã tạo trước đó với cùng Idempotency-Key.
+          headers:
+            Location: { schema: { type: string } }
+            Idempotent-Replayed:
+              description: '`true` khi đây là đơn đã tạo từ trước (request trùng key) — không có đơn mới.'
+              schema: { type: string, enum: ['true'] }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ProductOrder' }
+        '400': { description: Idempotency-Key sai định dạng. }
         '401': { description: Thiếu/sai token. }
         '403': { description: Không phải role customer. }
-        '422': { description: Validation error / gói không bán / khách chưa có hồ sơ / khách chưa được duyệt. }
+        '409': { description: Một request cùng Idempotency-Key vừa tạo đơn trong lúc request này chạy — gửi lại để nhận đơn đó. }
+        '422': { description: Validation error / gói không bán / khách chưa có hồ sơ / khách chưa được duyệt / Idempotency-Key đã dùng cho đơn khác nội dung. }
         '503': { description: product-catalog hoặc customer-service tạm thời không khả dụng. }
     get:
       summary: List orders (khách — của chính mình; admin — tất cả, lọc theo customerId)

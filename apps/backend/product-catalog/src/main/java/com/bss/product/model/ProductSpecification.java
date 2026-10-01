@@ -1,6 +1,8 @@
 package com.bss.product.model;
 
+import com.bss.common.id.UuidV7Generator;
 import jakarta.persistence.*;
+import org.hibernate.annotations.UuidGenerator;
 import jakarta.validation.constraints.NotBlank;
 
 import java.time.Instant;
@@ -11,7 +13,7 @@ import java.util.UUID;
 public class ProductSpecification {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
+    @UuidGenerator(algorithm = UuidV7Generator.class) // B-15: UUID v7 (bss-common-java)
     private UUID id;
 
     @NotBlank

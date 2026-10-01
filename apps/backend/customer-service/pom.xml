@@ -50,7 +50,14 @@
         <dependency>
             <groupId>com.bss</groupId>
             <artifactId>bss-common-java</artifactId>
-            <version>0.1.0</version>
+            <version>0.2.0</version> <!-- B-15: + CurrentCaller, OffsetPageRequest, UUID v7 -->
+        </dependency>
+        <!-- B-15: PATCH merge-patch (RFC 7396) phân biệt "không gửi" (giữ nguyên) với "gửi null" (xóa) —
+             Optional<T> trong record KHÔNG làm được (Jackson trả Optional.empty cho cả hai, đã thử thật). -->
+        <dependency>
+            <groupId>org.openapitools</groupId>
+            <artifactId>jackson-databind-nullable</artifactId>
+            <version>0.2.9</version>
         </dependency>
 
         <!-- Web -->

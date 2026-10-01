@@ -1,6 +1,6 @@
 package com.bss.product.controller;
 
-import com.bss.product.exception.NotFoundException;
+import com.bss.common.exception.NotFoundException;
 import com.bss.product.model.Category;
 import com.bss.product.repository.CategoryRepository;
 import org.springframework.web.bind.annotation.GetMapping;

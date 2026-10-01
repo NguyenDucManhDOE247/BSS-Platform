@@ -16,6 +16,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.everyItem;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -177,6 +178,57 @@ class CustomerAuthIT {
         mvc.perform(patch(BASE + "/me").with(customer(sub, email))
                         .contentType("application/merge-patch+json").content(selfApprove.toString()))
                 .andExpect(status().isBadRequest());
+    }
+
+    /** Trường JSON vắng mặt hoặc là null — cả hai nghĩa là "không có giá trị" trong response. */
+    private static boolean noValue(com.fasterxml.jackson.databind.JsonNode n) {
+        return n == null || n.isMissingNode() || n.isNull();
+    }
+
+    @Test
+    void merge_patch_absent_keeps_null_clears_and_required_null_is_422() throws Exception {
+        // B-15 (RFC 7396). Trước đây null = giữ nguyên → khách KHÔNG có cách nào xóa số điện thoại.
+        String sub = uniq(), email = sub + "@example.com";
+        String created = mvc.perform(post(BASE + "/me").with(customer(sub, email))
+                        .contentType(APPLICATION_JSON).content(profile("A", "0901000000")))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String id = json.readTree(created).get("id").asText();
+        assertThat(UUID.fromString(id).version()).as("B-15: PK là UUID v7").isEqualTo(7);
+        String mergePatch = "application/merge-patch+json";
+
+        // Không gửi phoneNumber → giữ nguyên.
+        mvc.perform(patch(BASE + "/me").with(customer(sub, email)).contentType(mergePatch).content("{\"name\":\"B\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name", equalTo("B")))
+                .andExpect(jsonPath("$.phoneNumber", equalTo("0901000000")));
+
+        // Gửi null → xóa.
+        String cleared = mvc.perform(patch(BASE + "/me").with(customer(sub, email)).contentType(mergePatch)
+                        .content("{\"phoneNumber\":null}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(noValue(json.readTree(cleared).get("phoneNumber"))).isTrue();
+        assertThat(json.readTree(cleared).get("name").asText()).isEqualTo("B");
+
+        // Trường bắt buộc không xóa được: null hoặc chuỗi trống → 422.
+        for (String body : new String[]{"{\"name\":null}", "{\"name\":\"  \"}"}) {
+            mvc.perform(patch(BASE + "/me").with(customer(sub, email)).contentType(mergePatch).content(body))
+                    .andExpect(status().isUnprocessableEntity());
+        }
+
+        // Phía admin: cùng ngữ nghĩa.
+        mvc.perform(patch(BASE + "/" + id).with(admin()).contentType(mergePatch).content("{\"phoneNumber\":\"0999\"}"))
+                .andExpect(jsonPath("$.phoneNumber", equalTo("0999")));
+        String adminCleared = mvc.perform(patch(BASE + "/" + id).with(admin()).contentType(mergePatch)
+                        .content("{\"phoneNumber\":null}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(noValue(json.readTree(adminCleared).get("phoneNumber"))).isTrue();
+        for (String body : new String[]{"{\"email\":null}", "{\"status\":null}", "{\"name\":null}"}) {
+            mvc.perform(patch(BASE + "/" + id).with(admin()).contentType(mergePatch).content(body))
+                    .andExpect(status().isUnprocessableEntity());
+        }
+        // @Email vẫn được kiểm khi nằm BÊN TRONG JsonNullable<...> (value extractor của thư viện).
+        mvc.perform(patch(BASE + "/" + id).with(admin()).contentType(mergePatch).content("{\"email\":\"khong-phai-email\"}"))
+                .andExpect(status().isUnprocessableEntity());
     }
 
     @Test

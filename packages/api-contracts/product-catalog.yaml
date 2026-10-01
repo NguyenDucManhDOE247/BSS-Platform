@@ -59,7 +59,7 @@ paths:
     patch:
       summary: Sửa gói (giá, mô tả) / ngừng bán (`lifecycleStatus=Retired`) — admin
       description: |
-        Merge-patch: trường không gửi = giữ nguyên. Đổi giá KHÔNG ảnh hưởng đơn hàng cũ — order-management
+        Merge-patch (RFC 7396): trường không gửi = giữ nguyên, `null` = xóa (xem PatchOffering). Đổi giá KHÔNG ảnh hưởng đơn hàng cũ — order-management
         lưu giá tại thời điểm mua (B-13). "Ngừng bán" nên dùng PATCH thay vì DELETE để giữ lịch sử.
       security: [ { bearerAuth: [] } ]
       parameters:
@@ -74,7 +74,7 @@ paths:
         '401': { description: Thiếu/sai token. }
         '403': { description: Không phải admin. }
         '404': { description: Not found. }
-        '422': { description: Dữ liệu không hợp lệ (vd. giá âm). }
+        '422': { description: 'Dữ liệu không hợp lệ (vd. giá âm), hoặc trường bắt buộc gửi null.' }
     delete:
       summary: Delete a product offering (admin)
       security: [ { bearerAuth: [] } ]
@@ -112,13 +112,16 @@ components:
   schemas:
     PatchOffering:
       type: object
+      description: |
+        JSON Merge Patch (RFC 7396, B-15): không gửi trường = giữ nguyên; `null` = XÓA (chỉ `description`,
+        `validForStart`, `validForEnd`); `name`/`priceAmount`/`lifecycleStatus` bắt buộc → `null` = 422.
       properties:
         name:              { type: string, minLength: 1 }
-        description:       { type: string }
+        description:       { type: [string, 'null'] }
         priceAmount:       { type: number, minimum: 0 }
         lifecycleStatus:   { $ref: '#/components/schemas/LifecycleStatus' }
-        validForStart:     { type: string, format: date-time }
-        validForEnd:       { type: string, format: date-time }
+        validForStart:     { type: [string, 'null'], format: date-time }
+        validForEnd:       { type: [string, 'null'], format: date-time }
 
     LifecycleStatus:
       type: string

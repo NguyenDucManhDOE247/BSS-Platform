@@ -5,7 +5,7 @@ import com.bss.customer.dto.MyProfileRequest;
 import com.bss.customer.dto.PatchCustomerRequest;
 import com.bss.customer.model.Customer;
 import com.bss.customer.model.Customer.CustomerStatus;
-import com.bss.customer.security.CurrentUser;
+import com.bss.common.security.CurrentCaller;
 import com.bss.customer.service.CustomerService;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
@@ -36,9 +36,9 @@ import java.util.UUID;
 public class CustomerController {
 
     private final CustomerService service;
-    private final CurrentUser currentUser;
+    private final CurrentCaller currentUser;
 
-    public CustomerController(CustomerService service, CurrentUser currentUser) {
+    public CustomerController(CustomerService service, CurrentCaller currentUser) {
         this.service = service;
         this.currentUser = currentUser;
     }
