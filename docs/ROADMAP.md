@@ -50,7 +50,9 @@ Reviewed item by item on **2026-09-30** — every ✅ was re-run or re-checked t
 - [x] Chaos (pod delete, node drain) on a real cluster ([labs/08](labs/08-chaos-engineering.md)); plus 2026-09-30: deleting a
   Keycloak pod under a 2-replica cluster kept sessions and the authenticated smoke test green.
 
-**Not met (by design, tracked):** the internal DoD also requires *all P0/P1 issues closed* — **B-23 (P1, HTTPS)** stays open
-until a domain (or CloudFront) is chosen; browser sign-in on AWS depends on it (B-18's remaining part).
+**P0/P1 issues:** none open. **B-23 (HTTPS)** was downgraded P1 → P2 on 2026-09-30 by the repo owner — *"HTTPS waits
+for a domain"*: the Ingress no longer requests a certificate it doesn't have, the API is authenticated everywhere, and
+Keycloak is not exposed through the ALB. Accepted, tracked risk: tokens travel over plain HTTP to the ALB, and the two
+websites cannot sign users in on AWS until HTTPS exists (the remaining part of B-18). Both P2s stay open with that reason.
 
 See [`CLAUDE.md` §13](../CLAUDE.md) for the fully detailed, always-current status write-up.

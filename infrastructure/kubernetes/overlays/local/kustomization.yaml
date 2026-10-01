@@ -148,21 +148,34 @@ patches:
   # B-22 (bản local): base hpa.yaml đặt minReplicas: 2 cho mọi service (api-gateway: xem patch
   # riêng bên dưới, base của nó là 2 chung với các service khác) — hạ về 1 để khớp `replicas:`
   # ở trên, tránh HPA tự ý scale-up ngay khi apply xong (đúng lab 13.3 của learning/13).
+  #
+  # maxReplicas: 2 cho 5 service JVM (lỗi thật 2026-09-30): base cho tổng trần 46 Pod JVM (12+10+10+8+6)
+  # — hợp với nhiều node EKS, nhưng kind là 1 node = cả máy ảo WSL (~16 GB). Pod JVM xin `requests` 512Mi
+  # (scheduler xếp theo con số này nên thấy còn chỗ) nhưng dùng thật 400–900Mi, `limits` 1Gi → k6 50 VU
+  # đẩy HPA lên ~36 Pod Running → CẢ máy ảo WSL hết RAM, Docker Engine trả 500, phải khởi động lại; và
+  # lúc lên lại, 36 JVM cùng boot làm CPU vọt nên HPA giữ nguyên số max → suýt sập lần 2. Quy tắc cho
+  # 1 node: tổng `limits` ở trần HPA phải vừa RAM node → 5 svc × 2 × 1Gi = 10Gi + ~3Gi phần còn lại < 16Gi.
+  # 2 vẫn đủ để thấy HPA scale-out rồi scale-in (learning/13 lab 13.3).
   - target: { kind: HorizontalPodAutoscaler, name: customer-service }
     patch: |-
       - { op: replace, path: /spec/minReplicas, value: 1 }
+      - { op: replace, path: /spec/maxReplicas, value: 2 }
   - target: { kind: HorizontalPodAutoscaler, name: product-catalog }
     patch: |-
       - { op: replace, path: /spec/minReplicas, value: 1 }
+      - { op: replace, path: /spec/maxReplicas, value: 2 }
   - target: { kind: HorizontalPodAutoscaler, name: order-management }
     patch: |-
       - { op: replace, path: /spec/minReplicas, value: 1 }
+      - { op: replace, path: /spec/maxReplicas, value: 2 }
   - target: { kind: HorizontalPodAutoscaler, name: billing-service }
     patch: |-
       - { op: replace, path: /spec/minReplicas, value: 1 }
+      - { op: replace, path: /spec/maxReplicas, value: 2 }
   - target: { kind: HorizontalPodAutoscaler, name: api-gateway }
     patch: |-
       - { op: replace, path: /spec/minReplicas, value: 1 }
+      - { op: replace, path: /spec/maxReplicas, value: 2 }
   - target: { kind: HorizontalPodAutoscaler, name: web-portal }
     patch: |-
       - { op: replace, path: /spec/minReplicas, value: 1 }
