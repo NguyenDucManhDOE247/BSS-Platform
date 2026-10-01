@@ -45,7 +45,17 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
+    <!-- B-15: bss-common-java từ GitHub Packages (cần auth kể cả repo public) — giải thích đầy đủ ở
+         customer-service/pom.xml; Dockerfile nhận token qua BuildKit secret. -->
+    <repositories>
+        <repository>
+            <id>github</id>
+            <url>https://maven.pkg.github.com/NguyenDucManhDOE247/BSS-Platform</url>
+        </repository>
+    </repositories>
     <dependencies>
+        <!-- B-15: exception handler, phân trang, CurrentCaller, UUID v7 — thay bản sao riêng của service. -->
+        <dependency><groupId>com.bss</groupId><artifactId>bss-common-java</artifactId><version>0.2.0</version></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
         <!-- Giai đoạn 9 (ADR-008 quyết định 4): service tự kiểm JWT — xem config/SecurityConfig. -->
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-oauth2-resource-server</artifactId></dependency>

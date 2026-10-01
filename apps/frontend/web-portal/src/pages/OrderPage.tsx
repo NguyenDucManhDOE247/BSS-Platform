@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { api, formatVND, problemDetail } from '../api/client';
+import { api, formatVND, newIdempotencyKey, problemDetail } from '../api/client';
 import { statusText, useMyProfile } from '../hooks/useMyProfile';
 
 interface ProductOffering {
@@ -23,6 +24,9 @@ export default function OrderPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { data: me, isLoading: meLoading } = useMyProfile();
+  // B-15: 1 key cho 1 lần mở trang = 1 "ý định đặt hàng". Bấm lại sau lỗi mạng gửi CÙNG key → nếu lần
+  // trước thật ra đã thành công, server trả lại đúng đơn đó thay vì tạo đơn thứ 2.
+  const [idempotencyKey] = useState(newIdempotencyKey);
 
   const { data: offering, isLoading } = useQuery({
     queryKey: ['offering', offeringId],
@@ -38,7 +42,7 @@ export default function OrderPage() {
         category: 'new',
         description: `Subscription: ${offering.name}`,
         items: [{ productOfferingId: offering.id, quantity: 1 }],
-      })).data;
+      }, { headers: { 'Idempotency-Key': idempotencyKey } })).data;
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['bills'] });

@@ -28,8 +28,24 @@ Debt pass from Phase 8 back to 0 (after `v2.0.0`), each item verified on real in
 - Schema migration Release B/C for `customers.email_verified` (expand → migrate → contract), run on RDS.
 - Real Discord alert delivery (alert + runbook link in 132–146 s after a service goes down).
 - ADR-009 (no Jenkins/Helm chart/Ansible alongside the current toolchain).
+- **`Idempotency-Key` on `POST productOrder`** (B-15): a double-click or an automatic retry no longer
+  creates a second order + invoice — the same (user, key) returns the original order (`201` +
+  `Idempotent-Replayed: true`); same key with a different body → 422; a concurrent duplicate loses on the
+  `(owner_sub, idem_key)` primary key, rolls back its whole order and gets 409. web-portal sends one key per
+  order page (with a `getRandomValues` fallback, since `crypto.randomUUID` needs a secure context).
 
 ### Changed
+
+- **`bss-common-java` 0.2.0 is used by all 4 business services** (B-15): one RFC 7807 handler,
+  `NotFoundException`, `OffsetPageRequest` (4 identical copies removed; `previousOrFirst()` no longer goes
+  negative) and `CurrentCaller` (3 copies removed; a missing JWT is now 401 everywhere instead of 500 in
+  order/billing). The library imports the Spring Boot 3.5.16 BOM instead of pinning Spring by hand.
+- **Primary keys are UUID v7** (RFC 9562) via `UuidV7Generator` — time-ordered, so new rows append to the end
+  of the B-tree index. No migration needed; existing v4 ids stay valid.
+- **PATCH is real JSON Merge Patch (RFC 7396)** in customer-service and product-catalog: an omitted field is
+  kept, `null` clears it (`phoneNumber`, `description`, `validForStart/End`), `null` on a required field is
+  422. Before, `null` meant "keep", so a customer could not remove their phone number. DTOs use
+  `JsonNullable<T>` — `Optional<T>` in a record cannot tell "absent" from `null` (verified).
 
 - **Auth is always on — the `bss.auth.enabled` switch is gone** (ADR-008 decision 6): no more "open" filter
   chains, `BSS_AUTH_ENABLED` env vars or auth-off branches in the 5 services; a service without an issuer/JWKS

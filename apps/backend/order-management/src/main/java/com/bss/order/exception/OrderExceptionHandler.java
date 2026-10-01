@@ -5,21 +5,21 @@ import com.bss.order.client.NoCustomerProfileException;
 import com.bss.order.client.OfferingNotOrderableException;
 import com.bss.order.client.UnknownOfferingException;
 import com.bss.order.service.CustomerNotActiveException;
+import com.bss.order.service.IdempotencyKeyException;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
-import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.RestClientException;
 
+/**
+ * Lỗi RIÊNG của đơn hàng → RFC 7807. 404 / 422 validation / 409 ràng buộc DB do handler chung của
+ * bss-common-java lo ({@code @Import} ở OrderManagementApplication) — trước B-15 file này chép lại cả
+ * 2 handler đó. Các kiểu exception ở hai bên không trùng nhau nên không có chuyện "handler nào thắng".
+ */
 @RestControllerAdvice
-public class GlobalExceptionHandler {
-
-    @ExceptionHandler(NotFoundException.class)
-    public ProblemDetail handleNotFound(NotFoundException ex) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
-    }
+public class OrderExceptionHandler {
 
     @ExceptionHandler(UnknownOfferingException.class)
     public ProblemDetail handleUnknownOffering(UnknownOfferingException ex) {
@@ -67,12 +67,9 @@ public class GlobalExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
     }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ProblemDetail handleValidation(MethodArgumentNotValidException ex) {
-        var detail = ex.getBindingResult().getFieldErrors().stream()
-                .findFirst()
-                .map(e -> e.getField() + ": " + e.getDefaultMessage())
-                .orElse("Validation failed");
-        return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, detail);
+    /** B-15 — 400 / 409 / 422 tùy cách dùng sai header Idempotency-Key (xem IdempotencyKeyException). */
+    @ExceptionHandler(IdempotencyKeyException.class)
+    public ProblemDetail handleIdempotencyKey(IdempotencyKeyException ex) {
+        return ProblemDetail.forStatusAndDetail(ex.status(), ex.getMessage());
     }
 }

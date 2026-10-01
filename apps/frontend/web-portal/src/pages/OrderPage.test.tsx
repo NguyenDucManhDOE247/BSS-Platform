@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import OrderPage from './OrderPage';
+import { api } from '../api/client';
 import type { MyProfile } from '../hooks/useMyProfile';
 
 // Giai đoạn 9 việc 4: trang Đặt hàng phải chặn đúng người ở phía giao diện (backend cũng chặn — đây
@@ -67,5 +68,26 @@ describe('OrderPage', () => {
     profile = { id: 'c1', name: 'A', email: 'a@x', status: 'Active' };
     renderPage();
     await waitFor(() => screen.getByRole('button', { name: /xác nhận đăng ký/i }));
+  });
+
+  it('retrying after a failure resends the SAME Idempotency-Key (B-15: no second order)', async () => {
+    profile = { id: 'c1', name: 'A', email: 'a@x', status: 'Active' };
+    const post = vi.mocked(api.post);
+    post.mockReset();
+    post.mockRejectedValueOnce(new Error('network down')).mockResolvedValueOnce({ data: { id: 'o-1' } });
+    renderPage();
+
+    const button = await waitFor(() => screen.getByRole('button', { name: /xác nhận đăng ký/i }));
+    fireEvent.click(button);
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: /xác nhận đăng ký/i }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: /xác nhận đăng ký/i }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+
+    const keyOf = (call: unknown[]) =>
+      (call[2] as { headers: Record<string, string> }).headers['Idempotency-Key'];
+    expect(keyOf(post.mock.calls[0])).toMatch(/\S+/);
+    expect(keyOf(post.mock.calls[1])).toBe(keyOf(post.mock.calls[0]));
   });
 });

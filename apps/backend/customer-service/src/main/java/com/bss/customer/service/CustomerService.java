@@ -1,13 +1,14 @@
 package com.bss.customer.service;
 
+import com.bss.common.exception.NotFoundException;
+import com.bss.common.paging.OffsetPageRequest;
 import com.bss.customer.dto.CreateCustomerRequest;
 import com.bss.customer.dto.MyProfileRequest;
 import com.bss.customer.dto.PatchCustomerRequest;
-import com.bss.common.exception.NotFoundException;
 import com.bss.customer.model.Customer;
 import com.bss.customer.model.Customer.CustomerStatus;
-import com.bss.customer.paging.OffsetPageRequest;
 import com.bss.customer.repository.CustomerRepository;
+import org.openapitools.jackson.nullable.JsonNullable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -58,7 +60,8 @@ public class CustomerService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Tài khoản đăng nhập không có email — bổ sung email ở trang tài khoản Keycloak trước");
         }
-        if (req.name() == null || req.name().isBlank()) {
+        String name = req.name() == null ? null : req.name().orElse(null);
+        if (name == null || name.isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "name: must not be blank");
         }
         if (repo.findByKeycloakUserId(subject).isPresent()) {
@@ -66,20 +69,21 @@ public class CustomerService {
         }
         var customer = new Customer();
         customer.setKeycloakUserId(subject);
-        customer.setName(req.name().trim());
+        customer.setName(name.trim());
         customer.setEmail(email);
         customer.setEmailVerified(emailVerified); // email đến từ token → tin trạng thái xác thực của Keycloak
-        customer.setPhoneNumber(req.phoneNumber());
+        customer.setPhoneNumber(req.phoneNumber() == null ? null : req.phoneNumber().orElse(null));
         // Email đã thuộc 1 khách khác (vd. khách tại quầy do admin tạo) → unique constraint →
         // GlobalExceptionHandler trả 409. CỐ Ý không tự "nhận" hồ sơ đó: Keycloak local chưa xác
         // thực email (verifyEmail=false), ai cũng có thể đăng ký bằng email của người khác.
         return repo.save(customer);
     }
 
+    /** merge-patch (RFC 7396, B-15): không gửi = giữ; {@code phoneNumber: null} = xóa; {@code name} bắt buộc. */
     public Customer patchMine(String subject, MyProfileRequest req) {
         var mine = getMine(subject);
-        if (req.name() != null && !req.name().isBlank()) mine.setName(req.name().trim());
-        if (req.phoneNumber() != null) mine.setPhoneNumber(req.phoneNumber());
+        present(req.name()).ifPresent(n -> mine.setName(requiredText(n, "name")));
+        present(req.phoneNumber()).ifPresent(p -> mine.setPhoneNumber(p.orElse(null)));
         return repo.save(mine);
     }
 
@@ -99,16 +103,43 @@ public class CustomerService {
         return repo.save(customer);
     }
 
+    /** merge-patch (RFC 7396, B-15): không gửi = giữ; {@code phoneNumber: null} = xóa; trường bắt buộc + null = 422. */
     public Customer patch(UUID id, PatchCustomerRequest req) {
         var existing = get(id);
-        if (req.name() != null) existing.setName(req.name());
-        if (req.email() != null && !req.email().equalsIgnoreCase(existing.getEmail())) {
-            existing.setEmail(req.email());
-            existing.setEmailVerified(false); // email mới chưa được xác thực
-        }
-        if (req.phoneNumber() != null) existing.setPhoneNumber(req.phoneNumber());
-        if (req.status() != null) existing.setStatus(req.status());
+        present(req.name()).ifPresent(n -> existing.setName(requiredText(n, "name")));
+        present(req.email()).ifPresent(e -> {
+            String email = requiredText(e, "email");
+            if (!email.equalsIgnoreCase(existing.getEmail())) {
+                existing.setEmail(email);
+                existing.setEmailVerified(false); // email mới chưa được xác thực
+            }
+        });
+        present(req.phoneNumber()).ifPresent(p -> existing.setPhoneNumber(p.orElse(null)));
+        present(req.status()).ifPresent(s -> existing.setStatus(s.orElseThrow(() -> cannotRemove("status"))));
         return repo.save(existing);
+    }
+
+    // ---------- merge-patch (RFC 7396) — B-15 ----------
+
+    /**
+     * Trường CÓ trong body → {@code Optional.of(giá trị-có-thể-null)}; không gửi → {@code Optional.empty()}.
+     * {@code field == null} khi cả body thiếu trường này mà Jackson không gọi tới (vd. test dựng record tay).
+     */
+    private static <T> Optional<Optional<T>> present(JsonNullable<T> field) {
+        return field != null && field.isPresent() ? Optional.of(Optional.ofNullable(field.get())) : Optional.empty();
+    }
+
+    private static String requiredText(Optional<String> value, String field) {
+        String v = value.orElseThrow(() -> cannotRemove(field));
+        if (v.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, field + ": must not be blank");
+        }
+        return v.trim();
+    }
+
+    private static ResponseStatusException cannotRemove(String field) {
+        return new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                field + ": bắt buộc — merge-patch gửi null nghĩa là xóa, trường này không xóa được");
     }
 
     public void delete(UUID id) {

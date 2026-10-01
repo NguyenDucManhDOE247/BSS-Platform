@@ -19,7 +19,12 @@ export default function ProfilePage() {
 
   const save = useMutation({
     mutationFn: async () => {
-      const body = { name: form.name, phoneNumber: form.phoneNumber || undefined };
+      // B-15 (RFC 7396): PATCH gửi `null` = XÓA số điện thoại; bỏ trường (undefined) = giữ nguyên. Trước đây
+      // xóa trống ô này gửi undefined → server giữ số cũ → khách không có cách nào xóa số điện thoại.
+      const phone = form.phoneNumber.trim();
+      const body = me
+        ? { name: form.name, phoneNumber: phone || null }
+        : { name: form.name, phoneNumber: phone || undefined };
       return me
         ? api.patch('/tmf-api/customerManagement/v4/customer/me', body, {
             headers: { 'Content-Type': 'application/merge-patch+json' },

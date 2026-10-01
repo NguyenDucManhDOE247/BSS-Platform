@@ -101,6 +101,7 @@ paths:
               schema: { $ref: '#/components/schemas/Customer' }
         '400': { description: 'Gửi kèm trường không được phép (`status`...).' }
         '404': { description: Chưa có hồ sơ. }
+        '422': { description: '`name` là null hoặc chuỗi trống (bắt buộc — không xóa được).' }
 
   /customer/{id}:
     parameters:
@@ -128,6 +129,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Customer' }
         '404': { description: Not found. }
+        '422': { description: 'Email sai định dạng, hoặc `name`/`email`/`status` là null (bắt buộc — không xóa được).' }
     delete:
       summary: Delete a customer (admin)
       responses:
@@ -179,16 +181,21 @@ components:
     CustomerPatch:
       type: object
       additionalProperties: false
+      description: |
+        JSON Merge Patch (RFC 7396, B-15): không gửi trường = giữ nguyên; `null` = XÓA (chỉ `phoneNumber`);
+        `name`/`email`/`status` bắt buộc → `null` = 422.
       properties:
-        name: { type: string }
+        name: { type: string, minLength: 1 }
         email: { type: string, format: email }
-        phoneNumber: { type: string }
+        phoneNumber: { type: [string, 'null'] }
         status: { $ref: '#/components/schemas/CustomerStatus' }
 
     MyProfile:
       type: object
       additionalProperties: false
-      description: POST bắt buộc `name`; PATCH bỏ trống trường nào = giữ nguyên trường đó.
+      description: |
+        POST bắt buộc `name`. PATCH (RFC 7396, B-15): không gửi trường = giữ nguyên; `phoneNumber: null` =
+        xóa số điện thoại; `name` null/trống = 422.
       properties:
         name: { type: string, minLength: 1 }
-        phoneNumber: { type: string }
+        phoneNumber: { type: [string, 'null'] }
