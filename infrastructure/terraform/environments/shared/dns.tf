@@ -41,19 +41,24 @@ resource "aws_acm_certificate" "main" {
   }
 }
 
-# Apex và wildcard dùng CHUNG 1 bản ghi CNAME xác thực (ACM sinh cùng tên) → gom theo tên bản ghi để không
-# tạo 2 resource ghi đè nhau.
-resource "aws_route53_record" "acm_validation" {
-  for_each = {
-    for dvo in flatten([for c in aws_acm_certificate.main : c.domain_validation_options]) :
-    dvo.resource_record_name => dvo...
-  }
+# Khóa for_each = 2 tên KHAI BÁO trong cấu hình (biết chắc lúc plan). Lỗi thật ở 2 lần plan đầu (2026-10-01,
+# "Invalid for_each argument"): khóa theo tên bản ghi, rồi theo dvo.domain_name, đều hỏng — cert dùng
+# `count` nên CẢ tập domain_validation_options là "unknown" tới khi cert được tạo. Giá trị (tên/kiểu/nội
+# dung bản ghi) được phép unknown lúc plan, chỉ khóa thì không. Apex và wildcard ra CÙNG 1 bản ghi CNAME
+# → 2 resource ghi cùng giá trị, cần allow_overwrite.
+locals {
+  cert_names = local.dns_enabled ? [var.domain_name, "*.${var.domain_name}"] : []
+}
 
-  zone_id = aws_route53_zone.main[0].zone_id
-  name    = each.value[0].resource_record_name
-  type    = each.value[0].resource_record_type
-  records = [each.value[0].resource_record_value]
-  ttl     = 300
+resource "aws_route53_record" "acm_validation" {
+  for_each = toset(local.cert_names)
+
+  allow_overwrite = true
+  zone_id         = aws_route53_zone.main[0].zone_id
+  name            = one([for d in aws_acm_certificate.main[0].domain_validation_options : d.resource_record_name if d.domain_name == each.key])
+  type            = one([for d in aws_acm_certificate.main[0].domain_validation_options : d.resource_record_type if d.domain_name == each.key])
+  records         = [one([for d in aws_acm_certificate.main[0].domain_validation_options : d.resource_record_value if d.domain_name == each.key])]
+  ttl             = 300
 }
 
 resource "aws_acm_certificate_validation" "main" {
