@@ -1,9 +1,9 @@
-# Draft — "Building a Telecom BSS on AWS EKS" (Giai đoạn 8, việc 6)
+# Draft — "Building a Telecom BSS on AWS EKS" (Giai đoạn 8, việc 6 — cập nhật cho `v2.0.0` ngày 2026-10-01)
 
-> Bản nháp — mọi con số đã là số đo thật (Lab 07/08 và buổi dev EKS 2026-09-29). Trước khi đăng: thêm
-> ảnh chụp thật (Grafana dashboard, k6 output, ALB WAF block), và đọc lại 1 lượt để chuyển giọng văn
-> sang tiếng nói cá nhân của bạn — bản này chỉ là khung + nội dung kỹ thuật chính xác, không phải
-> bản để đăng nguyên văn.
+> Bản nháp — mọi con số đã là số đo thật (Lab 07/08, buổi dev EKS 2026-09-29, k6 trên kind 2026-10-01).
+> Trước khi đăng: thêm ảnh chụp thật (2 website — có sẵn ở `docs/images/`, Grafana dashboard, k6 output,
+> ALB WAF block), và đọc lại 1 lượt để chuyển giọng văn sang tiếng nói cá nhân của bạn — bản này chỉ là
+> khung + nội dung kỹ thuật chính xác, không phải bản để đăng nguyên văn.
 
 ---
 
@@ -16,10 +16,13 @@ actually run, broken, and recovered on real AWS." This post is about the second 
 
 ### The system
 
-- **5 backend services** (Java 21 / Spring Boot 3.2), each owning its own Postgres schema:
+- **5 backend services** (Java 21 / Spring Boot 3.5), each owning its own Postgres database and user:
   `customer-service` (TMF629), `product-catalog` (TMF620), `order-management` (TMF622, with a
   transactional outbox), `billing-service` (TMF678, with an idempotent SQS consumer), and
   `api-gateway` in front of all of them.
+- **Two real websites** (React + Vite): a customer portal (sign up, wait for approval, buy a plan, see your
+  own orders and invoices) and an admin console (approve customers, change prices, retire plans, revenue) —
+  both signing in through **Keycloak** with OIDC + PKCE.
 - **Async by design**: `order-management` publishes `OrderCompleted` to EventBridge; a per-consumer
   SQS queue (with a DLQ) feeds `billing-service`. No service calls another service's database.
 - **Infrastructure as code**: Terraform across `dev`/`staging`/`prod`, each its own VPC/EKS/RDS,
@@ -131,14 +134,46 @@ of them running; they held the cluster's security group, and the VPC refused to 
 that lists "anything tagged for this project that still costs money" ended up catching three different
 kinds of leftovers in one day.
 
+### Adding real users: the login button that did nothing
+
+The scaffold had no authentication at all — every visitor shared one hard-coded "demo customer", and the
+admin console could delete customers without logging in. Version `2.0.0` added a real identity layer:
+Keycloak issues tokens, both websites sign in with Authorization Code + PKCE, and **every service validates
+the JWT itself** instead of trusting the gateway. Ownership travels with the data: the token's `sub` is
+stamped on the customer profile, then on the order, then rides inside the `OrderCompleted` event so billing
+can stamp it on the invoice without ever calling Keycloak. Ask for someone else's invoice and you get
+**404, not 403** — a 403 would confirm the invoice exists.
+
+The most expensive bug in this phase was a button that did nothing. Clicking "Sign in" on the local
+cluster produced no error, no request, nothing. PKCE needs `crypto.subtle` to hash the code verifier, and
+browsers only expose it in a *secure context* — HTTPS, or `localhost`/`*.localhost`. My local hostname was
+`bss.localtest.me`: it resolves to 127.0.0.1, but to the browser it's just plain HTTP, so `crypto.subtle`
+was `undefined` and the failure sat silently inside the auth library's error state. Renaming the host to
+`bss.localhost` fixed it. The same rule is why, on AWS, the API is fully authenticated but the websites
+can't sign anyone in yet: there's no domain, so no certificate, so no secure context.
+
+### Local isn't free either
+
+The cheapest place to run things is my own laptop — until a load test took the whole laptop down. I ran a
+50-user k6 test against the local `kind` cluster after adding authentication, and Docker started answering
+every command with HTTP 500. The WSL virtual machine had run out of memory.
+
+The cause was a number I'd stopped looking at. Each JVM pod *requests* 512 MiB but is *limited* to 1 GiB and
+really uses 400–900 MiB under load. The scheduler only adds up requests, so it happily ran 29 service JVMs
+plus Keycloak on a single 16 GB node — and HPA ceilings meant for a multi-node EKS cluster allowed 46. On EKS that over-commit
+costs you one node; on `kind`, the node *is* the whole VM. Capping local HPA at 2 replicas per service (so
+the sum of limits fits in RAM) fixed it: the same test now serves 20,934 requests with 0% errors and memory
+holds at ~7.6 GB. `requests` is a promise to the scheduler; `limits` is a ceiling for the kernel; the gap
+between them is a bet you should size on purpose.
+
 ### What's next
 
-The system now has a real identity layer (Keycloak, self-registration, admin approval, per-customer data
-ownership — released as `v2.0.0`) and zero HIGH/CRITICAL CVEs after moving to Spring Boot 3.5. What's
-missing is the least glamorous part: **HTTPS on AWS**. Browser login needs a secure context, so on AWS
-the API is secured but the two websites can't sign users in until there's a domain and a certificate.
-After that: explain that 7.9%, and turn on NetworkPolicy enforcement in staging/prod (it's verified on
-dev EKS — 11/11 on a matrix run from inside the real service pods).
+The system now has a real identity layer (released as `v2.0.0`), zero HIGH/CRITICAL CVEs after moving to
+Spring Boot 3.5, and — since the last debt pass — idempotent order creation (`Idempotency-Key`), UUID v7
+keys and correct JSON Merge Patch semantics. NetworkPolicy is enforced on dev (12/12 on a matrix run from
+inside the real service pods) and enabled in code for staging/prod. What's missing is the least glamorous
+part: **HTTPS on AWS** — browser login needs a secure context, so the two websites can't sign users in on
+AWS until there's a domain and a certificate. After that: explain that 7.9%.
 
 ---
 
