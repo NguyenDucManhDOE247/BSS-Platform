@@ -6,7 +6,12 @@ spring:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:orders}
     username: ${DB_USER:bss}
     password: ${DB_PASSWORD:bss}
+    # Ngân sách kết nối RDS — lý do + số đo ở customer-service/application.yml (2026-10-01).
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
   jpa:
+    open-in-view: false # lý do + số đo ở customer-service/application.yml (2026-10-01)
     hibernate:
       ddl-auto: validate
     properties:

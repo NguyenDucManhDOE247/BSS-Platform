@@ -37,6 +37,8 @@ node_modules/
 # Giai đoạn 9: kết quả chạy Playwright (ảnh chụp, trace, báo cáo HTML) — sinh lại mỗi lần chạy
 tests/e2e-browser/test-results/
 tests/e2e-browser/playwright-report/
+# k6 --summary-export + scripts/load-watch.sh — số đo thô của từng lần chạy; số đáng giữ được chép vào docs/labs/
+results/
 dist/
 build/
 .next/

@@ -17,26 +17,33 @@
 
 import http from "k6/http";
 import { check } from "k6";
+import { Counter } from "k6/metrics";
 
 const BASE_URL = __ENV.BASE_URL || "http://localhost:8080";
 
-// 5 bậc rps cố định, mỗi bậc giữ 90s (đủ để p95 ổn định + HPA có thời gian phản ứng), tổng ~10 phút.
-// Chỉnh lại các mốc này theo kết quả bậc đầu nếu hệ thống bão hòa sớm/muộn hơn dự kiến.
+// Mặc định: 5 bậc rps cố định (10→150), mỗi bậc giữ 90s, tổng ~10 phút. Bậc khác (vd. lần đo 200→700 của GĐ8
+// và ADR-010, trước đây là "script tạm không commit" nên không ai chạy lại được) truyền qua biến môi trường:
+//   STAGES=200,325,450,575,700 BASE_URL=http://<alb> k6 run tests/load/dev-threshold.js
+const STAGES = (__ENV.STAGES || "10,25,50,100,150").split(",").map((s) => parseInt(s, 10));
+const MAX_VUS = parseInt(__ENV.MAX_VUS || "300", 10);
+
+// Đếm request theo MÃ HTTP (2026-10-01): "7,9% lỗi" của ADR-010 không cho biết lỗi LÀ GÌ — 502 (gateway/ALB
+// gặp đích chết), 503 (circuit breaker / không có target khỏe), 504 (timeout phía ALB) hay 0 (k6 tự timeout /
+// kết nối bị cắt) chỉ về các nguyên nhân khác nhau. Ngưỡng "count>=0" luôn đạt — chỉ để summary in từng mã.
+const statusCodes = new Counter("status_codes");
+const TRACKED = ["0", "200", "403", "429", "500", "502", "503", "504"];
+
 export const options = {
   scenarios: {
     find_threshold: {
       executor: "ramping-arrival-rate",
-      startRate: 10,
+      startRate: STAGES[0],
       timeUnit: "1s",
       preAllocatedVUs: 50,
-      maxVUs: 300,
+      maxVUs: MAX_VUS,
       stages: [
-        { target: 10, duration: "30s" }, // baseline
-        { target: 10, duration: "90s" },
-        { target: 25, duration: "90s" },
-        { target: 50, duration: "90s" },
-        { target: 100, duration: "90s" },
-        { target: 150, duration: "90s" },
+        { target: STAGES[0], duration: "30s" }, // baseline
+        ...STAGES.map((target) => ({ target, duration: "90s" })),
         { target: 0, duration: "30s" }, // cooldown, quan sát HPA scale-down
       ],
     },
@@ -45,6 +52,7 @@ export const options = {
     // KHÔNG dùng để làm k6 "pass/fail" toàn bài — mục tiêu là ĐỌC p95 theo từng bậc trong summary,
     // không phải chặn ngay khi vượt 500ms một lần (traffic thật cũng có outlier).
     http_req_duration: ["p(95)<500"],
+    ...Object.fromEntries(TRACKED.map((s) => [`status_codes{status:${s}}`, ["count>=0"]])),
   },
 };
 
@@ -52,6 +60,7 @@ export default function () {
   const res = http.get(
     `${BASE_URL}/api/tmf-api/productCatalog/v4/productOffering`
   );
+  statusCodes.add(1, { status: String(res.status) });
   check(res, {
     "status is 200": (r) => r.status === 200,
     "body is non-empty array": (r) => {

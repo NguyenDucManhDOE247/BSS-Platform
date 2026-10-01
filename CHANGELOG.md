@@ -28,11 +28,30 @@ Debt pass from Phase 8 back to 0 (after `v2.0.0`), each item verified on real in
 - Schema migration Release B/C for `customers.email_verified` (expand → migrate → contract), run on RDS.
 - Real Discord alert delivery (alert + runbook link in 132–146 s after a service goes down).
 - ADR-009 (no Jenkins/Helm chart/Ansible alongside the current toolchain).
+- `scripts/load-watch.sh` (node/Pending/HPA + every pod restart with its reason, sampled during a load test) and
+  `tests/load/dev-threshold.js` per-HTTP-status counters + `STAGES=` (the 200→700 req/s profile is now reproducible).
+- `scripts/lab-rds-pitr.sh` + `docs/labs/09-rds-pitr.md`: point-in-time restore of RDS after a real data
+  incident, surgical repair, measured recovery time.
 - **`Idempotency-Key` on `POST productOrder`** (B-15): a double-click or an automatic retry no longer
   creates a second order + invoice — the same (user, key) returns the original order (`201` +
   `Idempotent-Replayed: true`); same key with a different body → 422; a concurrent duplicate loses on the
   `(owner_sub, idem_key)` primary key, rolls back its whole order and gets 409. web-portal sends one key per
   order page (with a `getRandomValues` fallback, since `crypto.randomUUID` needs a secure context).
+
+### Fixed
+
+- **Errors under load explained and removed** (ADR-010's "7.9%", re-measured 2026-10-01 at 200→700 req/s on dev
+  EKS with Karpenter: 4.21% → **0% in 3 consecutive runs, 0 pod restarts**). Two causes, both with direct
+  evidence: liveness/readiness probes used the default 1 s timeout, so a CPU-saturated api-gateway was killed by
+  the kubelet while serving (502s); and HikariCP's default 10 pre-opened connections × 8 product-catalog pods
+  exhausted `db.t3.micro` (~70 connections) — new pods crashed at startup, old ones returned 500s. Probes now
+  use 5 s / 6 failures (liveness) and 3 s (readiness); pools are capped at 5 with 1 idle. Open Session In View
+  is turned off (sound practice; its throughput effect could not be proven — see `docs/labs/07` §2c).
+- customer-service HPA no longer scales on memory: an idle JVM sits at ~72% of its request, so every restart
+  ratcheted replicas up (1→6) and they never came back down.
+- Dev PDBs use `maxUnavailable: 1`: with 1 replica, `minAvailable: 1` blocked every eviction, so Karpenter could
+  never consolidate a Spot node after a load test.
+- `scripts/smoke.sh`: `SMOKE_KC_PORT` — the fixed port 18080 sits inside Windows' Hyper-V reserved range.
 
 ### Changed
 
