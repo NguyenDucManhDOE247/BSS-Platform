@@ -93,6 +93,10 @@ module "eks" {
   system_node_min_size     = 3
   system_node_max_size     = 4
 
+  # Thi hành NetworkPolicy thật (B-25) — xem staging/main.tf. Prod có Keycloak 2 replica: policy JGroups
+  # (cổng 7800, components/keycloak-aws) là ô thứ 12 của scripts/netpol-matrix.sh — đã kiểm trên dev.
+  enable_network_policy = true
+
   # B-39: full audit trail for prod, unlike dev's trimmed-down default (see modules/eks/variables.tf).
   cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 

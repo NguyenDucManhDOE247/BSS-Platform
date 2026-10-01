@@ -87,6 +87,12 @@ module "eks" {
   system_node_min_size     = 2
   system_node_max_size     = 5
 
+  # Thi hành NetworkPolicy thật (B-25) — như dev (12/12 trên dev EKS 2026-09-30). Các policy nằm sẵn trong
+  # base/network-policies + components/keycloak-aws nên ĐÃ được apply ở đây từ trước, nhưng không có cờ này
+  # thì chúng chỉ là object nằm im: `kubectl apply` "thành công" mà không gói tin nào bị chặn.
+  # Kiểm sau khi dựng: scripts/netpol-matrix.sh <context staging>.
+  enable_network_policy = true
+
   tags = local.common_tags
 }
 
