@@ -21,6 +21,7 @@ kept by the maintainer while working through this project as a learning exercise
 | 7 — Observability + security on AWS | Dashboards/alerts/SLO, NetworkPolicy, OAuth2, WAF, Trivy gate | ✅ Done |
 | 8 — Reliability, load test, docs, demo | k6 capacity threshold, chaos engineering, ops tooling, this README/CLAUDE.md refresh, `v1.0.0` | ✅ Done |
 | 9 — Real product (identity) | Keycloak + OIDC/PKCE, self-registration → admin approval, per-customer ownership in 4 services, 2 real websites, auth on in every environment, `v2.0.0` | ✅ Done — Playwright on `kind`; `rc-v2.0.0` → staging → `v2.0.0` → prod with authenticated smoke |
+| HTTPS + custom domain (B-23) | `bssplatform.dpdns.org`: Route 53 + ACM in the shared state, ExternalDNS, Keycloak behind the ALB, browser login on AWS | ✅ Done — 2026-10-01 on dev EKS: TLS 1.3 with the ACM cert, smoke 7/7 over HTTPS, NetworkPolicy 12/12, real sign-up + sign-in in a browser ([ADR-012](adr/ADR-012-https-ten-mien.md)) |
 | Debt pass 8 → 0 | Every open item from earlier phases | ✅ Done — Karpenter Spot on dev, NetworkPolicy on EKS (11/11), all 8 Phase-7 items on one EKS cluster, Spring Boot 3.5 (0 HIGH/CRITICAL), expand/migrate/contract on RDS, orphan finder |
 
 Each phase above was executed and **verified against real infrastructure** (not just "code written")
@@ -50,9 +51,8 @@ Reviewed item by item on **2026-09-30** — every ✅ was re-run or re-checked t
 - [x] Chaos (pod delete, node drain) on a real cluster ([labs/08](labs/08-chaos-engineering.md)); plus 2026-09-30: deleting a
   Keycloak pod under a 2-replica cluster kept sessions and the authenticated smoke test green.
 
-**P0/P1 issues:** none open. **B-23 (HTTPS)** was downgraded P1 → P2 on 2026-09-30 by the repo owner — *"HTTPS waits
-for a domain"*: the Ingress no longer requests a certificate it doesn't have, the API is authenticated everywhere, and
-Keycloak is not exposed through the ALB. Accepted, tracked risk: tokens travel over plain HTTP to the ALB, and the two
-websites cannot sign users in on AWS until HTTPS exists (the remaining part of B-18). Both P2s stay open with that reason.
+**Open issues:** none. **B-23 (HTTPS)** — downgraded P1 → P2 on 2026-09-30 while waiting for a domain — and the web
+part of **B-18** were closed on 2026-10-01: `bssplatform.dpdns.org` with an ACM certificate, Keycloak behind the ALB
+(only `/auth/realms` + `/auth/resources`), and a real browser sign-up/sign-in on dev EKS ([ADR-012](adr/ADR-012-https-ten-mien.md)).
 
 See [`CLAUDE.md` §13](../CLAUDE.md) for the fully detailed, always-current status write-up.

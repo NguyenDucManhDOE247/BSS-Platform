@@ -83,7 +83,7 @@ record "kẻ lạ → api-gateway (cửa công khai)"                       OPEN
 if K -n bss get svc keycloak >/dev/null 2>&1; then
   tier="$(K -n bss get deploy keycloak -o jsonpath='{.spec.template.metadata.labels.tier}')"
   if [ "$tier" = "auth" ]; then
-    record "kẻ lạ → keycloak (AWS: chỉ gateway + backend)"          BLOCKED "$(probe_from_intruder keycloak 8080)"
+    record "kẻ lạ → keycloak (AWS: gateway + backend + subnet ALB)"   BLOCKED "$(probe_from_intruder keycloak 8080)"
     record "api-gateway → keycloak (tải JWKS)"                       OPEN    "$(probe_from_deploy api-gateway keycloak 8080)"
     # ADR-011: cổng JGroups (cluster Infinispan) chỉ mở giữa các Pod Keycloak với nhau. Thử thẳng IP Pod
     # (Service chỉ khai cổng 8080 — thử qua Service sẽ "chặn" giả vì cổng không tồn tại ở Service).
