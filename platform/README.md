@@ -46,10 +46,9 @@ kubectl apply -f https://raw.githubusercontent.com/aws/secrets-store-csi-driver-
 # --- everything below is LATER phases (see learning/20) — not needed for Giai đoạn 5's
 # "7 service chạy trên EKS dev, truy cập qua ALB" checkpoint. Listed here for when you get there.
 
-# 4. External DNS (auto-creates Route 53 records) — needs a real domain first (Giai đoạn 6+).
-helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/
-helm upgrade --install external-dns external-dns/external-dns \
-  -n kube-system -f networking/external-dns-values.yaml
+# 4. External DNS (bản ghi Route 53 cho host của Ingress) — B-23, ADR-012. KHÔNG cài tay: bước 7/7 của
+#    scripts/platform-install.sh cài chart 1.23.0 với txtOwnerId = cluster, domainFilters = zone (state shared),
+#    IRSA bss-<env>-external-dns (chỉ ghi được host của môi trường đó). Xem docs/runbooks/https-domain.md.
 
 # 5. Karpenter (auto-provisioner, ưu tiên Spot) — ADR-010, hiện CHỈ dev. KHÔNG cài tay: bước 6/6 của
 #    scripts/platform-install.sh cài chart v1.14.1 (oci://public.ecr.aws/karpenter/karpenter, namespace

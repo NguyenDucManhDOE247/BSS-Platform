@@ -10,9 +10,9 @@
 #
 # NOT included here (first-class Terraform-managed EKS addons instead — see
 # infrastructure/terraform/modules/eks/main.tf's aws_eks_addon resources): metrics-server (B-43),
-# EBS CSI driver (B-41's IAM half). Also NOT included: ExternalDNS, Karpenter, Fluent Bit, OTel
-# Collector, Prometheus/Grafana — later phases (Giai đoạn 6/7/8, see learning/20) that need a real
-# domain, a spot-capacity decision, or aren't load-bearing for "7 service chạy + ALB" yet.
+# EBS CSI driver (B-41's IAM half). Also NOT included: Fluent Bit, OTel Collector, Prometheus/Grafana
+# (their own scripts/*-install.sh). Karpenter (ADR-010) and ExternalDNS (B-23, ADR-012) ARE included,
+# each skipped when the Terraform outputs say the environment doesn't use it.
 #
 # Usage: ./scripts/platform-install.sh [dev|staging|prod]
 set -euo pipefail
@@ -22,11 +22,11 @@ REGION="${AWS_REGION:-ap-southeast-1}"
 TF_DIR="infrastructure/terraform/environments/$ENV"
 CLUSTER="bss-$ENV-eks"
 
-echo "=== 1/6 — kubeconfig for $CLUSTER ==="
+echo "=== 1/7 — kubeconfig for $CLUSTER ==="
 aws eks update-kubeconfig --region "$REGION" --name "$CLUSTER"
 
 echo ""
-echo "=== 2/6 — namespace bss (with Pod Security labels) ==="
+echo "=== 2/7 — namespace bss (with Pod Security labels) ==="
 # Giai đoạn 6: the CD deployer role can only touch objects INSIDE namespace `bss` (namespace-scoped
 # EKS access policy), and a Namespace is cluster-scoped — so overlays/{dev,staging,prod} drop it
 # from what `kubectl apply -k` sends (see the `$patch: delete` at the top of their `patches:`), and
@@ -34,7 +34,7 @@ echo "=== 2/6 — namespace bss (with Pod Security labels) ==="
 kubectl apply -f infrastructure/kubernetes/base/namespace.yaml
 
 echo ""
-echo "=== 3/6 — AWS Load Balancer Controller (creates the ALB from Ingress) ==="
+echo "=== 3/7 — AWS Load Balancer Controller (creates the ALB from Ingress) ==="
 helm repo add eks https://aws.github.io/eks-charts >/dev/null 2>&1 || true
 helm repo update eks >/dev/null
 # Chart/app version 3.5.0 MUST match the iam_policy.json version pinned in
@@ -46,11 +46,11 @@ helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-contro
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$(terraform -chdir="$TF_DIR" output -raw aws_lb_controller_role_arn)"
 
 echo ""
-echo "=== 4/6 — gp3 StorageClass (B-41: EKS ships none by default) ==="
+echo "=== 4/7 — gp3 StorageClass (B-41: EKS ships none by default) ==="
 kubectl apply -f platform/storage/storageclass-gp3.yaml
 
 echo ""
-echo "=== 5/6 — Secrets Store CSI Driver + AWS provider (B-20: per-service RDS credentials) ==="
+echo "=== 5/7 — Secrets Store CSI Driver + AWS provider (B-20: per-service RDS credentials) ==="
 helm repo add secrets-store-csi-driver https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts >/dev/null 2>&1 || true
 helm repo update secrets-store-csi-driver >/dev/null
 helm upgrade --install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver \
@@ -61,7 +61,7 @@ helm upgrade --install csi-secrets-store secrets-store-csi-driver/secrets-store-
 kubectl apply -f https://raw.githubusercontent.com/aws/secrets-store-csi-driver-provider-aws/3.1.4/deployment/aws-provider-installer.yaml
 
 echo ""
-echo "=== 6/6 — Karpenter (ADR-010 — chỉ môi trường có enable_karpenter trong Terraform) ==="
+echo "=== 6/7 — Karpenter (ADR-010 — chỉ môi trường có enable_karpenter trong Terraform) ==="
 # Version PHẢI khớp template IAM đã dịch trong modules/platform-iam/karpenter.tf (xem comment ở đó).
 KARPENTER_VERSION="1.14.1"
 KARPENTER_ROLE="$(terraform -chdir="$TF_DIR" output -raw karpenter_role_arn 2>/dev/null || true)"
@@ -80,6 +80,23 @@ if [ -n "$KARPENTER_ROLE" ] && [ "$KARPENTER_ROLE" != "null" ]; then
   kubectl wait --for=condition=Ready ec2nodeclass/default --timeout=120s
 else
   echo "(bỏ qua — $ENV không bật Karpenter; node group cố định, ADR-006/010)"
+fi
+
+echo ""
+echo "=== 7/7 — ExternalDNS (B-23, ADR-012 — bản ghi Route 53 cho host của Ingress) ==="
+EXTERNAL_DNS_ROLE="$(terraform -chdir="$TF_DIR" output -raw external_dns_role_arn 2>/dev/null || true)"
+if [ -n "$EXTERNAL_DNS_ROLE" ] && [ "$EXTERNAL_DNS_ROLE" != "null" ]; then
+  helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/ >/dev/null 2>&1 || true
+  helm repo update external-dns >/dev/null
+  helm upgrade --install external-dns external-dns/external-dns \
+    --version 1.23.0 -n kube-system -f platform/networking/external-dns-values.yaml \
+    --set txtOwnerId="$CLUSTER" \
+    --set "domainFilters={$(terraform -chdir="$TF_DIR" output -raw dns_zone_name)}" \
+    --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$EXTERNAL_DNS_ROLE" \
+    --wait
+  echo "  host công khai: https://$(terraform -chdir="$TF_DIR" output -raw public_hostname)"
+else
+  echo "(bỏ qua — state shared chưa có zone Route 53; xem infrastructure/terraform/environments/shared/dns.tf)"
 fi
 
 echo ""

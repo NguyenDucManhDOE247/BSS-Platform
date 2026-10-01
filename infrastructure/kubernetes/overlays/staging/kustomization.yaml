@@ -55,18 +55,18 @@ configMapGenerator:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=INFO
       - AWS_REGION=ap-southeast-1
-      # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
-      # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
-      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
+      # Auth BẬT trên AWS (B-18). iss = host HTTPS công khai (B-23, ADR-012) — trùng KC_HOSTNAME của
+      # Keycloak; khóa (JWKS) vẫn tải qua DNS nội bộ (Pod không cần đi vòng ra ALB).
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=https://staging.bssplatform.dpdns.org/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: product-catalog-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=INFO
       - AWS_REGION=ap-southeast-1
-      # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
-      # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
-      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
+      # Auth BẬT trên AWS (B-18). iss = host HTTPS công khai (B-23, ADR-012) — trùng KC_HOSTNAME của
+      # Keycloak; khóa (JWKS) vẫn tải qua DNS nội bộ (Pod không cần đi vòng ra ALB).
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=https://staging.bssplatform.dpdns.org/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: order-management-config
     literals:
@@ -74,9 +74,9 @@ configMapGenerator:
       - LOGGING_LEVEL_ROOT=INFO
       - AWS_REGION=ap-southeast-1
       - EVENT_BUS_NAME=bss-staging-events
-      # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
-      # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
-      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
+      # Auth BẬT trên AWS (B-18). iss = host HTTPS công khai (B-23, ADR-012) — trùng KC_HOSTNAME của
+      # Keycloak; khóa (JWKS) vẫn tải qua DNS nội bộ (Pod không cần đi vòng ra ALB).
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=https://staging.bssplatform.dpdns.org/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: billing-service-config
     literals:
@@ -84,17 +84,17 @@ configMapGenerator:
       - LOGGING_LEVEL_ROOT=INFO
       - AWS_REGION=ap-southeast-1
       - SQS_QUEUE_URL=https://sqs.ap-southeast-1.amazonaws.com/132249065347/bss-staging-billing-orders
-      # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
-      # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
-      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
+      # Auth BẬT trên AWS (B-18). iss = host HTTPS công khai (B-23, ADR-012) — trùng KC_HOSTNAME của
+      # Keycloak; khóa (JWKS) vẫn tải qua DNS nội bộ (Pod không cần đi vòng ra ALB).
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=https://staging.bssplatform.dpdns.org/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
   - name: api-gateway-config
     literals:
       - SPRING_PROFILES_ACTIVE=aws
       - LOGGING_LEVEL_ROOT=INFO
-      # GĐ9 việc 7 — auth BẬT trên AWS (B-18 đóng ở tầng API). iss = DNS nội bộ vì chưa có HTTPS/
-      # domain (ADR-008 quyết định 8); khóa (JWKS) cũng tải qua DNS nội bộ.
-      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss
+      # Auth BẬT trên AWS (B-18). iss = host HTTPS công khai (B-23, ADR-012) — trùng KC_HOSTNAME của
+      # Keycloak; khóa (JWKS) vẫn tải qua DNS nội bộ (Pod không cần đi vòng ra ALB).
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=https://staging.bssplatform.dpdns.org/auth/realms/bss
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak.bss.svc.cluster.local:8080/auth/realms/bss/protocol/openid-connect/certs
 
 replicas:
@@ -203,15 +203,51 @@ patches:
         path: /spec/template/spec/containers/0/volumeMounts/-
         value: { name: secrets-store, mountPath: /mnt/secrets-store, readOnly: true }
 
-  # No domain/ACM certificate yet (deferred — see ADR-006 and overlays/dev B-23): base ingress.yaml
-  # turns on HTTPS + ssl-redirect and a host, and an ALB Controller that can't find a certificate
-  # silently never creates the ALB. HTTP-only, path-based routing against the ALB's own DNS name.
+  # B-23 / ADR-012: HTTPS thật trên tên miền. Base đã bật listener 80 + 443 và ssl-redirect; ở đây chỉ đặt
+  # host. KHÔNG ghi ARN cert: ALB Controller tự tìm cert ACM khớp host (cert apex + wildcard ở state
+  # shared), nên cấp lại cert không phải sửa file này. ExternalDNS (scripts/platform-install.sh) đọc host
+  # → tạo bản ghi alias A trong Route 53. Keycloak chỉ có 2 path trình duyệt cần — /auth/admin không có
+  # route ra internet (rơi vào / = web-portal). Chèn lên đầu danh sách: ALB xét rule theo thứ tự.
   - target: { kind: Ingress, name: bss-ingress }
     patch: |-
-      - op: remove
-        path: /spec/rules/0/host
-      - op: replace
-        path: /metadata/annotations/alb.ingress.kubernetes.io~1listen-ports
-        value: '[{"HTTP":80}]'
-      - op: remove
-        path: /metadata/annotations/alb.ingress.kubernetes.io~1ssl-redirect
+      - { op: replace, path: /spec/rules/0/host, value: staging.bssplatform.dpdns.org }
+      - op: add
+        path: /metadata/annotations/alb.ingress.kubernetes.io~1ssl-policy
+        value: ELBSecurityPolicy-TLS13-1-2-2021-06
+      - op: add
+        path: /spec/rules/0/http/paths/0
+        value:
+          path: /auth/realms
+          pathType: Prefix
+          backend:
+            service: { name: keycloak, port: { number: 8080 } }
+      - op: add
+        path: /spec/rules/0/http/paths/1
+        value:
+          path: /auth/resources
+          pathType: Prefix
+          backend:
+            service: { name: keycloak, port: { number: 8080 } }
+
+  # Keycloak: địa chỉ công khai = `iss` của token — phải trùng …_JWT_ISSUER_URI ở configMapGenerator.
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: { name: keycloak, namespace: bss }
+      spec:
+        template:
+          spec:
+            containers:
+              - name: keycloak
+                env:
+                  - { name: KC_HOSTNAME, value: "https://staging.bssplatform.dpdns.org/auth" }
+
+  # ALB → Keycloak: dải subnet PUBLIC của VPC môi trường này (modules/vpc: cidrsubnet(10.x.0.0/16, 8, 0..2)).
+  # Pod/node ở subnet private (…10..12) → Pod lạ trong cluster vẫn bị chặn (scripts/netpol-matrix.sh).
+  - target: { kind: NetworkPolicy, name: allow-to-keycloak }
+    patch: |-
+      - op: add
+        path: /spec/ingress/-
+        value:
+          from: [{ ipBlock: { cidr: 10.20.0.0/22 } }]
+          ports: [{ protocol: TCP, port: 8080 }]

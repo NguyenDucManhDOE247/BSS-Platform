@@ -98,19 +98,24 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "rootUrl": "http://bss.localhost",
       "baseUrl": "/",
       "redirectUris": [
         "http://bss.localhost/*",
-        "http://localhost:3000/*"
+        "http://localhost:3000/*",
+        "https://dev.bssplatform.dpdns.org/*",
+        "https://staging.bssplatform.dpdns.org/*",
+        "https://bssplatform.dpdns.org/*"
       ],
       "webOrigins": [
         "http://bss.localhost",
-        "http://localhost:3000"
+        "http://localhost:3000",
+        "https://dev.bssplatform.dpdns.org",
+        "https://staging.bssplatform.dpdns.org",
+        "https://bssplatform.dpdns.org"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://bss.localhost/*##http://localhost:3000/*"
+        "post.logout.redirect.uris": "http://bss.localhost/*##http://localhost:3000/*##https://dev.bssplatform.dpdns.org/*##https://staging.bssplatform.dpdns.org/*##https://bssplatform.dpdns.org/*"
       }
     },
     {
@@ -123,19 +128,24 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "rootUrl": "http://bss.localhost",
       "baseUrl": "/admin/",
       "redirectUris": [
         "http://bss.localhost/admin/*",
-        "http://localhost:3001/*"
+        "http://localhost:3001/*",
+        "https://dev.bssplatform.dpdns.org/admin/*",
+        "https://staging.bssplatform.dpdns.org/admin/*",
+        "https://bssplatform.dpdns.org/admin/*"
       ],
       "webOrigins": [
         "http://bss.localhost",
-        "http://localhost:3001"
+        "http://localhost:3001",
+        "https://dev.bssplatform.dpdns.org",
+        "https://staging.bssplatform.dpdns.org",
+        "https://bssplatform.dpdns.org"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://bss.localhost/admin/*##http://localhost:3001/*"
+        "post.logout.redirect.uris": "http://bss.localhost/admin/*##http://localhost:3001/*##https://dev.bssplatform.dpdns.org/admin/*##https://staging.bssplatform.dpdns.org/admin/*##https://bssplatform.dpdns.org/admin/*"
       }
     }
   ]

@@ -9,8 +9,9 @@ ENI/EBS do addon để lại. Chúng sống tiếp và tính tiền ("hóa đơn
 Chỉ ĐỌC — không tạo/sửa/xóa gì (nên không cần `--dry-run`: không có gì để "chạy thử").
 Exit code: 0 = sạch, 1 = còn sót (dùng được làm cổng kiểm trong script khác), 2 = lỗi gọi AWS.
 
-Tài nguyên BỀN của `environments/shared` (ECR, OIDC provider, role deployer, bucket state) là CỐ Ý tồn
-tại lâu dài (ADR-003/006) → không bị coi là mồ côi.
+Tài nguyên BỀN của `environments/shared` (ECR, OIDC provider, role deployer, bucket state, zone Route 53 +
+cert ACM — ADR-012) là CỐ Ý tồn tại lâu dài (ADR-003/006) → không bị coi là mồ côi; chỉ BẢN GHI DNS của
+cluster đã xóa mới bị báo.
 
 Usage:
     python tools/ops/orphan_finder.py
@@ -136,14 +137,40 @@ def find_eks_rds(eks, rds) -> list[Orphan]:
     return out
 
 
+def find_dns(route53, live_clusters: set[str]) -> list[Orphan]:
+    """B-23 / ADR-012: zone Route 53 sống ở `shared` (CỐ Ý lâu dài), nhưng bản ghi trong đó do ExternalDNS
+    của TỪNG cluster tạo. Cluster bị destroy trước khi ExternalDNS kịp xóa (teardown.sh chờ việc này) → bản
+    ghi alias trỏ vào ALB đã chết ("dangling"). Không tính tiền, nhưng tên miền hỏng/treo cho tới khi xóa.
+    Nhận diện qua bản ghi TXT "sở hữu" ExternalDNS ghi cạnh mỗi bản ghi: `external-dns/owner=<cluster>`."""
+    out: list[Orphan] = []
+    for page in route53.get_paginator("list_hosted_zones").paginate():
+        for zone in page["HostedZones"]:
+            zone_id = zone["Id"].rsplit("/", 1)[-1]
+            tags = _tags(route53.list_tags_for_resource(ResourceType="hostedzone", ResourceId=zone_id)["ResourceTagSet"].get("Tags"))
+            if not _is_bss(tags):
+                continue
+            for rpage in route53.get_paginator("list_resource_record_sets").paginate(HostedZoneId=zone["Id"]):
+                for rr in rpage["ResourceRecordSets"]:
+                    if rr["Type"] != "TXT":
+                        continue
+                    for rec in rr.get("ResourceRecords", []):
+                        owner = next((kv.split("=", 1)[1] for kv in rec["Value"].strip('"').split(",")
+                                      if kv.startswith("external-dns/owner=")), None)
+                        if owner and owner.startswith(PREFIX) and owner not in live_clusters:
+                            out.append(Orphan("DNS record", rr["Name"].rstrip("."), f"của cluster đã xóa {owner} — trỏ vào ALB không còn"))
+    return out
+
+
 def find_all(session: boto3.session.Session) -> list[Orphan]:
     ec2 = session.client("ec2")
     eks = session.client("eks")
+    live_clusters = set(eks.list_clusters()["clusters"])
     return (
         find_eks_rds(eks, session.client("rds"))
         + find_ec2(ec2)
         + find_elb(session.client("elbv2"))
-        + find_nat_eip_ebs_eni(ec2, set(eks.list_clusters()["clusters"]))
+        + find_nat_eip_ebs_eni(ec2, live_clusters)
+        + find_dns(session.client("route53"), live_clusters)
     )
 
 

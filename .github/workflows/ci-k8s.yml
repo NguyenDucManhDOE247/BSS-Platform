@@ -52,8 +52,13 @@ jobs:
         run: |
           for env in dev staging prod local; do
             echo "── overlay: $env ──"
-            kustomize build infrastructure/kubernetes/overlays/$env | \
-              kubeconform -strict -ignore-missing-schemas -summary -
+            kustomize build infrastructure/kubernetes/overlays/$env > "/tmp/render-$env.yaml"
+            kubeconform -strict -ignore-missing-schemas -summary "/tmp/render-$env.yaml"
+            # B-23: base Ingress (host) + component keycloak-aws (KC_HOSTNAME) cố ý mang placeholder REPLACE_ME
+            # — overlay quên ghi đè thì manifest vẫn hợp lệ với kubeconform nhưng hỏng thật lúc chạy.
+            if grep -n 'REPLACE_ME' "/tmp/render-$env.yaml"; then
+              echo "::error::overlays/$env còn placeholder REPLACE_ME (host Ingress / KC_HOSTNAME)"; exit 1
+            fi
           done
 
       - name: kube-linter (advisory — does not fail the build yet)

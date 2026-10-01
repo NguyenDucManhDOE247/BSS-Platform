@@ -4,6 +4,13 @@ metadata:
   name: keycloak
   namespace: bss
   labels: { app: keycloak, tier: auth }
+  annotations:
+    # B-23: Keycloak giờ là 1 target group của ALB (path /auth/realms, /auth/resources). Health check mặc
+    # định của Ingress là /actuator/health (Spring) → Keycloak trả 404 → ALB đánh dấu unhealthy, trả 502.
+    # Annotation trên Service được ALB Controller ưu tiên hơn annotation trên Ingress. Dùng chính đường
+    # công khai của realm (200 khi Keycloak sẵn sàng VÀ realm bss đã import) qua cổng 8080 — không mở cổng
+    # quản trị 9000 cho ALB.
+    alb.ingress.kubernetes.io/healthcheck-path: /auth/realms/bss
 spec:
   selector: { app: keycloak }
   ports:
