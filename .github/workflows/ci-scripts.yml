@@ -41,7 +41,7 @@ jobs:
           fi
 
       - name: shellcheck
-        run: shellcheck -x -S warning scripts/e2e-flow.sh scripts/e2e-kind.sh scripts/e2e-browser.sh scripts/admin-user.sh scripts/lib/keycloak.sh scripts/release-manifest.sh scripts/smoke.sh scripts/test-alert-rules.sh scripts/monitoring-install.sh scripts/tracing-install.sh scripts/logging-install.sh scripts/auth-install.sh scripts/e2e-local.sh scripts/kind-up.sh scripts/netpol-matrix.sh scripts/tests/*.sh
+        run: shellcheck -x -S warning scripts/e2e-flow.sh scripts/e2e-kind.sh scripts/e2e-browser.sh scripts/admin-user.sh scripts/lib/keycloak.sh scripts/release-manifest.sh scripts/smoke.sh scripts/test-alert-rules.sh scripts/monitoring-install.sh scripts/tracing-install.sh scripts/logging-install.sh scripts/auth-install.sh scripts/e2e-local.sh scripts/kind-up.sh scripts/netpol-matrix.sh scripts/chaos-az-outage.sh scripts/tests/*.sh
 
       - name: Test release-manifest.sh
         run: ./scripts/tests/release-manifest.test.sh

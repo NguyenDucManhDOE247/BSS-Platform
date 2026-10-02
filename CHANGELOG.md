@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `scripts/chaos-az-outage.sh <env> [az]` + Lab 10 — loses one Availability Zone the way AWS FIS's "AZ power
+  interruption" does (deny-all NACL on that AZ's private subnet, forced RDS failover if the primary is there), probing
+  the API and OIDC through the real HTTPS host every second. First run on prod: business API 4/449 errors (0.89 %, all
+  within 21 s), 0 pods Pending.
 - **Both websites verified end to end on every environment** (#210): `scripts/e2e-flow.sh <kind|dev|staging|prod>`
   (was `e2e-kind.sh`, kept as a shortcut) runs the business flow with a fresh customer, a staff member and a second
   customer — temporary Keycloak users, deleted at the end — and now also checks the admin side (pending-approval
@@ -47,6 +51,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Keycloak lost its cluster after an RDS failover and never recovered** (found by the new AZ-outage lab on prod,
+  `docs/labs/10-az-outage.md`): both pods' readiness stayed DOWN ("no coordinator found" in `jgroups_ping`) and
+  sign-in returned 503 until a manual restart — upstream keycloak/keycloak#51797. Keycloak 26.7.5 → **26.8.0** (has the
+  fix, keycloak/keycloak#51916; image scans 0 HIGH/CRITICAL so the last `.trivyignore` entry is gone), plus
+  `KC_DB_URL_PROPERTIES=?socketTimeout=30&connectTimeout=10&tcpKeepAlive=true` so connections to a vanished primary
+  fail within 30 s instead of hanging on the kernel TCP timeout, and real probe timeouts (3 s / 5 s). Minor upgrade:
+  scale Keycloak to 0 before deploying (runbook `auth.md` §8).
 - `make help` never listed targets containing a digit (`e2e-local`, `e2e-kind`, …).
 - `e2e-browser.sh` cleanup from Git Bash on Windows: `jq.exe` writes CRLF and Git Bash only strips the last `\r` of
   a `$(…)`, so all but the last user id in the cleanup loop carried a `\r` → "Malformed input to a URL" → test users

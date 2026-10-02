@@ -18,7 +18,11 @@
 # Local (kind + docker-compose) VẪN dùng image gốc với `start-dev` + H2 — không cần image này.
 # Đổi version: sửa ARG dưới đây VÀ image ở overlays/local/keycloak + deploy/docker-compose.yml để
 # realm/test chạy cùng một bản Keycloak ở mọi nơi.
-ARG KEYCLOAK_VERSION=26.7.5
+# 26.7.5 → 26.8.0 (2026-10-02): lab mất 1 AZ trên prod lộ lỗi thật — sau RDS failover 2 Pod Keycloak rời cluster
+# JDBC_PING2 và KHÔNG tự ghép lại (readiness DOWN vô thời hạn, đăng nhập 503 tới khi restart tay). Upstream sửa ở
+# keycloak/keycloak#51916 (timeout mạng có giới hạn cho kết nối JDBC_PING2, issue #51797) — chỉ có từ 26.8.0.
+# Nâng MINOR: scale Keycloak về 0 trước khi deploy (runbook auth §8). docs/labs/10-az-outage.md.
+ARG KEYCLOAK_VERSION=26.8.0
 
 FROM quay.io/keycloak/keycloak:${KEYCLOAK_VERSION} AS builder
 ENV KC_DB=postgres \

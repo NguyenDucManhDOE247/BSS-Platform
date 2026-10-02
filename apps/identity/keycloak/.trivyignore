@@ -9,7 +9,6 @@
 #   26.7.5: chỉ còn dòng mssql-jdbc dưới đây. → Xóa 5 dòng netty/freemarker/bouncycastle×2/jackson.
 #   (26.8.0 sạch hẳn nhưng là bản .0 ra sáng 1/10 và nâng MINOR phải scale về 0 — xem auth.md.)
 
-# com.microsoft.sqlserver:mssql-jdbc — driver SQL Server có sẵn trong image nhưng KHÔNG được nạp: image
-# build với KC_DB=postgres (đóng băng lúc `kc.sh build`), không có đường nào dùng driver này — kể cả khi
-# Keycloak mở ra internet. Xóa dòng này khi lên 26.8.x.
-CVE-2025-59250
+# 2026-10-02: 26.7.5 → 26.8.0 (bản vá JDBC_PING2 cho lỗi mất cluster sau RDS failover — docs/labs/10-az-outage.md).
+# Trivy quét image 26.8.0: 0 HIGH/CRITICAL có bản vá → xóa nốt dòng mssql-jdbc. File để trống có chủ đích:
+# thêm ngoại lệ mới phải kèm lý do như các dòng cũ (xem lịch sử git của file này).
