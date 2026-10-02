@@ -14,7 +14,9 @@ FROM nginxinc/nginx-unprivileged:1.30-alpine
 # 2026-09-25 and Trivy (ci-frontend.yml) blocks every PR that touches this app — same fix as web-portal.
 # Root only for this one layer; the final user is set back to uid 101 (what nginx-unprivileged runs as).
 USER root
-RUN apk upgrade --no-cache libexpat
+# 2026-10-02: tương tự với pcre2 10.48-r0 (CVE-2026-103111, HIGH, vá ở 10.49-r0) — chặn PR #214 (web-portal).
+# Bỏ cả dòng này khi tag nginx-unprivileged:1.30-alpine upstream đã build lại với bản vá.
+RUN apk upgrade --no-cache libexpat pcre2
 USER 101
 
 # B-06 (tiếp): file build phải nằm dưới thư mục con "admin/" — xem giải thích đầy đủ trong
