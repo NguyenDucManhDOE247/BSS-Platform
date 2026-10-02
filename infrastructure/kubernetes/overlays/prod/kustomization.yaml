@@ -108,6 +108,13 @@ replicas:
   - { name: keycloak, count: 2 } # ADR-011 — 2 Pod, cluster Infinispan qua jdbc-ping
 
 patches:
+  # Lab 10 (mất 1 AZ, 2026-10-02): HPA base có minReplicas 2 → lúc tải thấp HPA HẠ 3 replica của overlay xuống 2
+  # sau ~5 phút. Hệ quả đo được trên prod: (1) PDB minAvailable 2 + 2 replica = ALLOWED DISRUPTIONS 0 ở 5 service
+  # → drain node / nâng cấp node group bị chặn; (2) 2 Pod trên 3 AZ có thể cùng nằm 1 AZ (product-catalog đã
+  # thế) → mất AZ đó = mất service. `replicas:` ở trên chỉ là số lúc deploy — HPA mới là thứ giữ số Pod.
+  - target: { kind: HorizontalPodAutoscaler, name: "customer-service|product-catalog|order-management|billing-service|api-gateway|web-portal" }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 3 }
   # The CD deployer role only has a NAMESPACE-scoped EKS access policy on `bss` (B-34, least
   # privilege); a Namespace is cluster-scoped, so applying it as that role is Forbidden. It is
   # created once per cluster by `scripts/platform-install.sh` instead (see overlays/dev).

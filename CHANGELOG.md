@@ -51,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Prod ran 2 replicas, not 3, and its PDBs blocked every node drain** (AZ lab, run 2): the base HPAs have
+  `minReplicas: 2`, so a few minutes after a deploy the HPA scaled prod's `replicas: 3` down to 2; with PDB
+  `minAvailable: 2` that left `ALLOWED DISRUPTIONS 0` on 5 services, and both `product-catalog` pods ended up in one AZ.
+  Prod overlay now sets HPA `minReplicas: 3` for the six 3-replica services.
 - **Keycloak lost its cluster after an RDS failover and never recovered** (found by the new AZ-outage lab on prod,
   `docs/labs/10-az-outage.md`): both pods' readiness stayed DOWN ("no coordinator found" in `jgroups_ping`) and
   sign-in returned 503 until a manual restart — upstream keycloak/keycloak#51797. Keycloak 26.7.5 → **26.8.0** (has the
