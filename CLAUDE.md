@@ -33,7 +33,7 @@ Mục đích kép: **portfolio học tập platform-engineering** + **tham chi�
 ┌─────────────────────────────────────────────────────────────────┐
 │ LỚP 3  Frontend (EKS): web-portal (/), admin-console (/admin)   │
 │        Vite + React + Nginx unprivileged, OIDC/PKCE             │
-│        Identity (EKS): Keycloak 26.7.5 — image optimized riêng, │
+│        Identity (EKS): Keycloak 26.8.0 — image optimized riêng, │
 │        prod 2 replica (ADR-008, ADR-011)                        │
 └─────────────────────────────────────────────────────────────────┘
                             │ REST + JWT (mọi service tự kiểm token)
@@ -355,7 +355,7 @@ bss-platform/
 | 7 — Observability (Prometheus, Grafana, OTel, SLO, alert → chat) | ✅ | GĐ2 (kind) + GĐ7/dọn nợ (EKS): alert → Discord, SLO burn-rate, log JSON + `trace_id` → X-Ray |
 | 8 — Staging + prod (tag rc → v, duyệt tay) | ✅ | GĐ6 + GĐ9: `rc-v2.2.0` → `v2.2.0` (HTTPS) — staging/prod ephemeral (ADR-006) |
 | 9 — Hardening: WAF, NetworkPolicy, PSS restricted, chaos | ✅ | WAF (GĐ7), NetworkPolicy 12/12 cả 3 môi trường, PSS `restricted`, chaos xóa Pod + drain node (lab 08) |
-| 9 — Hardening: **fail 1 AZ → cluster vẫn serve** | ⏳ **chưa làm** | Mới có topology spread theo AZ + RDS multi-AZ ở prod; chưa từng giả lập mất 1 AZ hay failover RDS |
+| 9 — Hardening: **fail 1 AZ → cluster vẫn serve** | 🟡 đã chạy 2026-10-02 | [Lab 10](docs/labs/10-az-outage.md): API sống (0,89 % lỗi trong 21 s) nhưng **Keycloak mất cluster sau RDS failover, không tự hồi phục** → nâng 26.8.0 + timeout DB; chờ chạy lại xác nhận |
 | 10 — POSTMORTEMS.md | ✅ | `docs/POSTMORTEMS.md` (PM-01: test "xanh giả") |
 | 10 — Video demo 5 phút | ⏳ việc của chủ repo | Kịch bản sẵn: `docs/demo-script.md` |
 | 10 — Blog post | 🟡 bản nháp | `docs/blog-post-draft.md` — chưa đăng |
@@ -430,7 +430,7 @@ bss-platform/
 - ✅ Gọi REST giữa service: timeout + retry + circuit breaker (Resilience4j); DB: HikariCP pool tối đa 5/Pod (ngân sách kết nối RDS).
 - ✅ Probe có timeout thật (liveness 5 s, readiness 3 s) — timeout mặc định 1 s từng làm kubelet giết Pod dưới tải.
 - ✅ SLI/SLO + error budget burn-rate alert (`docs/SLO.md`, `order-management`).
-- ⚠️ Chưa giả lập mất 1 AZ / failover RDS (mục 8).
+- ⚠️ Mất 1 AZ + RDS failover đã đo (Lab 10): service Spring sống, Keycloak cần 26.8.0 để tự hồi phục; NAT còn là SPOF.
 
 ### Cost
 - ✅ Dev: `make ENV=dev tf-destroy` mỗi tối; staging/prod ephemeral (ADR-006). Sau destroy chạy `tools/ops/orphan_finder.py`.

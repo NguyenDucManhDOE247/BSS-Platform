@@ -52,7 +52,7 @@ Trình duyệt ──(Authorization Code + PKCE)──► Keycloak realm "bss"  
 
 | | kind (`overlays/local`) | docker-compose + `mvn` | AWS dev/staging/prod |
 |---|---|---|---|
-| Keycloak | 26.7.5 gốc, `start-dev`, H2 trong emptyDir | 26.7.5 gốc, `localhost:8180/auth` | Image riêng `bss/keycloak` (`apps/identity/keycloak`, ADR-011): `start --optimized`, rootfs chỉ đọc, Postgres riêng trên RDS, secret qua CSI; **prod 2 replica** (dev/staging 1) |
+| Keycloak | 26.8.0 gốc, `start-dev`, H2 trong emptyDir | 26.8.0 gốc, `localhost:8180/auth` | Image riêng `bss/keycloak` (`apps/identity/keycloak`, ADR-011): `start --optimized`, rootfs chỉ đọc, Postgres riêng trên RDS, secret qua CSI; **prod 2 replica** (dev/staging 1) |
 | Auth backend | Bật | Bật (issuer `localhost:8180` trong `application-local.yml`) | Bật |
 | `KC_HOSTNAME` / `iss` | `http://bss.localhost/auth` | `http://localhost:8180/auth` | `https://<host môi trường>/auth` (B-23, ADR-012 — `dev.`/`staging.`/apex `bssplatform.dpdns.org`) |
 | Keycloak qua Ingress | Có, path `/auth` | — | Có, **chỉ** `/auth/realms` + `/auth/resources` qua HTTPS — không có `/auth/admin` (ADR-012) |
