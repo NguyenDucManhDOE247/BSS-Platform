@@ -318,7 +318,8 @@ bss-platform/
 
 ### Frontend (React/TS)
 - TypeScript **strict mode** — không `any`.
-- State: **react-query** cho server state; UI state hiện chỉ cần `useState` (zustand có trong dependency của web-portal nhưng chưa dùng — thêm khi có state dùng chung nhiều trang).
+- State: **react-query** cho server state; UI state dùng `useState` cục bộ. Chỉ thêm thư viện state (vd. zustand) khi
+  có state thật sự dùng chung nhiều trang — dependency khai báo mà không dùng thì gỡ (2026-10-02).
 - Component layout: `pages/`, `components/`, `auth/`, `api/` (axios client viết tay, tự gắn Bearer — chưa sinh từ OpenAPI).
 - Tests: **vitest + @testing-library/react**.
 
