@@ -75,14 +75,62 @@ Nâng **MINOR** (26.7 → 26.8): scale Keycloak về 0 trước khi deploy bản
 chuyển sang lưu DB nên có migration schema. Ghi chú nâng cấp 26.8.0 đã rà: không thay đổi phá vỡ nào đụng cấu hình
 của repo (không X509, không IdP mapper, không bật `stateless`).
 
-## 3. Lần chạy 2 — sau khi sửa
+### 2b. Lỗi thật thứ hai, lộ ra khi chuẩn bị lần chạy 2: HPA hạ prod về 2 replica
 
-_(điền sau khi chạy lại cùng lệnh trên prod với Keycloak 26.8.0)_
+Trước lần chạy 2, namespace chỉ còn 16 Pod (lần 1: 22). Không Pod nào "mất": **HPA base có `minReplicas: 2`**, nên lúc
+tải thấp HPA hạ 3 replica của overlay prod xuống 2 sau ~5 phút. `replicas: 3` trong overlay chỉ là số **lúc deploy**.
+
+| Hệ quả đo được | Vì sao nguy hiểm |
+|---|---|
+| `kubectl get pdb`: `ALLOWED DISRUPTIONS 0` ở **5 service** (PDB prod `minAvailable: 2` + 2 replica) | Drain node, nâng cấp node group, Karpenter gom node — đều bị chặn ở prod (cùng loại lỗi PDB của dev, #203) |
+| Cả 2 Pod `product-catalog` cùng nằm ở `1c` | Mất `1c` = mất hẳn catalog — đúng thứ lab này muốn chứng minh là không xảy ra |
+
+**Sửa:** overlay prod patch HPA `minReplicas: 3` cho 6 service chạy 3 replica (`admin-console` giữ 2). Sau khi áp:
+PDB cho phép 1 gián đoạn ở mọi service, Pod trải đủ 3 AZ.
+
+## 3. Lần chạy 2 — Keycloak 26.8.0 + timeout DB + HPA min 3
+
+Đưa lên prod **chỉ cho lab** bằng đúng công cụ của CD (`release-manifest.sh render`, runbook `cd-dev.md` §5): 7 service
+giữ ảnh `v2.2.0`, chỉ Keycloak đổi sang ảnh do `cd-dev` build từ #215; scale Keycloak về 0 trước (nâng MINOR); `e2e-flow.sh
+prod` **PASS** trước thí nghiệm. RDS primary lúc này ở `1a` (sau lần 1) → cô lập **`ap-southeast-1a`**, ép failover về `1b`.
+
+```bash
+OUT_DIR=results/az-outage-prod-run2 ./scripts/chaos-az-outage.sh prod ap-southeast-1a
+```
+
+| Đo | Lần 1 (26.7.5) | **Lần 2 (26.8.0)** |
+|---|---|---|
+| API catalog | 4 / 449 lỗi (0,89 %), trong 21 s | **6 / 446 (1,35 %)** — 5 timeout ở t = 0…25 s, 1 lỗi `500` ở t = 447 s (26 s sau khi trả mạng) |
+| OIDC qua ALB | 371 / 448 lỗi (82,8 %), **không tự hồi phục** | **0 / 446** |
+| Cluster Keycloak (`jgroups_ping`) | mất coordinator, **không bao giờ** ghép lại | lỗi `No coordinator found` 16:30:20 → 16:30:54, **tự ghép lại sau 34 s** ✅ |
+| Readiness Keycloak | DOWN vô thời hạn (restart tay) | DOWN **t = 195 s → t = 963 s** (≈ 13 phút), rồi **tự Ready**, cả 2 Pod cùng 1 giây |
+| Node / Pod | NotReady 1, 0 Pending | NotReady 1, 0 Pending |
+| Sau thí nghiệm | — | `e2e-flow.sh prod` **PASS** |
+
+**Bản sửa upstream (#51916) hoạt động:** cluster Keycloak tự ghép lại thay vì hỏng tới khi có người restart.
+
+### 3.1 Còn lại: health check của Keycloak treo theo timeout TCP của kernel (~16 phút)
+
+Readiness DOWN vì `KeycloakReadyHealthCheck` bị từ chối (`No executor queue space remaining`). Thread dump 2 lần cách
+nhau 150 s (`results/az-outage-prod-run2/kc-threaddump*.txt`): **cùng một luồng** kẹt ở
+`ConnectionPool.isHealthy → PgConnection.isValid → SSLSocket.read`, thời gian CPU không đổi. Pool vẫn khỏe (2 kết
+nối sẵn sàng, 0 chờ); `pg_stat_activity` cho thấy mọi phiên của Keycloak ở primary mới đều `idle / ClientRead`. Lỗi
+cuối cùng lúc **16:45:42 = 963 s sau khi cô lập ≈ thời gian kernel bỏ một kết nối TCP chết (`tcp_retries2 = 15`,
+~15,5 phút)** — luồng chỉ được giải phóng khi kernel hủy socket tới primary cũ.
+
+Điều chưa giải thích được: `socketTimeout=30` (đã nạp đúng — `kc.sh show-config`) lẽ ra cắt lần đọc đó sau 30 s; mã
+pgjdbc 42.7.13 `isValid(0)` giữ nguyên network timeout. Đường đi này của health check rõ ràng không chịu timeout đó —
+cần đào tiếp ([issue #217](https://github.com/NguyenDucManhDOE247/BSS-Platform/issues/217)).
+
+**Ảnh hưởng thật trong 13 phút đó:** ALB vẫn trả trang đăng nhập nhờ *fail-open* (mọi target unhealthy → ALB gửi cho tất
+cả) — đầu dò OIDC **0 lỗi là nhờ fail-open, không phải vì Keycloak "khỏe"**. Nhưng Service `keycloak` trong cluster
+**không còn endpoint Ready**: service nào cần tải lại JWKS lúc đó sẽ lỗi (khóa đã cache thì không sao).
 
 ## 4. Rủi ro còn lại (đã đo hoặc đã biết, chưa sửa)
 
 | Rủi ro | Hậu quả | Cách sửa | Vì sao chưa làm |
 |---|---|---|---|
+| **Readiness Keycloak treo ~16 phút** sau khi primary RDS biến mất (mục 3.1) | Pod Keycloak NotReady → không endpoint trong cluster; ALB fail-open che phần người dùng | Tìm vì sao `socketTimeout` không áp cho validation; hoặc `tcp_retries2` thấp hơn trong netns của Pod (sysctl "unsafe" — PSS `restricted` + kubelet chặn) | Chưa rõ nguyên nhân gốc — [issue #217](https://github.com/NguyenDucManhDOE247/BSS-Platform/issues/217) |
 | **1 NAT Gateway** ở `ap-southeast-1a` | Mất `1a` = mọi Pod mất đường ra AWS API (SQS/EventBridge/STS/ECR) → đơn hàng vẫn tạo (outbox giữ sự kiện) nhưng hóa đơn dừng tới khi AZ về; image mới không kéo được | 1 NAT mỗi AZ + route table private riêng mỗi AZ (module `vpc`) | +$1,4/ngày mỗi NAT; staging/prod ephemeral. Làm khi prod chạy thường trực |
 | Pod ở AZ chết chỉ bị đuổi sau **300 s** | 5 phút chạy thiếu replica (vẫn phục vụ nhờ 2 AZ còn lại) | `tolerationSeconds` ngắn hơn cho `node.kubernetes.io/unreachable` | Đánh đổi: ngắn quá thì một lần chập mạng thoáng qua cũng đuổi Pod hàng loạt |
 | ALB vẫn có node ở AZ chết (thí nghiệm không chặn subnet public) | Một phần kết nối mới tới IP ALB ở AZ đó có thể lỗi | Route 53 ARC zonal shift cho ALB | Chưa đo — cần chặn subnet public, mà đó cũng là nơi có NAT |
@@ -94,3 +142,6 @@ _(điền sau khi chạy lại cùng lệnh trên prod với Keycloak 26.8.0)_
 3. Vì sao 5 service Spring hồi phục trong 21 s mà Keycloak thì không — dù Pod Keycloak không ở AZ bị cô lập?
 4. Vì sao readiness DOWN (không phải liveness) lại làm Keycloak hỏng *vô thời hạn*?
 5. Vì sao `AvailabilityZone` của RDS không dùng được để đo thời gian failover?
+6. Overlay prod ghi `replicas: 3` nhưng cluster chạy 2 — ai thắng, và vì sao PDB `minAvailable: 2` biến điều đó thành lỗi?
+7. Lần 2 đầu dò OIDC 0 lỗi trong khi cả 2 Pod Keycloak NotReady 13 phút. ALB làm gì để ra con số đó, và vì sao không được
+   đọc nó thành "Keycloak khỏe"?

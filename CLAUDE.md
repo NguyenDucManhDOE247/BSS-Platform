@@ -157,7 +157,7 @@ lên **cùng digest** bằng `aws ecr put-image` (ADR-005).
 | RDS | Postgres StatefulSet | db.t3.micro, 20 GB, backup 1 ngày | db.t3.small, 50 GB, 7 ngày | db.t3.medium **multi-AZ**, 100 GB, 30 ngày |
 | Deletion protection | — | OFF | `!ephemeral` (OFF khi demo) | `!ephemeral` (OFF khi demo) |
 | Log retention / X-Ray | sink cục bộ | 3 ngày / 50% | 14 / 20% | 30 / 5% |
-| Replicas/service | 1 (HPA ≤ 2) | 1 | 2 | 3 (admin-console 2, Keycloak 2) |
+| Replicas/service | 1 (HPA ≤ 2) | 1 | 2 | 3 — giữ bằng HPA `minReplicas: 3` (admin-console 2, Keycloak 2) |
 | Sống bao lâu | tùy | dựng theo buổi, **destroy mỗi tối** | ephemeral 1 buổi (ADR-006) | ephemeral 1 buổi (ADR-006) |
 | **Chi phí khi bật** | $0 | **~$0.3–0.4/giờ** | **~$0.4/giờ** | **~$1.3/giờ** |
 
@@ -356,7 +356,7 @@ bss-platform/
 | 7 — Observability (Prometheus, Grafana, OTel, SLO, alert → chat) | ✅ | GĐ2 (kind) + GĐ7/dọn nợ (EKS): alert → Discord, SLO burn-rate, log JSON + `trace_id` → X-Ray |
 | 8 — Staging + prod (tag rc → v, duyệt tay) | ✅ | GĐ6 + GĐ9: `rc-v2.2.0` → `v2.2.0` (HTTPS) — staging/prod ephemeral (ADR-006) |
 | 9 — Hardening: WAF, NetworkPolicy, PSS restricted, chaos | ✅ | WAF (GĐ7), NetworkPolicy 12/12 cả 3 môi trường, PSS `restricted`, chaos xóa Pod + drain node (lab 08) |
-| 9 — Hardening: **fail 1 AZ → cluster vẫn serve** | 🟡 đã chạy 2026-10-02 | [Lab 10](docs/labs/10-az-outage.md): API sống (0,89 % lỗi trong 21 s) nhưng **Keycloak mất cluster sau RDS failover, không tự hồi phục** → nâng 26.8.0 + timeout DB; chờ chạy lại xác nhận |
+| 9 — Hardening: **fail 1 AZ → cluster vẫn serve** | ✅ 2026-10-02 (còn 1 điểm mở) | [Lab 10](docs/labs/10-az-outage.md), 2 lần trên prod: API 0,89 % / 1,35 % lỗi (≤ 25 s), 0 Pod Pending, e2e PASS. Lộ + sửa: Keycloak mất cluster sau RDS failover (→ 26.8.0, tự ghép lại sau 34 s), HPA hạ prod về 2 replica (→ `minReplicas: 3`). Còn mở: readiness Keycloak treo ~16 phút theo timeout TCP |
 | 10 — POSTMORTEMS.md | ✅ | `docs/POSTMORTEMS.md` (PM-01: test "xanh giả") |
 | 10 — Video demo 5 phút | ⏳ việc của chủ repo | Kịch bản sẵn: `docs/demo-script.md` |
 | 10 — Blog post | 🟡 bản nháp | `docs/blog-post-draft.md` — chưa đăng |
@@ -431,7 +431,8 @@ bss-platform/
 - ✅ Gọi REST giữa service: timeout + retry + circuit breaker (Resilience4j); DB: HikariCP pool tối đa 5/Pod (ngân sách kết nối RDS).
 - ✅ Probe có timeout thật (liveness 5 s, readiness 3 s) — timeout mặc định 1 s từng làm kubelet giết Pod dưới tải.
 - ✅ SLI/SLO + error budget burn-rate alert (`docs/SLO.md`, `order-management`).
-- ⚠️ Mất 1 AZ + RDS failover đã đo (Lab 10): service Spring sống, Keycloak cần 26.8.0 để tự hồi phục; NAT còn là SPOF.
+- ⚠️ Mất 1 AZ + RDS failover đã đo 2 lần (Lab 10): service Spring sống (≤ 25 s lỗi), cluster Keycloak tự hồi phục từ 26.8.0;
+  còn mở: readiness Keycloak treo ~16 phút (timeout TCP kernel); 1 NAT là SPOF.
 
 ### Cost
 - ✅ Dev: `make ENV=dev tf-destroy` mỗi tối; staging/prod ephemeral (ADR-006). Sau destroy chạy `tools/ops/orphan_finder.py`.
