@@ -1,5 +1,5 @@
 {
-  "deployed_at": "2026-10-02T02:14:40Z",
+  "deployed_at": "2026-10-02T06:41:53Z",
   "environment": "staging",
   "release": "rc-v2.2.0",
   "schema": 1,
@@ -15,7 +15,7 @@
   },
   "source": {
     "ref": "refs/tags/rc-v2.2.0",
-    "run_url": "https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/runs/36954706045",
+    "run_url": "https://github.com/NguyenDucManhDOE247/BSS-Platform/actions/runs/36974794601",
     "sha": "4490db17ad7a73500dbcf281b980a81216cf366e"
   },
   "verified_in": [
