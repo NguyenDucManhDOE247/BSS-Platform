@@ -10,7 +10,7 @@ test('khách hàng (không có role admin) đăng nhập admin-console → bị 
   await page.goto('/admin/');
   await page.getByRole('button', { name: 'Đăng nhập' }).click();
   await fillKeycloakLogin(page, CUSTOMER1);
-  await expect(page.getByTestId('not-admin')).toContainText('customer1');
+  await expect(page.getByTestId('not-admin')).toContainText(CUSTOMER1.username);
   await expect(page.getByRole('navigation')).toHaveCount(0); // không có menu quản trị nào
   await page.screenshot({ path: 'test-results/admin/01-khach-bi-chan.png', fullPage: true });
 });

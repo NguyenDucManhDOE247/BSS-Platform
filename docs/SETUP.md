@@ -137,9 +137,17 @@ the manual equivalent). Observability and WAF are separate, optional steps:
 
 **Check:** CD run green; `kubectl -n bss get pods` all `Running`; `./scripts/smoke.sh dev` PASS (7 checks
 over `https://dev.bssplatform.dpdns.org` with the real certificate); `dig +short dev.bssplatform.dpdns.org`
-returns the ALB (ExternalDNS creates it ~1 min after the ALB). Then open the site and sign up. The realm on AWS has
-no users: to use `/admin/`, grant the realm role `admin` through the Keycloak admin console over
-`kubectl port-forward` ([runbooks/auth.md](runbooks/auth.md)) — `/auth/admin` is deliberately not exposed.
+returns the ALB (ExternalDNS creates it ~1 min after the ALB). Then check both websites end to end:
+
+```bash
+./scripts/e2e-flow.sh dev                 # API: customer signs up → blocked → staff approves → buys → invoice → staff sees it
+./scripts/e2e-browser.sh dev              # Playwright on https://dev…: the same journey through both websites
+./scripts/admin-user.sh dev <you> <email> # your own staff account for /admin/ — temporary password, change it at first login
+```
+
+The realm on AWS has no users and `/auth/admin` is deliberately not exposed, so staff accounts are created by an
+operator through `kubectl port-forward` (`admin-user.sh`; the two e2e scripts create **temporary** users and
+delete them at the end). Staging/prod are rebuilt each session — run `admin-user.sh` again after each build.
 
 ## Part 6 — Staging / prod (ephemeral, one session at a time)
 
@@ -151,6 +159,8 @@ the exact checklist, quota rules and the API-endpoint ↔ GitHub-runner trade-of
 git tag rc-v2.1.0 <commit> && git push origin rc-v2.1.0   # cd-staging: ecr put-image → deploy → smoke → releases/rc-v2.1.0.json
 git tag v2.1.0   <same>   && git push origin v2.1.0       # cd-prod: gate (rc verified on staging, same commit) → Approve → deploy
 ```
+
+After each deploy: `./scripts/e2e-flow.sh <env>`, `./scripts/e2e-browser.sh <env>` and `./scripts/admin-user.sh <env> …` — exactly as in Part 5 (`https://staging.bssplatform.dpdns.org` / `https://bssplatform.dpdns.org`).
 
 ## Part 7 — Tear down (every evening)
 

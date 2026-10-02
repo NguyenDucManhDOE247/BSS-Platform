@@ -116,7 +116,8 @@ kubectl -n bss port-forward svc/keycloak 18080:8080 &
 | Việc | Cách |
 |---|---|
 | Duyệt / khóa khách | admin-console → Khách hàng → lọc "Initialized" → Duyệt / Khóa |
-| Thêm nhân viên admin (AWS) | port-forward Keycloak → Admin console `http://127.0.0.1:18080/auth/admin` (tài khoản master) → Users → gán realm role `admin` |
+| Thêm nhân viên admin (mọi môi trường) | `./scripts/admin-user.sh <kind\|dev\|staging\|prod> <username> <email>` — tạo user + role `admin`, **bỏ** role `customer`, in mật khẩu **tạm** 1 lần (Keycloak bắt đổi ở lần đăng nhập đầu). Idempotent; quên mật khẩu: thêm `--reset-password`. Đi qua `kubectl port-forward` (`/auth/admin` không ra ALB). Staging/prod ephemeral → chạy lại sau mỗi lần dựng. Làm tay tương đương: port-forward → Admin console `http://127.0.0.1:18555/auth/admin` → Users → role mapping |
+| Kiểm 2 website trên AWS | `./scripts/e2e-flow.sh <env>` (API: khách + nhân viên + khách khác, token thật, qua `https://<host>`) và `./scripts/e2e-browser.sh <env>` (Playwright: đăng ký → nhân viên duyệt trên admin-console → mua → hóa đơn) — cả hai tạo user Keycloak **tạm** và xóa khi xong |
 | Khách báo "đã đăng nhập mà không mua được" | Xem trạng thái hồ sơ: `Initialized` = chưa duyệt (422 kèm thông báo), `Suspended` = bị khóa |
 | Mọi request 401 dù token mới | `iss` không khớp `issuer-uri` (đổi hostname Keycloak mà quên 5 service) — so `jq -R 'split(".")[1] \| @base64d \| fromjson \| .iss'` với cấu hình |
 
