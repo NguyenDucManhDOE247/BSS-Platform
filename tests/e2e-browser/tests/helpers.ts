@@ -1,8 +1,18 @@
 import { expect, type Browser, type Page } from '@playwright/test';
 
-/** Tài khoản mẫu trong realm kind (overlays/local/keycloak/bss-users-0.json) — chỉ tồn tại ở local. */
-export const ADMIN = { username: 'admin1', password: 'admin1pass' };
-export const CUSTOMER1 = { username: 'customer1', password: 'customer1pass' };
+/**
+ * Nhân viên (role admin) + 1 khách có sẵn. Mặc định = user mẫu của realm kind (overlays/local/keycloak/
+ * bss-users-0.json — chỉ tồn tại ở local). Trên AWS realm không có user nào: scripts/e2e-browser.sh <env>
+ * tạo 2 user TẠM qua Admin API (port-forward) rồi truyền vào qua biến môi trường, chạy xong thì xóa.
+ */
+export const ADMIN = {
+  username: process.env.E2E_ADMIN_USER ?? 'admin1',
+  password: process.env.E2E_ADMIN_PASS ?? 'admin1pass',
+};
+export const CUSTOMER1 = {
+  username: process.env.E2E_CUSTOMER_USER ?? 'customer1',
+  password: process.env.E2E_CUSTOMER_PASS ?? 'customer1pass',
+};
 
 /** Điền form ĐĂNG NHẬP của Keycloak (theme keycloak.v2). */
 export async function fillKeycloakLogin(page: Page, u: { username: string; password: string }): Promise<void> {
