@@ -5,8 +5,13 @@
 #
 # `ChangeResourceRecordSetsNormalizedRecordNames` = tên bản ghi đã chuẩn hóa (chữ thường, không dấu chấm
 # cuối) của MỌI thay đổi trong 1 lệnh gọi; `ForAllValues` → chỉ cần 1 tên ngoài danh sách là cả lệnh bị từ
-# chối. Danh sách phải gồm cả bản ghi TXT "sở hữu" ExternalDNS tự tạo cạnh bản ghi chính
-# (registry txt, định dạng mới: `a-<host>`, `cname-<host>`) — vì vậy có mẫu `*-<host>`.
+# chối. Danh sách phải gồm cả bản ghi TXT "sở hữu" ExternalDNS tự tạo cạnh bản ghi chính — tên CHÍNH XÁC
+# `extdns-<kiểu>.<host>` (`--txt-prefix=extdns-%{record_type}.` trong platform/networking/external-dns-values.yaml).
+#
+# Lỗi thật trên prod 2026-10-02: bản đầu dùng định dạng mặc định `a-<host>` + mẫu `*-<host>`. Ở dev/staging chạy
+# đúng, nhưng với APEX `a-bssplatform.dpdns.org` nằm NGOÀI zone (anh em dưới dpdns.org) → ExternalDNS lặng lẽ bỏ TXT,
+# chỉ tạo A/AAAA không chủ → xóa Ingress không xóa bản ghi (treo), teardown/orphan_finder (dò theo TXT) không
+# thấy. Không dùng wildcard nữa: `*.bssplatform.dpdns.org` của prod sẽ phủ luôn tên của dev/staging.
 
 resource "aws_iam_role" "external_dns" {
   count = var.external_dns_zone_id == null ? 0 : 1
@@ -47,7 +52,7 @@ resource "aws_iam_role_policy" "external_dns" {
         Condition = {
           "ForAllValues:StringLike" = {
             "route53:ChangeResourceRecordSetsNormalizedRecordNames" = flatten([
-              for h in var.external_dns_hostnames : [h, "*-${h}"]
+              for h in var.external_dns_hostnames : concat([h], [for t in ["a", "aaaa", "cname"] : "extdns-${t}.${h}"])
             ])
           }
         }

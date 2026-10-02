@@ -44,5 +44,5 @@ variable "external_dns_zone_id" {
 variable "external_dns_hostnames" {
   type        = list(string)
   default     = []
-  description = "Tên miền cluster này được ghi (vd. [\"dev.bssplatform.dpdns.org\"]) — kèm bản ghi TXT `*-<tên>` của registry"
+  description = "Tên miền cluster này được ghi (vd. [\"dev.bssplatform.dpdns.org\"]) — kèm 3 bản ghi TXT `extdns-{a,aaaa,cname}.<tên>` của registry"
 }
