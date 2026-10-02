@@ -1,22 +1,23 @@
-# Demo video script — 5 phút (viết GĐ8, cập nhật cho `v2.0.0` ngày 2026-10-01)
+# Demo video script — 5 phút (viết GĐ8, cập nhật cho `v2.2.0` ngày 2026-10-02)
 
 **Kịch bản:** sản phẩm thật (2 website) → deploy trên AWS → tải → phá → hồi phục. Quay màn hình (OBS Studio /
 Windows Game Bar), giọng nói tiếng Việt (giữ thuật ngữ kỹ thuật tiếng Anh, giống văn phong `learning/`). Ghi hình
 **sau khi** đã tự tay chạy qua toàn bộ kịch bản ít nhất 1 lần — video kể lại một câu chuyện đã kiểm chứng thật,
 không phải lần thử đầu tiên trên camera.
 
-> ⚠️ **Vì sao cảnh trình duyệt quay trên kind, không trên AWS.** Từ `v2.0.0`, đặt hàng cần đăng nhập
-> (Keycloak + PKCE), mà PKCE cần `crypto.subtle` — trình duyệt chỉ cấp trong *secure context* (HTTPS hoặc
-> `*.localhost`). AWS hiện chỉ có HTTP qua DNS của ALB (B-23, chờ domain) nên **2 website trên AWS mở được nhưng
-> không đăng nhập được**. Bản kịch bản GĐ8 cũ (mở `http://<ALB-DNS>` rồi đặt hàng) không còn chạy. Cách làm đúng:
-> cảnh sản phẩm quay trên kind (`http://bss.localhost`), cảnh hạ tầng quay trên dev EKS. Nói thẳng điều này trong
-> video — đó là một quyết định có lý do (ADR-008 QĐ 7–8), không phải chỗ cần giấu.
+> ✅ **Từ `v2.2.0` (HTTPS — ADR-012) cảnh trình duyệt quay được trên AWS thật.** Trước đó AWS chỉ có HTTP qua DNS
+> của ALB nên PKCE (cần *secure context*) không chạy và cảnh sản phẩm phải quay trên kind. Nay 2 website đăng nhập
+> được ở `https://dev.bssplatform.dpdns.org` (staging `staging.…`, prod tên miền gốc) — đã kiểm 2026-10-02 bằng
+> `e2e-flow.sh` + Playwright 3/3 + thao tác tay trên cả 3 môi trường. kind vẫn là phương án dự phòng $0.
 
 **Chuẩn bị (2 buổi quay riêng là được, ghép lúc dựng):**
-- **kind** ($0): `docs/SETUP.md` / `learning/19` phần 2 → `e2e-kind.sh` PASS. Mở sẵn 2 cửa sổ trình duyệt:
-  thường cho khách, **ẩn danh** cho admin (`admin1`/`admin1pass`, chỉ tồn tại ở local).
 - **dev EKS** (💰 ~$0.3–0.4/giờ — destroy ngay sau khi quay): `make ENV=dev tf-apply` → platform-install →
-  db-bootstrap → **CD — dev** xanh. Mở sẵn terminal `kubectl -n bss get pods -w` và `kubectl -n bss get hpa -w`.
+  db-bootstrap → **CD — dev** xanh → `./scripts/e2e-flow.sh dev` PASS → `./scripts/admin-user.sh dev <tên> <email>`
+  (tài khoản nhân viên của bạn; mật khẩu tạm in 1 lần, đổi ở lần đăng nhập đầu — **không quay** màn hình này).
+  Mở sẵn 2 cửa sổ trình duyệt: thường cho khách, **ẩn danh** cho nhân viên; và terminal `kubectl -n bss get pods -w`,
+  `kubectl -n bss get hpa -w`.
+- **kind** ($0, dự phòng nếu không muốn bật AWS): `docs/SETUP.md` / `learning/19` phần 2 → `e2e-flow.sh kind` PASS;
+  nhân viên là `admin1`/`admin1pass` (chỉ tồn tại ở local).
 
 ## Cảnh 1 — Giới thiệu (0:00 – 0:30)
 
@@ -24,12 +25,12 @@ không phải lần thử đầu tiên trên camera.
   Spring Boot + gateway + 2 website React + Keycloak, trên EKS dựng bằng Terraform, CI/CD bằng GitHub Actions OIDC.
 - 1 câu bối cảnh: nhận scaffold từ thầy, kiểm chứng lại từ đầu, đưa lên chạy thật qua 10 giai đoạn.
 
-## Cảnh 2 — Sản phẩm: 2 website đồng bộ qua cùng backend (kind, 0:30 – 1:50)
+## Cảnh 2 — Sản phẩm: 2 website đồng bộ qua cùng backend (dev EKS qua HTTPS, 0:30 – 1:50)
 
-1. **Khách** (`http://bss.localhost`): bấm **Đăng ký** → trang Keycloak → quay về đã đăng nhập → **Hồ sơ**: điền
+1. **Khách** (`https://dev.bssplatform.dpdns.org` — chỉ ổ khóa TLS trên thanh địa chỉ 1 giây): bấm **Đăng ký** → trang Keycloak → quay về đã đăng nhập → **Hồ sơ**: điền
    tên + SĐT → trạng thái *chờ duyệt*.
 2. Vào **Gói cước** → chọn gói → trang giải thích *chưa được duyệt*, **không có nút mua** (backend cũng chặn: 422).
-3. **Admin** (cửa sổ ẩn danh, `http://bss.localhost/admin/`): **Khách hàng** → lọc *chờ duyệt* → **Duyệt**.
+3. **Nhân viên** (cửa sổ ẩn danh, `https://dev.bssplatform.dpdns.org/admin/`): **Khách hàng** → lọc *chờ duyệt* → **Duyệt**.
 4. Quay lại khách, tải lại trang gói → **Xác nhận đăng ký** → *Đơn hàng của tôi* có 1 đơn → *Hóa đơn* hiện sau vài
    giây (trang tự làm mới 5s) với VAT 10%. Câu thoại: "đơn và hóa đơn là 2 service khác nhau, nối bằng sự kiện qua
    EventBridge → SQS — nên hóa đơn đến *sau* vài giây, đó là eventual consistency, không phải lỗi."
@@ -42,7 +43,8 @@ Câu chốt: "Khách khác gọi hóa đơn này nhận **404**, không phải 4
 
 - Actions → **CD — dev**: quay run xanh (plan → build image thiếu → apply 8 image → rollout → drift → smoke).
 - `kubectl -n bss get pods` — đủ Pod `Running` (gồm Keycloak).
-- `./scripts/smoke.sh dev` — PASS **có token Keycloak thật** (lấy qua port-forward vì Keycloak không mở ra ALB).
+- `./scripts/smoke.sh dev` — PASS 7/7 qua **HTTPS với cert thật**, có token Keycloak thật (lấy qua port-forward vì
+  `/auth/admin` cố ý không có route ra ALB — chỉ `/auth/realms` + `/auth/resources` ra internet).
 - 1 câu: "Không có AWS access key nào trong GitHub — CI nhận quyền tạm qua OIDC, mỗi môi trường một role."
 
 ## Cảnh 4 — Tải: trần thật nằm ở đâu (2:30 – 3:10)
@@ -50,7 +52,9 @@ Câu chốt: "Khách khác gọi hóa đơn này nhận **404**, không phải 4
 - Cắt sang `k6 run tests/load/dev-threshold.js` đã chạy sẵn (tua nhanh) + `get hpa -w`.
 - Số thật (dev EKS, `docs/labs/07-load-test-dev.md` + ADR-010): 2 node cố định ổn tới ≥150 req/s (p95 432 ms,
   0% lỗi); 200→700 req/s thì vỡ (p95 8.55 s) vì **hết chỗ đặt Pod** (`kubectl describe pod` → `Insufficient cpu`).
-  Bật Karpenter: phục vụ **gấp 2,4 lần** request, p95 3.66 s — nhưng lỗi 7,9% (chưa giải thích — nói thẳng).
+  Bật Karpenter: phục vụ **gấp 2,4 lần** request, p95 3.66 s — nhưng lỗi 7,9%. Câu chuyện đáng kể: con số đó là
+  **2 lỗi chồng nhau** — 502 do probe timeout mặc định 1 s (kubelet giết gateway đang bận) và 500 do hết kết nối RDS.
+  Probe 5 s/3 s + HikariCP 5 → **0% lỗi, 3 lần đo liền** (lab 07 §2c, #203).
 
 ## Cảnh 5 — Phá & hồi phục (3:10 – 4:30)
 
@@ -78,5 +82,5 @@ Sau khi phá: `./scripts/smoke.sh dev` lại → PASS (nghiệp vụ thật ch�
 - Cắt dựng bằng bất kỳ tool nào (cắt thô cũng được — nội dung kỹ thuật quan trọng hơn hiệu ứng).
 - Mô tả video: link repo, `docs/ROADMAP.md`, bài blog (`docs/blog-post-draft.md` khi đã đăng).
 - Thêm link video vào `README.md` (mục Project status hoặc mục "Demo" mới).
-- **Không quay** URL/ảnh chứa webhook Discord, access key, mật khẩu admin Keycloak thật (chỉ `admin1/admin1pass`
-  của kind là công khai).
+- **Không quay** URL/ảnh chứa webhook Discord, access key, mật khẩu admin Keycloak thật, mật khẩu tạm do
+  `admin-user.sh` in ra (chỉ `admin1/admin1pass` của kind là công khai).
