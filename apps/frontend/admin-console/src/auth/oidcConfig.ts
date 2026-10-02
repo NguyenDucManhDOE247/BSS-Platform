@@ -4,7 +4,7 @@ import { User, WebStorageStateStore } from 'oidc-client-ts';
 /**
  * Giai đoạn 9 việc 5 — ADR-008 quyết định 1, 2, 7. Cùng cách với web-portal (xem file cùng tên ở
  * đó để có giải thích đầy đủ); khác: client `admin-console`, mọi URL nằm dưới `/admin/` (B-06).
- * (2 app giữ 2 bản vì chưa có thư viện dùng chung thật sự — packages/ui-kit chưa được app nào dùng.)
+ * (2 app giữ 2 bản vì không có thư viện frontend dùng chung — packages/ui-kit chưa từng được dùng, đã xóa 2026-10-02.)
  */
 const DEV_AUTHORITY = 'http://localhost:8180/auth/realms/bss';
 
