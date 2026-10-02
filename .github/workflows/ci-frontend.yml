@@ -4,13 +4,11 @@ on:
   pull_request:
     paths:
       - 'apps/frontend/**'
-      - 'packages/ui-kit/**'
       - '.github/workflows/ci-frontend.yml'
   push:
     branches: [main]
     paths:
       - 'apps/frontend/**'
-      - 'packages/ui-kit/**'
 
 concurrency:
   group: ci-frontend-${{ github.ref }}

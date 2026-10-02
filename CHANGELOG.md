@@ -27,6 +27,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   says the websites can't sign in on AWS or that the 7.9% is unexplained, and gains the apex-TXT production bug;
   `SETUP.md` / `runbooks/auth.md` use `e2e-flow.sh <env>`; `ROADMAP.md` lists the two-website verification.
 
+- `CLAUDE.md` §2–§11 rewritten to match the running system (they were still the scaffold plan): architecture without
+  CloudFront/VPC endpoints and with Keycloak, HTTPS and ExternalDNS; real sizing per environment (incl. the
+  `0.0.0.0/0` endpoint exception during ephemeral demos); 10 workflows; actual tree; the old Phase 0–10 checklist mapped
+  to where each item was done (one item still open: simulating the loss of an AZ); best practices marked ✅ or ⚠️.
+
+### Removed
+
+- `packages/ui-kit` — never imported by either website (each app keeps its own small components); dropped from
+  `ci-frontend.yml` paths, `CLAUDE.md` and `README.md`.
+- `platform/secrets/customer-secrets-spc.yaml` — sample pointing at the RDS master secret, replaced in Phase 5 by the
+  per-service SecretProviderClass files in `overlays/<env>/secrets/` (B-20/B-21); the file asked to be deleted.
+- Scaffold-era architecture docs that no longer matched the system (`docs/architecture/system_architecture.md`,
+  `backend_connections.md`, `interactive_architecture.html` and two images): they described VPC endpoints instead of
+  NAT, CloudFront, a `/api/customers/**` route and no identity layer. Current architecture: `README.md`, `docs/SETUP.md`,
+  `docs/adr/`. `docs/architecture/bss_eks_architecture.png` is kept (used by the demo script).
+
 ### Fixed
 
 - `make help` never listed targets containing a digit (`e2e-local`, `e2e-kind`, …).

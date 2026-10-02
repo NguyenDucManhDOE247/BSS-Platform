@@ -12,50 +12,64 @@ Mục đích kép: **portfolio học tập platform-engineering** + **tham chi�
 
 ---
 
-## 2. Kiến trúc tổng thể (5 lớp + Platform)
+## 2. Kiến trúc tổng thể (5 lớp + Platform) — **đúng như đang chạy** (2026-10-02)
+
+> Bản vẽ lúc scaffold ([docs/architecture/bss_eks_architecture.png](docs/architecture/bss_eks_architecture.png)) đúng ý
+> tưởng tổng thể nhưng có CloudFront và VPC Endpoint thay NAT — hệ thống thật **không** dùng hai thứ đó (ADR-002).
+> Sơ đồ dưới đây là bản đúng; mỗi thay đổi so với scaffold có ADR trong `docs/adr/`.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ LỚP 1  Người dùng (web/mobile/B2B)                              │
+│ LỚP 1  Người dùng: trình duyệt — khách (web-portal), nhân viên  │
+│        (admin-console)                                          │
 └─────────────────────────────────────────────────────────────────┘
-                            │ HTTPS
+                            │ HTTPS (TLS 1.3, cert ACM) — bssplatform.dpdns.org (ADR-012)
 ┌─────────────────────────────────────────────────────────────────┐
-│ LỚP 2  Edge:  CloudFront → ALB → AWS WAF                        │
+│ LỚP 2  Edge:  Route 53 (ExternalDNS) → ALB (AWS LB Controller   │
+│        tạo từ Ingress) + AWS WAF (SQLi + rate-limit)            │
+│        CloudFront: KHÔNG dùng                                   │
 └─────────────────────────────────────────────────────────────────┘
-                            │
+                            │  /  /admin  /api  /auth/realms  /auth/resources
 ┌─────────────────────────────────────────────────────────────────┐
-│ LỚP 3  Frontend  (chạy trên EKS):                               │
-│   • web-portal      Vite + React + Nginx                        │
-│   • admin-console   Vite + React + Nginx                        │
+│ LỚP 3  Frontend (EKS): web-portal (/), admin-console (/admin)   │
+│        Vite + React + Nginx unprivileged, OIDC/PKCE             │
+│        Identity (EKS): Keycloak 26.7.5 — image optimized riêng, │
+│        prod 2 replica (ADR-008, ADR-011)                        │
 └─────────────────────────────────────────────────────────────────┘
-                            │ REST
+                            │ REST + JWT (mọi service tự kiểm token)
 ┌─────────────────────────────────────────────────────────────────┐
-│ LỚP 4  Backend  (chạy trên EKS):                                │
-│   • api-gateway      Spring Cloud Gateway                       │
+│ LỚP 4  Backend (EKS):                                           │
+│   • api-gateway      Spring Cloud Gateway (chặn thô 401/403)    │
 │   • customer-service  TMF629                                    │
 │   • product-catalog   TMF620                                    │
-│   • order-management  TMF622  ──publish──> EventBridge          │
-│   • billing-service   TMF678  <──consume── SQS                  │
+│   • order-management  TMF622  ──outbox → EventBridge            │
+│   • billing-service   TMF678  <── SQS (idempotent consumer)     │
 └─────────────────────────────────────────────────────────────────┘
                             │
 ┌─────────────────────────────────────────────────────────────────┐
 │ LỚP 5  Data:                                                    │
-│   • RDS PostgreSQL  (schema per service)                        │
-│   • ElastiCache Redis (cache, optional)                         │
-│   • EventBridge + SQS (event bus)                               │
-│   • S3 (file/blob)                                              │
+│   • RDS PostgreSQL 16 — 1 instance, 5 database + 5 user riêng   │
+│     (4 service + keycloak; tạo bằng Job db-bootstrap — B-21)    │
+│   • EventBridge + SQS + DLQ (event bus)                         │
+│   • Secrets Manager (mật khẩu DB từng service, admin Keycloak)  │
+│   • Redis: CHƯA dùng (chỉ có trong docker-compose)              │
+│   • S3: chỉ cho Terraform state (app không dùng)                │
 └─────────────────────────────────────────────────────────────────┘
 
          ▲ CẮT NGANG ▲
 ┌─────────────────────────────────────────────────────────────────┐
 │ PLATFORM:                                                       │
-│   • EKS cluster (Managed Node Groups + Karpenter cho workload)  │
-│   • VPC, IAM (IRSA), Secrets Manager                            │
-│   • Prometheus + Grafana (in-cluster)                           │
-│   • Fluent Bit → CloudWatch Logs                                │
-│   • OTel Collector → X-Ray                                      │
-│   • AWS LB Controller, ExternalDNS, Secrets Store CSI           │
-│   • GitHub Actions OIDC → IAM Role (no static keys)             │
+│   • EKS 1.34: Managed Node Group + Karpenter Spot (CHỈ dev)      │
+│   • VPC: 1 NAT Gateway + S3 gateway endpoint (ADR-002)          │
+│   • IAM: IRSA từng service, platform-iam cho addon              │
+│   • Secrets Store CSI (SecretProviderClass riêng từng service)  │
+│   • metrics-server, kube-prometheus-stack (+ Alertmanager →     │
+│     Discord), Fluent Bit → CloudWatch, OTel → X-Ray             │
+│   • AWS LB Controller, ExternalDNS, StorageClass gp3            │
+│   • NetworkPolicy default-deny, Pod Security `restricted`       │
+│   • GitHub Actions OIDC → 3 IAM role (không static key)         │
+│   • Terraform state `shared` (ECR, OIDC, role, zone, cert) +    │
+│     dev/staging/prod — staging/prod ephemeral (ADR-006)         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -63,25 +77,27 @@ Mục đích kép: **portfolio học tập platform-engineering** + **tham chi�
 
 | Vai trò | Lựa chọn | Lý do |
 |---|---|---|
-| Cloud | **AWS** | Job market lớn ở VN, ecosystem trưởng thành, free-tier tốt năm 1 |
+| Cloud | **AWS** | Job market lớn ở VN, ecosystem trưởng thành |
+| Edge | **ALB + WAF**, không CloudFront | ALB Controller tạo ALB từ chính Ingress; WAF gắn bằng `wire-waf.sh`. CloudFront chưa có nhu cầu (không có nội dung tĩnh toàn cầu) |
+| HTTPS + DNS | **Route 53 + ACM + ExternalDNS** | Zone + cert ở state `shared` (sống lâu hơn môi trường); ExternalDNS chỉ ghi được tên của môi trường mình (ADR-012) |
 | Orchestration | **EKS Managed Node Groups + Karpenter (dev)** | Production-realistic; Karpenter tự thêm node Spot khi thiếu chỗ (đo thật: Spot −53%, node Ready ~36s — ADR-010). Staging/prod giữ node group cố định (ADR-006) |
 | Backend | **Java 21 + Spring Boot 3.5** | Telco VN dùng Java; Spring Cloud Gateway / Boot 3 ecosystem chuẩn (3.5.16 + ghi đè patch Tomcat/Jackson/pgjdbc/Netty → 0 CVE HIGH/CRITICAL) |
 | Frontend | **Vite + React + TypeScript** | Vite build nhanh, React phổ biến, dễ tuyển; SSR có thể thêm sau |
-| DB | **RDS PostgreSQL** | Managed, có HA, IAM auth, PITR; 1 instance dùng chung schema-per-service |
-| Cache | **ElastiCache Redis** | (Thêm khi cần) — sub-ms latency |
+| DB | **RDS PostgreSQL 16** | Managed, có HA, PITR (đã khôi phục thật — lab 09); 1 instance, database-per-service |
+| Cache | **Redis — chưa dùng** | Load test chưa cho thấy catalog là nút thắt; thêm ElastiCache khi có số đo cần |
 | Event bus | **EventBridge + SQS** | EventBridge routing rules + SQS per-consumer + DLQ; rẻ, không cần nuôi Kafka |
-| Storage | **S3** | Standard |
-| Container | **ECR** | Tích hợp sẵn IAM, image scan |
-| IaC | **Terraform 1.7 + hashicorp/aws 5.x** | Tiêu chuẩn ngành |
-| K8s pkg | **Kustomize** | Built-in `kubectl`, đủ cho 7 service, không cần Helm phức tạp |
-| CI/CD | **GitHub Actions + OIDC** | Free public repo, không cần JSON key |
+| Container | **ECR** | Tích hợp sẵn IAM, image scan, tag `IMMUTABLE`; 8 repo ở state `shared` |
+| IaC | **Terraform ≥ 1.10 + hashicorp/aws ~> 5.0** | Tiêu chuẩn ngành; 1.10+ để khóa state bằng S3 `use_lockfile` (không cần DynamoDB) |
+| K8s pkg | **Kustomize** | Built-in `kubectl`, đủ cho 8 image; Helm chỉ dùng cài addon (ADR-009) |
+| CI/CD | **GitHub Actions + OIDC** | Free public repo, không cần key; nguồn sự thật phiên bản = git + nhánh `deploy-state` (ADR-005) |
 | Monitoring | **kube-prometheus-stack (in-cluster)** | Source of truth cho metric; CloudWatch chỉ cho log + AWS-native metrics |
-| Tracing | **OTel + X-Ray** | Vendor-neutral instrument; export sang X-Ray |
+| Tracing | **OTel Java agent + X-Ray** | Vendor-neutral instrument; export sang X-Ray |
 | Secrets | **AWS Secrets Manager + Secrets Store CSI** | Pod mount secret, không cần env var với plain text |
 | Identity | **Keycloak (OIDC) + PKCE** | Cùng realm ở kind/compose/AWS; Cognito không chạy được local (ADR-008) |
 | Service mesh | **Không dùng (đến khi >10 services)** | Istio quá nặng cho 7 service; bật khi cần mTLS/traffic shaping |
 
-> **Nguyên tắc:** không over-engineer. Spinnaker, ArgoCD, Argo Rollouts, multi-region, MSK — đều **để dành** đến khi có nhu cầu rõ.
+> **Nguyên tắc:** không over-engineer. Spinnaker, ArgoCD, Argo Rollouts, multi-region, MSK, Jenkins/Ansible song song
+> (ADR-009) — đều **để dành** đến khi có nhu cầu rõ.
 
 ---
 
@@ -92,14 +108,16 @@ Mục đích kép: **portfolio học tập platform-engineering** + **tham chi�
 | `customer-service` | Vòng đời khách hàng, identity | **TMF629** | ✅ CRUD + PATCH, `/customer/me` (hồ sơ gắn `sub` Keycloak), admin duyệt/khóa, Flyway, IT |
 | `product-catalog` | Plans, offers, pricing | **TMF620** | ✅ Offering + Category + Specification; admin sửa giá/ngừng bán, khách chỉ thấy gói `Active` |
 | `order-management` | Order capture + orchestration | **TMF622** | ✅ **transactional outbox** → EventBridge; khách lấy từ token, phải `Active`, giá từ catalog |
-| `billing-service` | Charging, invoicing, payment | **TMF678** | ✅ Invoice (VAT 10%) + **idempotent SQS consumer**; khách chỉ thấy hóa đơn của mình; doanh thu cho admin |
+| `billing-service` | Invoicing (chưa có thanh toán — ngoài phạm vi) | **TMF678** | ✅ Invoice (VAT 10%) + **idempotent SQS consumer**; khách chỉ thấy hóa đơn của mình; doanh thu cho admin |
 | `api-gateway` | Routing, auth, rate-limit | — | ✅ Spring Cloud Gateway + OAuth2 Resource Server (chặn thô; mỗi service tự kiểm JWT) |
 
 ### Tương tác giữa service
 
-- **Sync (REST):** customer ← product ← order (đọc tham chiếu, qua API Gateway).
+- **Sync (REST):** order → customer-service (`/customer/me`, chuyển tiếp token của khách) và order → product-catalog
+  (giá do server quyết) — gọi thẳng DNS nội bộ, không qua gateway; Resilience4j bọc mọi lời gọi.
 - **Async (EventBridge → SQS):** order → billing (event `OrderCompleted`).
-- **Database-per-service:** mỗi service một schema riêng trên cùng 1 RDS instance (Phase ≤ 6). Tách instance khi >100 QPS hoặc cần isolation cứng.
+- **Database-per-service:** mỗi service một **database + user** riêng trên cùng 1 RDS instance (Job `db-bootstrap`, B-21).
+  Tách instance khi >100 QPS hoặc cần isolation cứng.
 
 ### Contract & versioning
 
@@ -112,35 +130,45 @@ Mục đích kép: **portfolio học tập platform-engineering** + **tham chi�
 ## 4. Hai chiều: Services × Environments
 
 ```
-                  ┌─────────┐   ┌─────────┐   ┌─────────┐
-                  │   DEV   │   │ STAGING │   │  PROD   │
-                  └─────────┘   └─────────┘   └─────────┘
-customer-service     SHA            rc-vX           vX
-product-catalog      SHA            rc-vX           vX
-order-management     SHA            rc-vX           vX
-billing-service      SHA            rc-vX           vX
-api-gateway          SHA            rc-vX           vX
-web-portal           SHA            rc-vX           vX
-admin-console        SHA            rc-vX           vX
+                  ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐
+                  │  LOCAL  │   │   DEV   │   │ STAGING │   │  PROD   │
+                  │  (kind) │   │         │   │         │   │         │
+                  └─────────┘   └─────────┘   └─────────┘   └─────────┘
+customer-service    :local         SHA*          rc-vX         vX
+product-catalog     :local         SHA*          rc-vX         vX
+order-management    :local         SHA*          rc-vX         vX
+billing-service     :local         SHA*          rc-vX         vX
+api-gateway         :local         SHA*          rc-vX         vX
+web-portal          :local         SHA*          rc-vX         vX
+admin-console       :local         SHA*          rc-vX         vX
+keycloak         quay.io (dev)     SHA*          rc-vX         vX
 ```
+\* SHA = commit **cuối cùng chạm thư mục của service đó** (không phải SHA lần merge) — `rc-vX`/`vX` là tag gắn thêm
+lên **cùng digest** bằng `aws ecr put-image` (ADR-005).
 
-### Sizing per env
+### Sizing per env (giá trị thật trong `environments/<env>/main.tf` + overlay)
 
-| | Dev | Staging | Prod |
-|---|---|---|---|
-| Region | ap-southeast-1 (Singapore) | ap-southeast-1 | ap-southeast-1 |
-| AZs | 2 | 3 | 3 |
-| NAT Gateway | ❌ (VPC Endpoints thay thế) | 1 | HA |
-| EKS public endpoint | 0.0.0.0/0 | restricted IPs | restricted IPs |
-| Node group | t3.medium × 2 + Karpenter Spot (≤ 8 vCPU) | t3.large × 3 | t3.large × 4 (vừa quota 8 vCPU) |
-| RDS | db.t3.micro single-AZ | db.t3.small single-AZ | db.t3.medium **multi-AZ** |
-| Deletion protection | OFF | ON | ON |
-| Log retention | 3d | 14d | 30d |
-| X-Ray sampling | 50% | 20% | 5% |
-| Replicas/service | 1 | 2 | 3+ |
-| **Cost ước tính** | **~$5/ngày** | **~$9/ngày** | **~$30+/ngày** |
+| | Local (kind) | Dev | Staging | Prod |
+|---|---|---|---|---|
+| Region / AZ | máy bạn | ap-southeast-1 / 2 | ap-southeast-1 / 3 | ap-southeast-1 / 3 |
+| NAT Gateway | — | 1 (+ S3 gateway endpoint — ADR-002) | 1 | 1 (module chưa có NAT HA) |
+| EKS public endpoint | — | `0.0.0.0/0` | `0.0.0.0/0` **trong buổi demo** | `0.0.0.0/0` **trong buổi demo** ⚠️ |
+| Node | 1 node kind | 2× t3.medium (2–3) + Karpenter Spot ≤ 8 vCPU | 3× t3.large (2–5) | 4× t3.large (3–4, vừa quota 8 vCPU) |
+| RDS | Postgres StatefulSet | db.t3.micro, 20 GB, backup 1 ngày | db.t3.small, 50 GB, 7 ngày | db.t3.medium **multi-AZ**, 100 GB, 30 ngày |
+| Deletion protection | — | OFF | `!ephemeral` (OFF khi demo) | `!ephemeral` (OFF khi demo) |
+| Log retention / X-Ray | sink cục bộ | 3 ngày / 50% | 14 / 20% | 30 / 5% |
+| Replicas/service | 1 (HPA ≤ 2) | 1 | 2 | 3 (admin-console 2, Keycloak 2) |
+| Sống bao lâu | tùy | dựng theo buổi, **destroy mỗi tối** | ephemeral 1 buổi (ADR-006) | ephemeral 1 buổi (ADR-006) |
+| **Chi phí khi bật** | $0 | **~$0.3–0.4/giờ** | **~$0.4/giờ** | **~$1.3/giờ** |
 
-> ⚠️ NAT Gateway tốn $1.10/ngày — luôn ưu tiên VPC Endpoints khi có thể.
+- ⚠️ **Endpoint `0.0.0.0/0` ở staging/prod là ngoại lệ có chủ đích**, không phải mặc định: runner GitHub không có IP cố
+  định nên CIDR chặt làm CD timeout. API server vẫn cần IAM + EKS access entry; cluster chỉ sống vài giờ.
+  `terraform.tfvars.example` để danh sách chặt; prod chạy thường trực thì phải chuyển sang self-hosted runner +
+  endpoint private (runbook `cd-staging-prod-demo.md` §4).
+- Quota On-Demand mặc định **8 vCPU/account** ⇒ chỉ chạy **một** cluster lớn tại một thời điểm (destroy dev trước khi
+  dựng prod).
+- Chi phí nền khi không có môi trường nào chạy: zone Route 53 **$0.50/tháng** + ECR storage. Budget alert
+  `bss-platform-monthly` mặc định **$30/tháng** (`BUDGET_USD` của `bootstrap-aws.sh`).
 
 ---
 
@@ -157,11 +185,12 @@ admin-console        SHA            rc-vX           vX
 |---|---|---|
 | `ci-backend.yml` | PR đụng `apps/backend/**` | Maven verify + Trivy + docker build (no push) |
 | `ci-frontend.yml` | PR đụng `apps/frontend/**` | npm lint/test/build + Trivy + docker build |
-| `ci-terraform.yml` | PR đụng `infrastructure/terraform/**` | fmt + tfsec + plan (post comment) |
-| `ci-k8s.yml` | PR đụng `infrastructure/kubernetes/**` | kustomize build + kubeconform 3 envs |
+| `ci-terraform.yml` | PR đụng `infrastructure/terraform/**` | fmt + validate (shared/dev/staging/prod) + Trivy IaC + plan dev (post comment) |
+| `ci-k8s.yml` | PR đụng `infrastructure/kubernetes/**`, `platform/**` | kustomize build + kubeconform + kube-linter + test alert rule (promtool) |
+| `publish-bss-common-java.yml` | Merge đụng `packages/bss-common-java/**` | Publish thư viện lên GitHub Packages (bump `<version>` mỗi lần đổi) |
 | `ci-keycloak.yml` | PR đụng `apps/identity/keycloak/**` | docker build + Trivy + chạy thật 2 replica rootfs chỉ đọc (ADR-011) |
 | `ci-scripts.yml` | PR đụng `scripts/**` | shellcheck + test `release-manifest.sh` / `smoke.sh` |
-| `cd-dev.yml` | Merge `main` / thủ công | plan (desired từ git) → build service thiếu image → apply manifest 7 service + smoke thật → PASS thì ghi `deploy-state`; hỏng thì rollback về manifest cũ (ADR-005) |
+| `cd-dev.yml` | Merge `main` / thủ công | plan (desired từ git) → build service thiếu image → apply manifest 8 image (7 service + Keycloak) + smoke thật → PASS thì ghi `deploy-state`; hỏng thì rollback về manifest cũ (ADR-005) |
 | `cd-staging.yml` | Tag `rc-vX.Y.Z` | Tag phải trên `main` → `ecr put-image` rc-vX → apply staging + smoke → ghi `releases/rc-vX.json` (`verified_in: staging`) |
 | `cd-prod.yml` | Tag `vX.Y.Z` | Cổng kiểm (rc đã qua staging, cùng commit) → **Approve thủ công** → `ecr put-image` vX → apply prod + smoke; hỏng thì tự rollback |
 
@@ -188,97 +217,76 @@ Repository variable `ECR_REGISTRY` = `{account_id}.dkr.ecr.ap-southeast-1.amazon
 
 ---
 
-## 6. Cấu trúc thư mục
+## 6. Cấu trúc thư mục (thực tế)
 
 ```
 bss-platform/
-├── apps/                                ← TẤT CẢ APP CHẠY ĐƯỢC
+├── apps/                                ← TẤT CẢ APP CHẠY ĐƯỢC (8 image)
 │   ├── frontend/
-│   │   ├── web-portal/                 ← Vite + React + Nginx
-│   │   └── admin-console/              ← Vite + React + Nginx
+│   │   ├── web-portal/                 ← Vite + React + Nginx (khách) — src/auth (PKCE), src/api/client.ts (axios + Bearer)
+│   │   └── admin-console/              ← Vite + React + Nginx (nhân viên, base /admin/)
 │   ├── identity/
 │   │   └── keycloak/                   ← Image Keycloak optimized cho AWS (ADR-011)
 │   └── backend/
-│       ├── api-gateway/                ← Spring Cloud Gateway
+│       ├── api-gateway/                ← Spring Cloud Gateway (WebFlux) + JWT chặn thô
 │       ├── customer-service/           ← TMF629
 │       ├── product-catalog/            ← TMF620
-│       ├── order-management/           ← TMF622 (+ EventBridge publish)
-│       └── billing-service/            ← TMF678 (+ SQS consume)
+│       ├── order-management/           ← TMF622 (outbox → EventBridge, Idempotency-Key)
+│       └── billing-service/            ← TMF678 (SQS consumer idempotent)
 │
 ├── packages/                            ← LIBRARY DÙNG CHUNG
-│   ├── bss-common-java/                ← DTO, exception, security
-│   ├── ui-kit/                         ← React components
-│   └── api-contracts/                  ← OpenAPI specs + JSON schemas
+│   ├── bss-common-java/                ← 0.2.0 trên GitHub Packages: RFC 7807 handler, OffsetPageRequest, CurrentCaller, UUID v7
+│   └── api-contracts/                  ← OpenAPI 3.1 (viết tay) + JSON Schema event OrderCompleted
 │
-├── infrastructure/                      ← IaC
+├── infrastructure/
 │   ├── terraform/
-│   │   ├── modules/                    ← Reusable modules
-│   │   │   ├── vpc/                    │   • VPC, subnets, VPC Endpoints
-│   │   │   ├── eks/                    │   • EKS + IRSA OIDC + addons
-│   │   │   ├── rds/                    │   • PostgreSQL + Secrets Manager
-│   │   │   ├── ecr/                    │   • Per-service repos + lifecycle
-│   │   │   ├── eventbridge/            │   • Bus + per-consumer SQS + DLQ
-│   │   │   ├── iam/                    │   • IRSA + GitHub OIDC deployer
-│   │   │   └── observability/          │   • CloudWatch log groups + X-Ray
+│   │   ├── modules/                    ← 9 module: vpc · eks · rds · ecr · eventbridge · iam · observability · platform-iam · waf
 │   │   └── environments/
-│   │       ├── dev/
-│   │       ├── staging/
-│   │       └── prod/
-│   │
+│   │       ├── shared/                 ← ECR (8 repo), GitHub OIDC + 3 role deployer, zone Route 53 + cert ACM — KHÔNG destroy
+│   │       ├── dev/                    ← 2 AZ, Karpenter
+│   │       ├── staging/                ← ephemeral
+│   │       └── prod/                   ← ephemeral, RDS multi-AZ
 │   └── kubernetes/
-│       ├── base/                       ← Manifests gốc
-│       │   ├── customer-service/       │   (deployment, service, sa, hpa, pdb)
-│       │   └── ...
+│       ├── base/                       ← 7 service (deployment, service, sa, hpa, pdb) + ingress + network-policies/
+│       ├── components/
+│       │   ├── keycloak-realm/         ← realm "bss" dùng chung mọi nơi
+│       │   └── keycloak-aws/           ← Keycloak trên EKS (image riêng, PDB, NetworkPolicy)
 │       └── overlays/
-│           ├── dev/                    │   (replicas=1, LOG_LEVEL=DEBUG)
-│           ├── staging/                │   (replicas=2)
-│           └── prod/                   │   (replicas=3, PDB minAvail=2)
+│           ├── local/                  ← kind: Postgres StatefulSet, LocalStack, Keycloak start-dev + user thử
+│           ├── dev/ staging/ prod/     ← image ECR, ConfigMap, replicas, IRSA, secrets/ (SPC từng service)
+│           └── <env>/db-bootstrap/     ← Job một lần: 5 database + 5 user trên RDS (B-21)
 │
-├── platform/                            ← CLUSTER-WIDE ADDONS (Helm values)
-│   ├── monitoring/                     ← kube-prometheus-stack
+├── platform/                            ← ADDON CẤP CLUSTER (Helm values + manifest, cài bằng script)
+│   ├── networking/                     ← ALB Controller, ExternalDNS, Karpenter NodePool
+│   ├── storage/                        ← StorageClass gp3
+│   ├── secrets/                        ← Secrets Store CSI values
+│   ├── monitoring/                     ← kube-prometheus-stack, ServiceMonitor, alert (+ test), dashboard
 │   ├── logging/                        ← Fluent Bit → CloudWatch
-│   ├── tracing/                        ← OTel Collector → X-Ray
-│   ├── secrets/                        ← Secrets Store CSI + SPC examples
-│   ├── networking/                     ← ALB Controller, ExternalDNS, Karpenter
-│   └── README.md                       ← Helm install sequence
+│   └── tracing/                        ← OTel Collector → X-Ray
 │
-├── deploy/                              ← LOCAL DEV
-│   ├── docker-compose.yml              ← Postgres + Redis + LocalStack
-│   ├── postgres-init/                  ← Tạo 4 database service
-│   ├── localstack-init/                ← Tạo EventBridge bus + SQS queue
-│   ├── .env.example                    ← Env vars khi chạy service local
-│   └── README.md
+├── deploy/                              ← LOCAL KHÔNG K8S: docker-compose (Postgres, Redis, LocalStack, Keycloak, Adminer)
 │
-├── .github/workflows/                   ← CI/CD
-│   ├── ci-backend.yml
-│   ├── ci-frontend.yml
-│   ├── ci-terraform.yml
-│   ├── ci-k8s.yml
-│   ├── ci-keycloak.yml                 ← build + Trivy + chạy thử 2 replica (ADR-011)
-│   ├── ci-scripts.yml                  ← shellcheck + test release-manifest/smoke
-│   ├── cd-dev.yml
-│   ├── cd-staging.yml
-│   └── cd-prod.yml
+├── .github/
+│   ├── workflows/                      ← 10 workflow (6 CI + publish thư viện + 3 CD) — mục 5
+│   └── actions/deploy-release/         ← composite action dùng chung 3 CD (render → apply → rollout → drift → smoke → rollback)
+│
+├── scripts/                             ← 25 script + lib/keycloak.sh (bootstrap, kind, e2e, platform-install, smoke, teardown, release-manifest…)
+├── tools/ops/                           ← Python boto3: orphan_finder, cost_report, dlq_tool, health_check
+├── tests/                               ← load/ (k6) · e2e-browser/ (Playwright)
 │
 ├── docs/
-│   ├── architecture/
-│   ├── runbooks/
-│   ├── api/
-│   ├── adr/                            ← Architecture Decision Records
-│   ├── onboarding/
-│   ├── ROADMAP.md
-│   └── SETUP.md
+│   ├── adr/                            ← 13 ADR (000 → 012)
+│   ├── runbooks/                       ← 17 runbook (mỗi alert một cái + CD, auth, https-domain, WAF…)
+│   ├── labs/                           ← lab có số đo thật (K8s, rollback, load test, chaos, PITR)
+│   ├── architecture/                   ← ảnh kiến trúc lúc scaffold
+│   ├── images/                         ← ảnh chụp 2 website
+│   └── SETUP.md · ROADMAP.md · SLO.md · POSTMORTEMS.md · demo-script.md · blog-post-draft.md
 │
-├── scripts/
-│   ├── bootstrap-aws.sh                ← One-time S3+DynamoDB+Budget
-│   ├── teardown.sh                     ← terraform destroy <env>
-│   └── smoke.sh                        ← Hit ALB sau deploy
-│
-├── CLAUDE.md                            ← (file này)
-├── PLAN.md                              ← Tóm tắt cho người
-├── README.md                            ← Public-facing
-├── Makefile                             ← Shortcut mọi tác vụ
-└── LICENSE
+├── CLAUDE.md · README.md · CHANGELOG.md · CONTRIBUTING.md · SECURITY.md · LICENSE
+├── Makefile                             ← `make help` liệt kê mọi target
+└── kind.yaml                            ← cấu hình cluster kind
+
+(local, .gitignore) learning/ — sổ tay học tập + nhật ký · course/ — đề cương của thầy
 ```
 
 ---
@@ -310,8 +318,8 @@ bss-platform/
 
 ### Frontend (React/TS)
 - TypeScript **strict mode** — không `any`.
-- State: **react-query** cho server state, **zustand** cho local UI state.
-- Component layout: `pages/`, `components/`, `hooks/`, `api/` (generated từ OpenAPI).
+- State: **react-query** cho server state; UI state hiện chỉ cần `useState` (zustand có trong dependency của web-portal nhưng chưa dùng — thêm khi có state dùng chung nhiều trang).
+- Component layout: `pages/`, `components/`, `auth/`, `api/` (axios client viết tay, tự gắn Bearer — chưa sinh từ OpenAPI).
 - Tests: **vitest + @testing-library/react**.
 
 ### Kubernetes
@@ -323,7 +331,7 @@ bss-platform/
 
 ### Terraform
 - `terraform fmt && terraform validate` trước commit.
-- Module hóa khi tái sử dụng (đã có sẵn 7 module trong `modules/`).
+- Module hóa khi tái sử dụng (9 module trong `modules/`). Thứ sống lâu hơn môi trường → state `shared`.
 - Resource cost cao (HA RDS, GPU, MSK) → cảnh báo trong PR description.
 - Secret không vào `.tfvars` — sinh random → Secrets Manager.
 
@@ -331,75 +339,27 @@ bss-platform/
 
 ## 8. Lộ trình triển khai theo Phase
 
-### Phase 0 — Chuẩn bị
-- [x] Cấu trúc monorepo + scaffold đầy đủ 7 service (4 backend + 1 gateway + 2 frontend).
-- [x] Terraform modules + 3 environments.
-- [x] CI/CD 7 workflows.
-- [x] Local dev với docker-compose + LocalStack.
-- [ ] **Tạo AWS account** + bật billing + MFA + budget alert.
-- [ ] Cài `aws-cli`, `terraform 1.7+`, `kubectl`, `helm`, `kustomize`, `docker`, `jdk 21`, `node 20`.
+> Danh sách Phase 0–10 dưới đây là **kế hoạch lúc scaffold**. Khi tiếp nhận, lộ trình được làm lại thành **Giai đoạn
+> 0–9 + dọn nợ** (`learning/20-lo-trinh-hoan-thanh.md`, bằng chứng ở §13). Bảng này đối chiếu từng mục của kế hoạch
+> cũ với nơi nó **đã được làm thật** — để không ai đọc các ô trống rồi tưởng dự án chưa bắt đầu.
 
-### Phase 1 — Local development
-- [ ] `make local-up` → verify Postgres + LocalStack chạy.
-- [ ] Chạy `customer-service` local (`mvn spring-boot:run` với `.env.example`).
-- [ ] Hit CRUD endpoints bằng curl/Postman.
-- [ ] Chạy `web-portal` (`npm run dev`) → test gọi qua Vite proxy.
-- [ ] Bổ sung Flyway migration thật + Testcontainers integration test.
-
-### Phase 2 — AWS account bootstrap
-- [ ] `aws configure` với credentials (tạo IAM user dùng cho personal, MFA bật).
-- [ ] `./scripts/bootstrap-aws.sh` → tạo S3 tfstate + DynamoDB locks + budget.
-- [ ] Edit `infrastructure/terraform/environments/dev/main.tf` → uncomment `backend "s3"`.
-- [ ] `make ENV=dev tf-init && make ENV=dev tf-plan`.
-
-### Phase 3 — Deploy infrastructure (dev)
-- [ ] `make ENV=dev tf-apply` (mất ~15-20 phút lần đầu cho EKS).
-- [ ] `make ENV=dev kube-config` → `kubectl get nodes`.
-- [ ] Cài cluster addons theo `platform/README.md` (Helm).
-- [ ] Verify ALB Controller + ExternalDNS chạy.
-
-### Phase 4 — Deploy first service
-- [ ] `make ENV=dev SERVICE=customer-service push` → image lên ECR.
-- [ ] `make ENV=dev SERVICE=customer-service set-image deploy`.
-- [ ] `make ENV=dev smoke` → ALB trả 200.
-
-### Phase 5 — CI/CD wiring
-- [ ] Push repo lên GitHub.
-- [ ] `./scripts/setup-github-environments.sh --apply` (3 Environment + variable `AWS_ROLE_ARN`/`ECR_REGISTRY` — không còn secret).
-- [ ] Mở PR sửa nhỏ → verify `ci-backend` chạy + pass.
-- [ ] Merge → verify `cd-dev` deploy thành công.
-
-### Phase 6 — Hoàn thiện service nghiệp vụ
-- [ ] Implement TMF620 trong `product-catalog`.
-- [ ] Implement TMF622 trong `order-management` + viết integration test EventBridge publish.
-- [ ] Implement TMF678 trong `billing-service` + SQS consumer idempotent.
-- [ ] Implement frontend UI thật cho web-portal (đăng ký gói, xem hóa đơn).
-
-### Phase 7 — Observability hoàn chỉnh
-- [ ] Cài Prometheus + Grafana qua Helm.
-- [ ] Import dashboard từ `platform/monitoring/grafana/dashboards/`.
-- [ ] Cấu hình OTel agent trong từng service Java (auto-instrument).
-- [ ] Define SLI/SLO trong `docs/SLO.md`.
-- [ ] Wire alerts → Slack/Discord webhook.
-
-### Phase 8 — Staging + prod
-- [ ] `make ENV=staging tf-apply`.
-- [ ] Tag `rc-v0.1.0` → verify cd-staging.
-- [ ] `make ENV=prod tf-apply` (với public_access_cidrs restricted thật).
-- [ ] Tag `v0.1.0` → approve trong GitHub UI → verify cd-prod.
-
-### Phase 9 — Production hardening
-- [ ] Bật **AWS WAF** trước ALB.
-- [ ] **NetworkPolicy** mặc định deny + whitelist từng cặp service.
-- [ ] **Pod Security Standards: restricted** ở namespace `bss`.
-- [ ] Chaos test: `kubectl delete pod` ngẫu nhiên + verify recovery.
-- [ ] Multi-AZ verification — fail 1 AZ → cluster vẫn serve.
-
-### Phase 10 — Đánh bóng portfolio
-- [ ] Viết `docs/POSTMORTEMS.md` về bug khó nhất.
-- [ ] Video demo 5 phút (deploy → break → recover).
-- [ ] Blog post "Building a telecom BSS on AWS EKS".
-- [ ] Mời 1-2 senior review, xử lý feedback.
+| Phase (kế hoạch scaffold) | Trạng thái | Làm ở đâu / ghi chú |
+|---|---|---|
+| 0 — Chuẩn bị (account AWS, MFA, budget, toolchain) | ✅ | GĐ0 + GĐ4; toolchain trong WSL2 (`learning/19` phần 0) |
+| 1 — Local development (compose, CRUD, Flyway, Testcontainers) | ✅ | GĐ1: `scripts/e2e-local.sh` PASS, đặt hàng thật qua trình duyệt |
+| 2 — AWS bootstrap (S3 state, budget, backend `s3`) | ✅ | GĐ4: bucket `bss-tfstate-<account>` + `use_lockfile` (không DynamoDB) |
+| 3 — Deploy infrastructure dev + addon | ✅ | GĐ4–5: `terraform apply`, `platform-install.sh` (ALB, CSI, Karpenter, ExternalDNS) |
+| 4 — Deploy first service | ✅ | GĐ5: 7 service trên EKS, hóa đơn thật qua IRSA |
+| 5 — CI/CD wiring | ✅ | GĐ3 (CI) + GĐ6 (CD, ADR-005, rollback thật) |
+| 6 — Service nghiệp vụ TMF620/622/678 + web-portal | ✅ | GĐ1 + GĐ9 (danh tính, quyền sở hữu, 2 website thật) |
+| 7 — Observability (Prometheus, Grafana, OTel, SLO, alert → chat) | ✅ | GĐ2 (kind) + GĐ7/dọn nợ (EKS): alert → Discord, SLO burn-rate, log JSON + `trace_id` → X-Ray |
+| 8 — Staging + prod (tag rc → v, duyệt tay) | ✅ | GĐ6 + GĐ9: `rc-v2.2.0` → `v2.2.0` (HTTPS) — staging/prod ephemeral (ADR-006) |
+| 9 — Hardening: WAF, NetworkPolicy, PSS restricted, chaos | ✅ | WAF (GĐ7), NetworkPolicy 12/12 cả 3 môi trường, PSS `restricted`, chaos xóa Pod + drain node (lab 08) |
+| 9 — Hardening: **fail 1 AZ → cluster vẫn serve** | ⏳ **chưa làm** | Mới có topology spread theo AZ + RDS multi-AZ ở prod; chưa từng giả lập mất 1 AZ hay failover RDS |
+| 10 — POSTMORTEMS.md | ✅ | `docs/POSTMORTEMS.md` (PM-01: test "xanh giả") |
+| 10 — Video demo 5 phút | ⏳ việc của chủ repo | Kịch bản sẵn: `docs/demo-script.md` |
+| 10 — Blog post | 🟡 bản nháp | `docs/blog-post-draft.md` — chưa đăng |
+| 10 — Mời senior review | ⏳ việc của chủ repo | Buổi review với thầy = ô cuối của Definition of Done |
 
 ---
 
@@ -413,13 +373,17 @@ bss-platform/
 - Khi user mơ hồ — hỏi 1 câu làm rõ, không đoán.
 
 ### Khi tạo backend service mới
-1. Copy cấu trúc từ `customer-service` hoặc `product-catalog`.
-2. Đổi `groupId`/`artifactId` trong `pom.xml`, package `com.bss.<svc>`, DB schema.
+1. Copy cấu trúc từ `customer-service` hoặc `product-catalog` (đã dùng `bss-common-java`, `SecurityConfig`, UUID v7).
+2. Đổi `groupId`/`artifactId` trong `pom.xml`, package `com.bss.<svc>`.
 3. Tạo Flyway migration `V1__init_<svc>.sql`.
-4. Tối thiểu: 1 controller, 1 service, 1 repo, 1 entity, 1 DTO, 1 integration test.
-5. Thêm K8s base manifests vào `infrastructure/kubernetes/base/<svc>/`.
-6. Thêm vào `infrastructure/kubernetes/base/kustomization.yaml`.
-7. Thêm IRSA role vào `infrastructure/terraform/environments/*/main.tf` (mục `services`).
+4. Tối thiểu: 1 controller, 1 service, 1 repo, 1 entity, 1 DTO, 1 integration test (+ `*AuthIT` cho luật quyền).
+5. Thêm K8s base manifests vào `infrastructure/kubernetes/base/<svc>/` và `base/kustomization.yaml`;
+   NetworkPolicy cho ai được gọi nó (`base/network-policies/`).
+6. Database + user riêng: `bootstrap_one` + SPC + env của Job trong `overlays/<env>/db-bootstrap/`, secret trong `modules/rds`
+   (`service_databases`) + SecretProviderClass `overlays/<env>/secrets/`.
+7. IRSA role trong `infrastructure/terraform/environments/*/main.tf` (mục `services`).
+8. Repo ECR: `modules/ecr/variables.tf` (apply ở `shared`); CD: thêm vào `SERVICES` trong `scripts/release-manifest.sh`
+   (desired/manifest/rollback tính theo danh sách này); CI: filter + danh sách service trong `ci-backend.yml`.
 
 ### Khi sửa Terraform
 1. `terraform fmt && terraform validate` trước commit.
@@ -445,66 +409,78 @@ bss-platform/
 
 ## 10. Best practices ràng buộc
 
+> ✅ = đang đúng trong hệ thống; ⚠️ = ngoại lệ có chủ đích (ghi lý do + nơi ghi quyết định).
+
 ### Security
-- ❌ Không có AWS access key trong repo/local/CI (mọi xác thực qua IRSA hoặc OIDC).
-- ❌ Không có secret cleartext trong manifest hay env var (Secrets Manager + CSI).
-- ❌ Không log PII, password, OTP, token, CCCD.
-- ✅ Mọi image qua Trivy trong CI; fail nếu HIGH/CRITICAL chưa fix.
-- ✅ Pod chạy non-root, readOnly root FS, drop all caps.
-- ✅ EKS public endpoint **restricted** ở prod.
+- ✅ Không có AWS access key trong repo/CI — Pod dùng IRSA, CI dùng GitHub OIDC (role theo GitHub Environment).
+  Máy cá nhân dùng IAM user có MFA để chạy Terraform.
+- ✅ Không có secret cleartext trong manifest hay env var (Secrets Manager + CSI); webhook Discord chỉ nằm trong Secret.
+- ✅ Không log PII, password, OTP, token, CCCD.
+- ✅ Mọi image (kể cả Keycloak) qua Trivy trong CI; fail nếu HIGH/CRITICAL chưa fix. `.trivyignore` phải ghi lý do.
+- ✅ Pod chạy non-root, readOnly root FS, drop all caps; namespace `bss` enforce PSS `restricted`.
+- ✅ NetworkPolicy default-deny + whitelist từng cặp — đo bằng `scripts/netpol-matrix.sh` (12/12 cả 3 môi trường).
+- ✅ Mỗi service một IAM role + một DB user; `/auth/admin` của Keycloak không ra internet.
 - ✅ ECR repo `IMMUTABLE` tags.
+- ⚠️ EKS public endpoint **restricted** ở prod — chỉ đúng khi prod chạy thường trực. Trong buổi demo ephemeral đang dùng
+  `0.0.0.0/0` vì runner GitHub không có IP cố định (`docs/runbooks/cd-staging-prod-demo.md` §4).
 
 ### Reliability
-- ✅ ≥2 replica ở prod, PDB minAvailable ≥ 1.
-- ✅ HPA dựa CPU + custom metric (req/s) khi sẵn sàng.
-- ✅ Mọi external call (DB, SQS, REST) có timeout + retry + circuit breaker (Resilience4j).
-- ✅ SLI/SLO + error budget burn-rate alert.
+- ✅ ≥2 replica ở staging/prod, PDB `minAvailable` ≥ 1 (dev 1 replica dùng `maxUnavailable: 1` để Karpenter gom node được).
+- ✅ HPA theo **CPU** (bỏ memory — JVM giữ heap nên HPA memory không bao giờ scale down, #203). Custom metric req/s: chưa làm.
+- ✅ Gọi REST giữa service: timeout + retry + circuit breaker (Resilience4j); DB: HikariCP pool tối đa 5/Pod (ngân sách kết nối RDS).
+- ✅ Probe có timeout thật (liveness 5 s, readiness 3 s) — timeout mặc định 1 s từng làm kubelet giết Pod dưới tải.
+- ✅ SLI/SLO + error budget burn-rate alert (`docs/SLO.md`, `order-management`).
+- ⚠️ Chưa giả lập mất 1 AZ / failover RDS (mục 8).
 
 ### Cost
-- ✅ Dev cluster `make ENV=dev tf-destroy` mỗi tối.
-- ✅ Dev: t3.micro RDS, t3.medium nodes, không HA.
-- ✅ VPC Endpoints thay NAT Gateway (tiết kiệm $1.10/ngày).
+- ✅ Dev: `make ENV=dev tf-destroy` mỗi tối; staging/prod ephemeral (ADR-006). Sau destroy chạy `tools/ops/orphan_finder.py`.
+- ✅ Dev: db.t3.micro, t3.medium, không HA; Karpenter chọn Spot (trần 8 vCPU).
+- ✅ Mạng dev: **1 NAT + S3 gateway endpoint** (ADR-002). Quy tắc cũ "VPC Endpoint thay NAT" sai ở quy mô 2 AZ: thiếu
+  endpoint thì cluster không chạy được, đủ endpoint thì đắt hơn NAT.
 - ✅ ECR lifecycle policy auto-xóa image cũ.
-- ⚠️ Budget alert ở `$30/tháng` cho dev — cảnh báo nếu vượt.
+- ✅ Budget alert `$30/tháng` (mục tiêu < $50/tháng); `tools/ops/cost_report.py` xem chi phí 7 ngày theo dịch vụ.
 
 ### Operability
-- ✅ Mọi service expose `/actuator/health`, `/actuator/prometheus`.
-- ✅ Mỗi service có Grafana dashboard riêng (4 RED + saturation).
-- ✅ Mọi alert có `runbook_url` annotation.
-- ✅ Log JSON ở prod, có `trace_id` correlate với X-Ray.
+- ✅ Mọi service expose `/actuator/health`, `/actuator/prometheus` (ServiceMonitor theo nhãn `tier: backend`).
+- ✅ Dashboard Grafana `bss-overview` (RED + saturation) lọc theo biến `$application` — một dashboard cho mọi service.
+- ✅ Mọi alert có `runbook_url` annotation (`docs/runbooks/`), tới Discord qua Alertmanager.
+- ✅ Log JSON có `trace_id` correlate với X-Ray.
 
 ---
 
 ## 11. Lệnh thường dùng (cheatsheet)
 
 ```bash
-make help                                    # liệt kê target
+make help                                    # liệt kê mọi target
 
-# Bootstrap (1 lần per account)
-make bootstrap                               # S3 tfstate + DynamoDB locks + budget
+# Bootstrap (1 lần per account) — rồi `make ENV=shared tf-init tf-plan tf-apply` (ECR, OIDC, role, zone, cert)
+make bootstrap                               # S3 tfstate (use_lockfile) + budget + Spot service-linked role
 
-# Local dev
-make local-up                                # Postgres + Redis + LocalStack
-cd apps/backend/customer-service && mvn spring-boot:run
-cd apps/frontend/web-portal && npm run dev
+# Local, $0
+./scripts/e2e-local.sh                       # docker-compose + 5 service + Keycloak → luồng đầy đủ → PASS
+./scripts/kind-up.sh && ./scripts/auth-install.sh kind && make kind-load deploy-local
+make ENV=kind e2e e2e-browser                # e2e-flow.sh + Playwright trên http://bss.localhost
 
-# Infrastructure (ENV=dev|staging|prod)
+# Infrastructure (ENV=dev|staging|prod) — LUÔN qua make (truyền -backend-config, B-38)
 make ENV=dev tf-init
-make ENV=dev tf-plan
+make ENV=dev tf-plan                         # đọc kỹ trước khi apply
 make ENV=dev tf-apply                        # cần confirm!
-make ENV=dev tf-destroy                      # nightly để tiết kiệm
-
-# Cluster access
 make ENV=dev kube-config
+./scripts/platform-install.sh dev            # ALB Controller, gp3, Secrets CSI, Karpenter (dev), ExternalDNS
+kubectl apply -k infrastructure/kubernetes/overlays/dev/db-bootstrap   # 5 DB + 5 user (rồi delete Job)
 
-# Build + deploy single service
-make ENV=dev SERVICE=customer-service push
-make ENV=dev SERVICE=customer-service set-image deploy
-make ENV=dev smoke
+# Deploy = GitHub Actions "CD — dev" (merge main hoặc Run workflow) — không kubectl apply tay
+./scripts/smoke.sh dev                       # 7 kiểm qua https://dev.bssplatform.dpdns.org
+make ENV=dev e2e e2e-browser                 # 2 website, khách + nhân viên
+make ENV=dev admin-user USERNAME=<u> EMAIL=<e>   # tài khoản nhân viên (mật khẩu tạm)
 
-# Promote
-git tag rc-v0.1.0 && git push --tags         # → cd-staging
-git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
+# Promote — v* phải trỏ CÙNG commit với rc-v* đã qua staging
+git tag rc-v2.3.0 <commit> && git push origin rc-v2.3.0   # → cd-staging
+git tag v2.3.0    <commit> && git push origin v2.3.0      # → cd-prod (duyệt tay)
+
+# Kết thúc buổi
+make ENV=dev tf-destroy                      # teardown.sh: Ingress → chờ DNS → NodePool → ENI/SG sót → destroy
+python tools/ops/orphan_finder.py            # phải rỗng
 ```
 
 ---
@@ -533,8 +509,7 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 - **Ngày tiếp nhận:** repo được người maintain hiện tại (không phải người dựng scaffold ban đầu)
   tiếp nhận, kiểm chứng lại toàn bộ từ đầu, và tách hẳn khỏi repo gốc — xem
   `learning/01-hien-trang-va-danh-sach-loi.md` cho danh sách đầy đủ lỗi phát hiện lúc tiếp nhận.
-- **Phase hiện tại: 9 hoàn thành → `v2.0.0` (sản phẩm có danh tính thật, chạy trên cả dev/staging/prod),
-  và đợt "dọn nợ" từ Phase 8 về 0 đã xong.** Mọi phase đã **hoàn thành và kiểm chứng thật** trên hạ tầng thật
+- **Phase hiện tại: 9 hoàn thành + dọn nợ xong; release mới nhất `v2.2.0` (HTTPS, chạy thật trên dev/staging/prod).** Mọi phase đã **hoàn thành và kiểm chứng thật** trên hạ tầng thật
   (không chỉ code) — xem [docs/ROADMAP.md](docs/ROADMAP.md) cho bảng public, bảng dưới cho bằng chứng.
 - **AWS account:** đã tạo, MFA bật, Budget alert theo dõi (ngân sách dev mục tiêu **< $50/tháng**,
   không chạy 24/7 — mọi environment dựng theo buổi rồi `terraform destroy`, xem
@@ -559,8 +534,8 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 | 9 — Sản phẩm hoàn chỉnh (danh tính) | ✅ | Keycloak + PKCE, khách tự đăng ký → admin duyệt → mua, quyền sở hữu 4 service (ADR-008); Playwright 3/3 + `e2e-kind.sh` trên kind; Keycloak trên EKS, `rc-v2.0.0` → staging → `v2.0.0` → prod (duyệt tay), smoke có token 4/4 cả 3 môi trường |
 | Dọn nợ 8 → 0 | ✅ | Karpenter Spot thật (node Ready ~36s, k6 ×2.4 request); NetworkPolicy EKS 11/11; 8 việc GĐ7 trên 1 cluster (alert → Discord 146s, log JSON + `trace_id` → X-Ray); Spring Boot 3.5 → 0 CVE; schema expand → migrate → contract trên RDS; `orphan_finder.py` bắt 3 loại tài nguyên sót |
 | Sau GĐ9 (2026-09-30) | ✅ | Keycloak production-grade trên EKS thật (ADR-011: image optimized, rootfs chỉ đọc, 2 Pod thành cluster qua RDS với NetworkPolicy bật, xóa 1 Pod vẫn giữ session + smoke xanh); auth luôn bật (bỏ `bss.auth.enabled`); rà Definition of Done — xem `docs/ROADMAP.md` |
-| 2 website trên mọi môi trường (2026-10-02) | ✅ | `e2e-flow.sh` (khách + nhân viên + khách khác, kiểm cả phía admin) PASS + Playwright 3/3 trên kind, dev, staging, prod; chủ repo cấp tài khoản nhân viên bằng `admin-user.sh` rồi tự duyệt khách + đối chiếu hóa đơn 2 phía trên dev/staging/prod |
 | HTTPS + tên miền (2026-10-01) | ✅ | `bssplatform.dpdns.org` (ADR-012): zone Route 53 + cert ACM ở shared, ExternalDNS (IAM theo tên bản ghi); dev EKS: TLS 1.3, smoke 7/7 qua HTTPS, NetworkPolicy 12/12, đăng ký + đăng nhập web thật; Keycloak 26.7.5 |
+| 2 website trên mọi môi trường (2026-10-02) | ✅ | `e2e-flow.sh` (khách + nhân viên + khách khác, kiểm cả phía admin) PASS + Playwright 3/3 trên kind, dev, staging, prod; chủ repo cấp tài khoản nhân viên bằng `admin-user.sh` rồi tự duyệt khách + đối chiếu hóa đơn 2 phía trên dev/staging/prod |
 
 ### Quyết định kiến trúc đã chốt kể từ scaffold ban đầu (ADR đầy đủ ở `docs/adr/`)
 
