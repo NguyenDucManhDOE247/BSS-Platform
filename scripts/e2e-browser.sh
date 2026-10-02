@@ -39,7 +39,7 @@ else
     if [ -n "$START_MS" ]; then
       # User do test hành trình tự đăng ký (tên `e2e<timestamp>`) trong lần chạy này.
       for id in $(kc_admin GET "/users?search=e2e&max=200" \
-                  | jq -r --argjson t "$START_MS" '.[] | select(.createdTimestamp >= $t) | .id'); do
+                  | jqr --argjson t "$START_MS" '.[] | select(.createdTimestamp >= $t) | .id'); do
         kc_delete_user "$id"
       done
     fi
