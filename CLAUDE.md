@@ -589,7 +589,9 @@ git tag v0.1.0 && git push --tags            # → cd-prod (manual approval)
 - ~~NetworkPolicy ở staging/prod~~ — ✅ 2026-10-01 (B-25, #198): bật `enable_network_policy` cả 2 môi trường;
   `netpol-matrix.sh` 12/12 trên staging và 12/12 trên prod (Keycloak 2 replica, ô JGroups 7800) trong đợt
   release `rc-v2.1.0` → `v2.1.0`.
-- **Tỉ lệ lỗi 7,9% dưới tải 700 req/s có Karpenter** — manh mối: `BssPodCrashLooping` của api-gateway
-  bắn trong lúc đo (ADR-010).
+- ~~Tỉ lệ lỗi 7,9% dưới tải 700 req/s có Karpenter~~ — ✅ 2026-10-01 (#203): 2 nguyên nhân có bằng chứng — probe
+  timeout mặc định 1 s (kubelet giết gateway → 502) và hết kết nối RDS (→ 500); probe 5 s/3 s + HikariCP max 5 → **0% lỗi**,
+  3 lần đo liền (`docs/labs/07-load-test-dev.md` §2c).
 - ~~B-15~~ — ✅ code xong 2026-10-01 (PR bss-common-java 0.2.0 + PR các service): UUID v7, `Idempotency-Key` cho
-  `productOrder`, merge-patch `null` = xóa, 4 service dùng `bss-common-java`. Đóng issue khi 2 PR đã merge.
+  `productOrder`, merge-patch `null` = xóa, 4 service dùng `bss-common-java` (#199, #200 đã merge).
+- **0 issue mở** (2026-10-02). Ngoài repo: buổi review với thầy (ô cuối của Definition of Done — việc của chủ repo).
