@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- `zustand` from `web-portal` — declared since the scaffold but never imported (UI state is local `useState`);
+  lockfile drops it and `use-sync-external-store`. Lint, 13 vitest tests and the build pass.
 - `packages/ui-kit` — never imported by either website (each app keeps its own small components); dropped from
   `ci-frontend.yml` paths, `CLAUDE.md` and `README.md`.
 - `platform/secrets/customer-secrets-spc.yaml` — sample pointing at the RDS master secret, replaced in Phase 5 by the
