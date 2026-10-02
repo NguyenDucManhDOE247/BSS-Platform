@@ -17,6 +17,11 @@ env:
 
 extraArgs:
   - --aws-zone-type=public
+  # TXT "sở hữu" = extdns-<kiểu>.<host> — PHẢI kết thúc bằng dấu chấm để nằm TRONG zone khi host là apex
+  # (docs/registry/txt.md của ExternalDNS). Mặc định `a-<host>` với apex = `a-bssplatform.dpdns.org` → ngoài zone →
+  # ExternalDNS lặng lẽ bỏ TXT, bản ghi A không chủ, không bao giờ được xóa (lỗi thật trên prod 2026-10-02).
+  # Đổi giá trị này = đổi tên bản ghi được phép trong IAM (modules/platform-iam/external-dns.tf).
+  - --txt-prefix=extdns-%{record_type}.
 
 # sync = xóa luôn bản ghi khi Ingress bị xóa — teardown.sh xóa Ingress TRƯỚC destroy để ExternalDNS kịp dọn.
 policy: sync

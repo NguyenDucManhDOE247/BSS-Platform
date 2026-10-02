@@ -21,7 +21,7 @@ kept by the maintainer while working through this project as a learning exercise
 | 7 — Observability + security on AWS | Dashboards/alerts/SLO, NetworkPolicy, OAuth2, WAF, Trivy gate | ✅ Done |
 | 8 — Reliability, load test, docs, demo | k6 capacity threshold, chaos engineering, ops tooling, this README/CLAUDE.md refresh, `v1.0.0` | ✅ Done |
 | 9 — Real product (identity) | Keycloak + OIDC/PKCE, self-registration → admin approval, per-customer ownership in 4 services, 2 real websites, auth on in every environment, `v2.0.0` | ✅ Done — Playwright on `kind`; `rc-v2.0.0` → staging → `v2.0.0` → prod with authenticated smoke |
-| HTTPS + custom domain (B-23) | `bssplatform.dpdns.org`: Route 53 + ACM in the shared state, ExternalDNS, Keycloak behind the ALB, browser login on AWS | ✅ Done — 2026-10-01 on dev EKS: TLS 1.3 with the ACM cert, smoke 7/7 over HTTPS, NetworkPolicy 12/12, real sign-up + sign-in in a browser ([ADR-012](adr/ADR-012-https-ten-mien.md)) |
+| HTTPS + custom domain (B-23) | `bssplatform.dpdns.org`: Route 53 + ACM in the shared state, ExternalDNS, Keycloak behind the ALB, browser login on AWS | ✅ Done — 2026-10-01 on dev EKS: TLS 1.3 with the ACM cert, smoke 7/7 over HTTPS, NetworkPolicy 12/12, real sign-up + sign-in in a browser; 2026-10-02 `rc-v2.2.0` → staging and `v2.2.0` → prod (apex), 7/7 + 12/12 each ([ADR-012](adr/ADR-012-https-ten-mien.md)) |
 | Debt pass 8 → 0 | Every open item from earlier phases | ✅ Done — Karpenter Spot on dev, NetworkPolicy on EKS (11/11), all 8 Phase-7 items on one EKS cluster, Spring Boot 3.5 (0 HIGH/CRITICAL), expand/migrate/contract on RDS, orphan finder |
 
 Each phase above was executed and **verified against real infrastructure** (not just "code written")
