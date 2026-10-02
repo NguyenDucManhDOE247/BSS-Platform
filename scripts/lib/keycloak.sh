@@ -12,6 +12,11 @@
 # `iss` của token vẫn là https://<host>/auth/realms/bss vì KC_HOSTNAME là URL đầy đủ (ADR-012).
 #
 # Biến do kc_connect đặt: KCTX (kube context), KC_URL (…/auth). Biến do kc_master_login đặt: KC_MASTER.
+#
+# Mọi output của jq đi qua `jqr` (= jq -r, bỏ \r): jq.exe bản Windows xuất CRLF, và Git Bash chỉ bỏ \r ở
+# dòng CUỐI của $(…) → trong danh sách nhiều dòng, các id đầu dính \r → curl "Malformed input to a URL"
+# (lỗi thật 2026-10-02: e2e-browser.sh dev không xóa được user test).
+jqr() { jq -r "$@" | tr -d "\r"; }
 
 KC_PF_PID=""
 
@@ -52,7 +57,7 @@ kc_master_login() {
   u="$(kubectl --context "$KCTX" -n bss get secret keycloak-admin -o jsonpath='{.data.username}' | base64 -d)"
   p="$(kubectl --context "$KCTX" -n bss get secret keycloak-admin -o jsonpath='{.data.password}' | base64 -d)"
   KC_MASTER="$(curl -fsS "$KC_URL/realms/master/protocol/openid-connect/token" -d grant_type=password \
-    -d client_id=admin-cli --data-urlencode "username=$u" --data-urlencode "password=$p" | jq -r '.access_token')"
+    -d client_id=admin-cli --data-urlencode "username=$u" --data-urlencode "password=$p" | jqr '.access_token')"
   [ -n "$KC_MASTER" ] && [ "$KC_MASTER" != "null" ] || { echo "✗ không đăng nhập được Keycloak master (Secret keycloak-admin?)" >&2; return 1; }
 }
 
@@ -64,7 +69,7 @@ kc_admin() {
 
 # kc_user_id USERNAME → id (rỗng nếu chưa có)
 kc_user_id() {
-  kc_admin GET "/users?username=$1&exact=true" | jq -r '.[0].id // empty'
+  kc_admin GET "/users?username=$1&exact=true" | jqr '.[0].id // empty'
 }
 
 # kc_create_user USERNAME EMAIL PASSWORD TEMPORARY(true|false) → id
@@ -88,15 +93,19 @@ kc_make_staff() {
   echo "[$def]" | kc_admin DELETE "/users/$id/role-mappings/realm" -H 'Content-Type: application/json' -d @- >/dev/null
 }
 
+# kc_delete_user USER_ID — 204 = xóa xong; 404 = đã bị xóa trước đó (vd. vòng dọn theo tên đã xóa) → im lặng.
 kc_delete_user() {
-  [ -z "$1" ] || kc_admin DELETE "/users/$1" >/dev/null || true
+  local code
+  [ -n "$1" ] || return 0
+  code="$(curl -sS -o /dev/null -w "%{http_code}" -X DELETE -H "Authorization: Bearer $KC_MASTER" "$KC_URL/admin/realms/bss/users/$1" || true)"
+  case "$code" in 204|404) ;; *) echo "⚠ xóa user $1: HTTP $code" >&2 ;; esac
 }
 
 # kc_user_token USERNAME PASSWORD → access token
 kc_user_token() {
   local tok
   tok="$(curl -fsS "$KC_URL/realms/bss/protocol/openid-connect/token" -d grant_type=password -d client_id=api-gateway \
-    --data-urlencode "username=$1" --data-urlencode "password=$2" | jq -r '.access_token')"
+    --data-urlencode "username=$1" --data-urlencode "password=$2" | jqr '.access_token')"
   [ -n "$tok" ] && [ "$tok" != "null" ] || { echo "✗ không lấy được token cho $1" >&2; return 1; }
   echo "$tok"
 }

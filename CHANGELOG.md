@@ -7,8 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Both websites verified end to end on every environment** (#210): `scripts/e2e-flow.sh <kind|dev|staging|prod>`
+  (was `e2e-kind.sh`, kept as a shortcut) runs the business flow with a fresh customer, a staff member and a second
+  customer — temporary Keycloak users, deleted at the end — and now also checks the admin side (pending-approval
+  list, the customer's order and invoice, revenue summary grows by the invoice, staff cannot place orders).
+  `scripts/e2e-browser.sh <env>` runs Playwright against `https://<host>`. On AWS the Keycloak admin API is reached
+  through `kubectl port-forward` only (`scripts/lib/keycloak.sh`). Verified 2026-10-02: kind, dev, staging and prod
+  (re-deploy of `rc-v2.2.0` / `v2.2.0`) — API flow PASS + Playwright 3/3 each, plus a manual staff/customer session.
+- `scripts/admin-user.sh <env> <user> <email> [--reset-password]` — onboards a staff account the way operations
+  would: temporary password shown once (Keycloak forces a change at first login), realm role `admin`, the
+  `customer` default role removed, idempotent. `make e2e`, `make e2e-browser`, `make admin-user`.
+
 ### Fixed
 
+- `make help` never listed targets containing a digit (`e2e-local`, `e2e-kind`, …).
+- `e2e-browser.sh` cleanup from Git Bash on Windows: `jq.exe` writes CRLF and Git Bash only strips the last `\r` of
+  a `$(…)`, so all but the last user id in the cleanup loop carried a `\r` → "Malformed input to a URL" → test users
+  left behind; and an exported `MSYS_NO_PATHCONV` made `curl.exe -o /dev/null` write to `C:\dev\null`. Fixed and
+  re-verified on prod (leftover user removed).
 - **ExternalDNS at the apex** (found only on prod, `v2.2.0`): the default ownership TXT name `a-<host>` is
   `a-bssplatform.dpdns.org` for the apex — outside the hosted zone — so ExternalDNS silently skipped it and the
   apex A/AAAA records had no owner (never deleted on teardown; `teardown.sh`/`orphan_finder` reported clean).

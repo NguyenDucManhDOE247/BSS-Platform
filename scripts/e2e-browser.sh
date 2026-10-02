@@ -39,7 +39,7 @@ else
     if [ -n "$START_MS" ]; then
       # User do test hành trình tự đăng ký (tên `e2e<timestamp>`) trong lần chạy này.
       for id in $(kc_admin GET "/users?search=e2e&max=200" \
-                  | jq -r --argjson t "$START_MS" '.[] | select(.createdTimestamp >= $t) | .id'); do
+                  | jqr --argjson t "$START_MS" '.[] | select(.createdTimestamp >= $t) | .id'); do
         kc_delete_user "$id"
       done
     fi
@@ -67,17 +67,21 @@ fi
 
 WORK="$PWD/tests/e2e-browser"
 USER_ARGS=(--user "$(id -u):$(id -g)")
+NOCONV=""
 case "$(uname -s)" in
   MINGW*|MSYS*)
     # Git Bash trên Windows (nơi có aws/kubectl): Docker Desktop cần đường dẫn Windows và KHÔNG được để MSYS
     # tự đổi `/work` thành `C:/Program Files/Git/work`; uid của Git Bash không có nghĩa trong container.
+    # MSYS_NO_PATHCONV chỉ cho lệnh docker — KHÔNG export: cleanup sau đó gọi curl.exe với `-o /dev/null`, mà
+    # không đổi đường dẫn thì curl.exe ghi vào "C:\dev\null" và báo "(23) client returned ERROR on write" (lỗi
+    # thật 2026-10-02 ở staging — user vẫn bị xóa, chỉ là nhiễu).
     WORK="$(cd tests/e2e-browser && pwd -W)"
-    export MSYS_NO_PATHCONV=1
+    NOCONV="1"
     USER_ARGS=()
     ;;
 esac
 
-docker run --rm ${DOCKER_ARGS[@]+"${DOCKER_ARGS[@]}"} \
+MSYS_NO_PATHCONV="$NOCONV" docker run --rm ${DOCKER_ARGS[@]+"${DOCKER_ARGS[@]}"} \
   -e BASE_URL="$BASE_URL" ${E2E_ENV[@]+"${E2E_ENV[@]}"} \
   -v "$WORK:/work" -w /work \
   ${USER_ARGS[@]+"${USER_ARGS[@]}"} -e HOME=/tmp \
