@@ -1,5 +1,5 @@
 .PHONY: help bootstrap local-up local-down local-reset \
-        verify verify-all e2e-local lint-frontend test-frontend build-images \
+        verify verify-all e2e-local e2e e2e-browser admin-user lint-frontend test-frontend build-images \
         tf-init tf-plan tf-apply tf-destroy \
         kube-config platform-install \
         ecr-login build push deploy set-image smoke grafana \
@@ -16,7 +16,7 @@ SERVICE ?= customer-service
 SERVICE_DIR := $(shell scripts/release-manifest.sh dir $(SERVICE) 2>/dev/null || echo apps/backend/$(SERVICE))
 
 help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-22s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
 # ── One-time AWS bootstrap ────────────────────────────────────────────
 bootstrap: ## One-time per-account: S3 tfstate + DynamoDB locks + budget alert
@@ -153,6 +153,15 @@ deploy-local: kind-load ## Apply overlays/local to the kind cluster (context kin
 
 e2e-kind: ## Same business-flow check as e2e-local, but through kind + ingress-nginx
 	./scripts/e2e-kind.sh
+
+e2e: ## Business flow (customer + staff, real tokens) on ENV=kind|dev|staging|prod — https://<host> on AWS
+	./scripts/e2e-flow.sh $(ENV)
+
+e2e-browser: ## Playwright (both websites) on ENV=kind|dev|staging|prod
+	./scripts/e2e-browser.sh $(ENV)
+
+admin-user: ## Onboard a staff admin: make ENV=dev admin-user USERNAME=<u> EMAIL=<e> (temporary password)
+	./scripts/admin-user.sh $(ENV) $(USERNAME) $(EMAIL)
 
 load-test: ## k6 load test — see tests/load/README.md (watch `kubectl -n bss get hpa -w` alongside)
 	k6 run tests/load/plans-and-order.js

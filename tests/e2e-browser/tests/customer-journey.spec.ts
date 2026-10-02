@@ -56,7 +56,7 @@ test('khách mới: đăng ký → hồ sơ → chờ duyệt → được duy�
   const orderUrl = page.url();
   await shot('05-chua-duyet-khong-mua-duoc');
 
-  // 5. Nhân viên duyệt trên admin-console (phiên đăng nhập riêng của admin1) — 2 website đồng bộ qua
+  // 5. Nhân viên duyệt trên admin-console (phiên đăng nhập riêng của nhân viên — ADMIN) — 2 website đồng bộ qua
   //    cùng 1 backend: khách thấy thay đổi ngay ở bước sau mà không cần đăng nhập lại.
   await approveCustomerInAdminConsole(browser, user.email, 'test-results/journey/05b-admin-duyet');
 
