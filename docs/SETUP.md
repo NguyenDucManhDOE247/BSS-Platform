@@ -74,11 +74,11 @@ Optional, same scripts as on AWS: `./scripts/monitoring-install.sh kind`, `loggi
 4. Check the **vCPU quota** (`L-1216C47A`, On-Demand Standard) — a new account has 8, which fits only one
    cluster at a time ([runbooks/cd-staging-prod-demo.md §1b](runbooks/cd-staging-prod-demo.md)).
 
-## Part 4 — Shared state: ECR, GitHub OIDC, deployer roles (once)
+## Part 4 — Shared state: ECR, GitHub OIDC, deployer roles, domain (once)
 
 ```bash
 make ENV=shared tf-init && make ENV=shared tf-plan    # READ the plan
-make ENV=shared tf-apply                              # 8 ECR repos, OIDC provider, 3 deployer roles
+make ENV=shared tf-apply                              # 8 ECR repos, OIDC provider, 3 deployer roles, Route 53 zone + ACM cert
 ./scripts/setup-github-environments.sh                # dry run — read it
 ./scripts/setup-github-environments.sh --apply        # Environments dev/staging/production + variables
 ```
@@ -95,6 +95,21 @@ role trusts exactly one GitHub Environment:
 
 **Check:** `gh api repos/{owner}/{repo}/environments --jq '.environments[].name'` → `dev staging production`.
 
+**Domain + HTTPS (once, two steps — [ADR-012](adr/ADR-012-https-ten-mien.md)).** The AWS overlays serve
+`https://dev.bssplatform.dpdns.org`, `https://staging.…` and the apex for prod; the ALB Controller finds the
+ACM certificate by host, so **no environment gets an ALB until the certificate is `ISSUED`**:
+
+```bash
+terraform -chdir=infrastructure/terraform/environments/shared output dns_name_servers   # 4 awsdns-* name servers
+# → enter them at the registrar ("Use other nameservers" at DigitalPlat) — a manual step
+dig NS bssplatform.dpdns.org +short @1.1.1.1   # wait until it shows awsdns-*
+# set dns_delegated = true in environments/shared/terraform.tfvars, then plan + apply again → certificate ISSUED
+```
+
+Cost: the hosted zone is $0.50/month; the public ACM certificate is free. Using another domain: change
+`domain_name` (shared), the host in the three AWS overlays, and the redirect URIs in
+`components/keycloak-realm/bss-realm.json`. Details: [runbooks/https-domain.md](runbooks/https-domain.md).
+
 ## Part 5 — Dev environment (each working session)
 
 ```bash
@@ -105,7 +120,7 @@ make ENV=dev tf-plan        # READ it — ~90 resources on a fresh account
 make ENV=dev tf-apply       # ~15–20 min (EKS, RDS, NAT)
 make ENV=dev kube-config && kubectl get nodes
 
-./scripts/platform-install.sh dev          # namespace bss, ALB Controller, gp3, Secrets CSI, Karpenter (dev)
+./scripts/platform-install.sh dev          # namespace bss, ALB Controller, gp3, Secrets CSI, Karpenter (dev), ExternalDNS
 kubectl apply -k infrastructure/kubernetes/overlays/dev/db-bootstrap
 kubectl -n bss wait --for=condition=complete job/db-bootstrap --timeout=180s
 kubectl -n bss logs job/db-bootstrap | tail -2          # "all 5 databases ready" (4 services + Keycloak)
@@ -120,7 +135,11 @@ the manual equivalent). Observability and WAF are separate, optional steps:
 `./scripts/monitoring-install.sh dev` (set `ALERT_WEBHOOK_URL`), `logging-install.sh dev`,
 `tracing-install.sh dev`, `make ENV=dev wire-waf` ([runbooks/waf.md](runbooks/waf.md)).
 
-**Check:** CD run green; `kubectl -n bss get pods` all `Running`; `./scripts/smoke.sh dev` PASS.
+**Check:** CD run green; `kubectl -n bss get pods` all `Running`; `./scripts/smoke.sh dev` PASS (7 checks
+over `https://dev.bssplatform.dpdns.org` with the real certificate); `dig +short dev.bssplatform.dpdns.org`
+returns the ALB (ExternalDNS creates it ~1 min after the ALB). Then open the site and sign up. The realm on AWS has
+no users: to use `/admin/`, grant the realm role `admin` through the Keycloak admin console over
+`kubectl port-forward` ([runbooks/auth.md](runbooks/auth.md)) — `/auth/admin` is deliberately not exposed.
 
 ## Part 6 — Staging / prod (ephemeral, one session at a time)
 
@@ -136,7 +155,7 @@ git tag v2.1.0   <same>   && git push origin v2.1.0       # cd-prod: gate (rc ve
 ## Part 7 — Tear down (every evening)
 
 ```bash
-make ENV=dev tf-destroy                    # teardown.sh deletes Ingress + Karpenter NodePool first (not in Terraform state)
+make ENV=dev tf-destroy                    # teardown.sh: Ingress → waits for ExternalDNS to delete the DNS records → Karpenter NodePool → destroy
 pip install -r tools/ops/requirements.txt  # once (boto3)
 python tools/ops/orphan_finder.py          # anything still billing? must be empty
 python tools/ops/cost_report.py            # last 7 days of spend
@@ -152,4 +171,7 @@ python tools/ops/cost_report.py            # last 7 days of spend
 | Pod `CreateContainerConfigError` | Secret not synced: Secrets CSI not installed or pod doesn't mount the CSI volume | `platform-install.sh`, [ADR-004](adr/ADR-004-db-credential-wiring-dev.md) |
 | cd-dev: "Runner không kết nối được API server" | `public_access_cidrs` excludes GitHub runners | [runbooks/cd-staging-prod-demo.md §4](runbooks/cd-staging-prod-demo.md) |
 | Every API call 401 even with a fresh token | `iss` ≠ `issuer-uri` of the services | [runbooks/auth.md](runbooks/auth.md) §6 |
+| Ingress has no `ADDRESS`; `describe ingress` says no certificate found | ACM certificate not `ISSUED` yet (Part 4, step 2) | [runbooks/https-domain.md](runbooks/https-domain.md) |
+| `dig` returns NXDOMAIN although the Ingress has an `ADDRESS` | ExternalDNS missing or `AccessDenied` (host not in its IAM list) | `platform-install.sh`; `kubectl -n kube-system logs deploy/external-dns` |
+| Keycloak login page says "HTTPS required" | Keycloak does not see `X-Forwarded-Proto` | `KC_PROXY_HEADERS=xforwarded` in `components/keycloak-aws` |
 | Second Keycloak pod restarts once on a brand-new environment | Two pods creating Liquibase tables on an empty DB | Expected, self-heals — [ADR-011](adr/ADR-011-keycloak-production-grade.md) §3 |
