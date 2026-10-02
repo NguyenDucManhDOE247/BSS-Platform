@@ -55,7 +55,7 @@ dig +short dev.bssplatform.dpdns.org @1.1.1.1      # IP của ALB (alias)
 
 `scripts/teardown.sh <env>` đã xóa Ingress trước rồi **chờ ExternalDNS xóa bản ghi** (≤ 3 phút). Zone + cert
 ở lại (CỐ Ý). Sau đó `python tools/ops/orphan_finder.py` — mục `DNS record` = bản ghi của cluster đã chết.
-Dọn tay (thay `<zone-id>`, `<name>`; xóa cả bản ghi A alias lẫn TXT `a-<name>`):
+Dọn tay (thay `<zone-id>`, `<name>`; xóa cả bản ghi A/AAAA alias lẫn TXT `extdns-a.<name>` / `extdns-aaaa.<name>`):
 
 ```bash
 aws route53 list-resource-record-sets --hosted-zone-id <zone-id> --query "ResourceRecordSets[?contains(Name,'<name>')]"
