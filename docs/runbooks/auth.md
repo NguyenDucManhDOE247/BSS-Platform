@@ -107,8 +107,8 @@ kubectl -n bss port-forward svc/keycloak 18080:8080 &
 |---|---|
 | `mvn verify` từng service (`*AuthIT`) | Luật sở hữu với JWT giả (`spring-security-test`), Postgres thật |
 | `npm test` 2 app | AdminGate, luồng duyệt/khóa, interceptor |
-| `./scripts/e2e-kind.sh` | Luồng API: user Keycloak mới → hồ sơ → 422 → duyệt → mua → hóa đơn → khách khác 404 |
-| `./scripts/e2e-browser.sh` | Playwright trình duyệt thật: đăng ký → duyệt trên admin-console → mua → đơn/hóa đơn |
+| `./scripts/e2e-flow.sh <kind\|dev\|staging\|prod>` | Luồng API: khách mới → hồ sơ → 422 → nhân viên duyệt → mua → hóa đơn → admin thấy đơn/hóa đơn/doanh thu → nhân viên đặt hàng 403 → khách khác 404 (`e2e-kind.sh` = lối tắt cho `kind`) |
+| `./scripts/e2e-browser.sh [env]` | Playwright trình duyệt thật: đăng ký → duyệt trên admin-console → mua → đơn/hóa đơn (mặc định kind; AWS qua `https://<host>`) |
 | `./scripts/smoke.sh <env>` | Smoke có token trên AWS (chạy trong CD, hỏng thì rollback) |
 
 ## 6. Vận hành thường gặp
@@ -160,7 +160,7 @@ kubectl -n bss delete pod "$(kubectl -n bss get pod -l app=keycloak -o name | he
 1. Sửa `ARG KEYCLOAK_VERSION` ở `apps/identity/keycloak/Dockerfile` **và** image ở
    `overlays/local/keycloak/deployment.yaml` + `deploy/docker-compose.yml` (cùng 1 bản ở mọi nơi).
 2. PR → `ci-keycloak.yml` (build + Trivy + chạy thử 2 replica) → xem lại `.trivyignore` (xóa dòng đã vá).
-3. Kiểm local: kind (`e2e-kind.sh`, `e2e-browser.sh`).
+3. Kiểm local: kind (`e2e-flow.sh kind`, `e2e-browser.sh`).
 4. **Patch** (26.7.x → 26.7.y): merge, CD rolling update bình thường. **Minor/major** (26.7 → 26.8):
    Keycloak không hỗ trợ 2 bản khác minor chạy chung 1 cluster/DB → trước khi deploy
    `kubectl -n bss scale deploy/keycloak --replicas=0`, để CD áp bản mới (Pod đầu migrate schema), rồi

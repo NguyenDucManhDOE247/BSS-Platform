@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   would: temporary password shown once (Keycloak forces a change at first login), realm role `admin`, the
   `customer` default role removed, idempotent. `make e2e`, `make e2e-browser`, `make admin-user`.
 
+### Changed
+
+- Docs brought in line with `v2.2.0` + #210: `docs/demo-script.md` films the product scenes on AWS over HTTPS
+  (kind as the $0 fallback) and tells the "7.9% errors" story with its fix; `docs/blog-post-draft.md` no longer
+  says the websites can't sign in on AWS or that the 7.9% is unexplained, and gains the apex-TXT production bug;
+  `SETUP.md` / `runbooks/auth.md` use `e2e-flow.sh <env>`; `ROADMAP.md` lists the two-website verification.
+
 ### Fixed
 
 - `make help` never listed targets containing a digit (`e2e-local`, `e2e-kind`, …).
