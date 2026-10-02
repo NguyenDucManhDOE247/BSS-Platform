@@ -54,7 +54,7 @@ for s in customer-service product-catalog order-management billing-service api-g
 done
 kubectl --context kind-bss apply -k infrastructure/kubernetes/overlays/local
 kubectl --context kind-bss -n bss wait --for=condition=Ready pod --all --timeout=300s
-./scripts/e2e-kind.sh                                     # API flow with real Keycloak tokens + ownership (404s)
+./scripts/e2e-flow.sh kind                                # API flow: customer + staff + other customer, real tokens (was e2e-kind.sh)
 ./scripts/e2e-browser.sh                                  # Playwright: sign-up → approval → purchase → invoice
 ```
 
@@ -63,7 +63,7 @@ Websites: <http://bss.localhost> (customer) and <http://bss.localhost/admin/> (s
 Optional, same scripts as on AWS: `./scripts/monitoring-install.sh kind`, `logging-install.sh kind`,
 `tracing-install.sh kind`; `./scripts/netpol-matrix.sh kind-bss`.
 
-**Check:** `e2e-kind.sh` prints `ALL CHECKS PASSED`; Playwright `3 passed`. Tear down: `./scripts/kind-down.sh`.
+**Check:** `e2e-flow.sh kind` prints `ALL CHECKS PASSED`; Playwright `3 passed`. Tear down: `./scripts/kind-down.sh`.
 
 ## Part 3 — AWS account (once)
 

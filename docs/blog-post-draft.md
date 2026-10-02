@@ -1,4 +1,4 @@
-# Draft — "Building a Telecom BSS on AWS EKS" (Giai đoạn 8, việc 6 — cập nhật cho `v2.0.0` ngày 2026-10-01)
+# Draft — "Building a Telecom BSS on AWS EKS" (Giai đoạn 8, việc 6 — cập nhật cho `v2.2.0` ngày 2026-10-02)
 
 > Bản nháp — mọi con số đã là số đo thật (Lab 07/08, buổi dev EKS 2026-09-29, k6 trên kind 2026-10-01).
 > Trước khi đăng: thêm ảnh chụp thật (2 website — có sẵn ở `docs/images/`, Grafana dashboard, k6 output,
@@ -123,8 +123,13 @@ above said otherwise — the ceiling was literally "no node to put the pod on". 
 Karpenter added four nodes within about a minute (a node is `Ready` ~36–39 s after the claim), picked the
 smallest instances that fit, and stopped exactly at the vCPU limit I gave it — the account's Spot quota.
 Six minutes after the load stopped it removed half of them again. The ceiling moved; it didn't disappear.
-And the error rate got *worse*, which I haven't explained yet (cold JVMs taking traffic, or 2 GiB nodes
-being too tight — both untested guesses). I'd rather publish that than a cleaner story.
+And the error rate got *worse*. I published that before I could explain it, and then went back for the
+cause ([lab 07 §2c](labs/07-load-test-dev.md)). Splitting the errors by status code showed two different
+failures stacked into one number: **502s** came from the kubelet killing busy gateway pods because every probe
+still had the default 1-second timeout, and **500s** came from RDS refusing connections — a `db.t3.micro` has
+about 72 slots and the pods' connection pools together asked for more. Probe timeouts of 5 s / 3 s and a
+HikariCP pool of 5 per pod took the same 200→700 req/s run to **0% errors, three runs in a row, 0 restarts**.
+One aggregate error rate was two bugs with two different fixes.
 
 Two things only showed up on real AWS. First, Karpenter quietly fell back to On-Demand — at twice the
 price — because a brand-new account has never used Spot and lacks the `AWSServiceRoleForEC2Spot`
@@ -149,8 +154,9 @@ cluster produced no error, no request, nothing. PKCE needs `crypto.subtle` to ha
 browsers only expose it in a *secure context* — HTTPS, or `localhost`/`*.localhost`. My local hostname was
 `bss.localtest.me`: it resolves to 127.0.0.1, but to the browser it's just plain HTTP, so `crypto.subtle`
 was `undefined` and the failure sat silently inside the auth library's error state. Renaming the host to
-`bss.localhost` fixed it. The same rule is why, on AWS, the API is fully authenticated but the websites
-can't sign anyone in yet: there's no domain, so no certificate, so no secure context.
+`bss.localhost` fixed it. The same rule kept the websites from signing anyone in on AWS until the project
+got a real domain (`bssplatform.dpdns.org`) and an ACM certificate — the API was authenticated from day one,
+the browser login only worked once there was a secure context.
 
 ### Local isn't free either
 
@@ -166,14 +172,27 @@ the sum of limits fits in RAM) fixed it: the same test now serves 20,934 request
 holds at ~7.6 GB. `requests` is a promise to the scheduler; `limits` is a ceiling for the kernel; the gap
 between them is a bet you should size on purpose.
 
-### What's next
+### HTTPS, and the bug only production could show
 
-The system now has a real identity layer (released as `v2.0.0`), zero HIGH/CRITICAL CVEs after moving to
-Spring Boot 3.5, and — since the last debt pass — idempotent order creation (`Idempotency-Key`), UUID v7
-keys and correct JSON Merge Patch semantics. NetworkPolicy is enforced on dev (12/12 on a matrix run from
-inside the real service pods) and enabled in code for staging/prod. What's missing is the least glamorous
-part: **HTTPS on AWS** — browser login needs a secure context, so the two websites can't sign users in on
-AWS until there's a domain and a certificate. After that: explain that 7.9%.
+The domain lives in Terraform's long-lived `shared` state together with the Route 53 zone and the
+certificate, so the ephemeral environments never touch the registrar. ExternalDNS creates each environment's
+record — and its IAM policy only allows the exact names of *that* environment, so a compromised staging
+cluster can't overwrite production's record. Dev and staging worked first time. Production broke, because
+production is the only one at the apex: ExternalDNS writes an ownership TXT record named `a-<host>`, which for
+the apex becomes `a-bssplatform.dpdns.org` — a sibling under `dpdns.org`, *outside* my zone. It was dropped
+silently; the A record had no owner, so tearing down production would have left it behind while my cleanup
+tools reported "clean". A trailing dot in `--txt-prefix=extdns-%{record_type}.` turns the prefix into its own
+label and keeps it inside the zone. Same code, different *shape* of environment — that's what "it works on
+dev" doesn't prove.
+
+### Where it stands
+
+`v2.2.0` runs on dev, staging and production behind HTTPS (TLS 1.3), with a real identity layer, zero
+HIGH/CRITICAL CVEs, idempotent order creation (`Idempotency-Key`), UUID v7 keys, correct JSON Merge Patch and
+NetworkPolicy enforced everywhere (12/12 from inside the real pods). Both websites — customer and staff — are
+checked end to end on every environment by the same script plus a Playwright run, and staff accounts are
+issued by an operator the way a real team would (temporary password, admin role only). What's deliberately
+out of scope: payments (invoices are issued, never marked paid) and the OSS side of activating a service.
 
 ---
 
