@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Debt pass from Phase 8 back to 0 (after `v2.0.0`), each item verified on real infrastructure.
+### Fixed
+
+- **ExternalDNS at the apex** (found only on prod, `v2.2.0`): the default ownership TXT name `a-<host>` is
+  `a-bssplatform.dpdns.org` for the apex — outside the hosted zone — so ExternalDNS silently skipped it and the
+  apex A/AAAA records had no owner (never deleted on teardown; `teardown.sh`/`orphan_finder` reported clean).
+  Now `--txt-prefix=extdns-%{record_type}.` (TXT always inside the zone) and the IAM condition lists exact record
+  names instead of a `*-<host>` wildcard. Verified live on prod.
+
+## [2.2.0] — 2026-10-02
+
+HTTPS on a real domain (B-23), errors under load explained and removed, a measured RDS restore. Released
+`rc-v2.2.0` → staging and `v2.2.0` → prod (manual approval), smoke 7/7 over HTTPS on both.
 
 ### Added
 
@@ -24,34 +35,10 @@ Debt pass from Phase 8 back to 0 (after `v2.0.0`), each item verified on real in
   of public DNS / negative caching) and adds 3 checks: HTTP→HTTPS 301, OIDC `issuer`, `/auth/admin` not
   exposed. `teardown.sh` waits for ExternalDNS to delete the environment's records; `orphan_finder.py`
   reports DNS records owned by deleted clusters. `ci-k8s` fails if a rendered overlay still has `REPLACE_ME`.
-- **Keycloak production-grade** — [ADR-011](docs/adr/ADR-011-keycloak-production-grade.md): own image
-  `apps/identity/keycloak` (`kc.sh build` → `start --optimized`, startup ~5 s), `readOnlyRootFilesystem: true`
-  (last exception in the repo removed), **2 replicas on prod** clustered via `jdbc-ping` with DB-persisted
-  sessions, PDB `maxUnavailable: 1`, JGroups-only NetworkPolicy rule. Managed by CD as the 8th image
-  (`release-manifest.sh`; new `previous` command handles pre-ADR-011 7-service manifests). New
-  `ci-keycloak.yml` (build + Trivy + real 2-replica run).
-- **Karpenter 1.14.1 on dev** (Spot first) — [ADR-010](docs/adr/ADR-010-karpenter-lam-that-o-dev.md)
-  supersedes ADR-007; IAM translated from the official template; node `Ready` ~36 s; 200→700 req/s served
-  2.4× more requests than fixed nodes (p95 3.66 s vs 8.55 s, but 7.9% errors — see ADR-010).
-- **NetworkPolicy enforcement on EKS** (VPC CNI `enableNetworkPolicy`, dev → staging + prod) +
-  `scripts/netpol-matrix.sh` run from inside real service pods (10/10 on kind; 12/12 on dev EKS 2026-09-30,
-  12/12 on staging and 12/12 on prod 2026-10-01 during the `rc-v2.1.0` → `v2.1.0` release, incl. the
-  Keycloak JGroups port 7800 cell on the 2-replica prod Keycloak).
-- **IRSA for Fluent Bit and the OTel Collector** — logs reach CloudWatch as JSON with `trace_id`, traces
-  reach X-Ray (a log's `trace_id` resolves to a 13-segment trace across EventBridge → SQS).
-- `tools/ops/orphan_finder.py` — lists anything still billing after `terraform destroy`.
-- Schema migration Release B/C for `customers.email_verified` (expand → migrate → contract), run on RDS.
-- Real Discord alert delivery (alert + runbook link in 132–146 s after a service goes down).
-- ADR-009 (no Jenkins/Helm chart/Ansible alongside the current toolchain).
 - `scripts/load-watch.sh` (node/Pending/HPA + every pod restart with its reason, sampled during a load test) and
   `tests/load/dev-threshold.js` per-HTTP-status counters + `STAGES=` (the 200→700 req/s profile is now reproducible).
 - `scripts/lab-rds-pitr.sh` + `docs/labs/09-rds-pitr.md`: point-in-time restore of RDS after a real data
   incident, surgical repair, measured recovery time.
-- **`Idempotency-Key` on `POST productOrder`** (B-15): a double-click or an automatic retry no longer
-  creates a second order + invoice — the same (user, key) returns the original order (`201` +
-  `Idempotent-Replayed: true`); same key with a different body → 422; a concurrent duplicate loses on the
-  `(owner_sub, idem_key)` primary key, rolls back its whole order and gets 409. web-portal sends one key per
-  order page (with a `getRandomValues` fallback, since `crypto.randomUUID` needs a secure context).
 
 ### Security
 
@@ -73,6 +60,42 @@ Debt pass from Phase 8 back to 0 (after `v2.0.0`), each item verified on real in
 - Dev PDBs use `maxUnavailable: 1`: with 1 replica, `minAvailable: 1` blocked every eviction, so Karpenter could
   never consolidate a Spot node after a load test.
 - `scripts/smoke.sh`: `SMOKE_KC_PORT` — the fixed port 18080 sits inside Windows' Hyper-V reserved range.
+
+## [2.1.0] — 2026-10-01
+
+Debt pass from Phase 8 back to 0 (after `v2.0.0`), each item verified on real infrastructure. Released
+`rc-v2.1.0` → staging and `v2.1.0` → prod (manual approval); NetworkPolicy 12/12 on both.
+
+### Added
+
+- **Keycloak production-grade** — [ADR-011](docs/adr/ADR-011-keycloak-production-grade.md): own image
+  `apps/identity/keycloak` (`kc.sh build` → `start --optimized`, startup ~5 s), `readOnlyRootFilesystem: true`
+  (last exception in the repo removed), **2 replicas on prod** clustered via `jdbc-ping` with DB-persisted
+  sessions, PDB `maxUnavailable: 1`, JGroups-only NetworkPolicy rule. Managed by CD as the 8th image
+  (`release-manifest.sh`; new `previous` command handles pre-ADR-011 7-service manifests). New
+  `ci-keycloak.yml` (build + Trivy + real 2-replica run).
+- **Karpenter 1.14.1 on dev** (Spot first) — [ADR-010](docs/adr/ADR-010-karpenter-lam-that-o-dev.md)
+  supersedes ADR-007; IAM translated from the official template; node `Ready` ~36 s; 200→700 req/s served
+  2.4× more requests than fixed nodes (p95 3.66 s vs 8.55 s, but 7.9% errors — see ADR-010).
+- **NetworkPolicy enforcement on EKS** (VPC CNI `enableNetworkPolicy`, dev → staging + prod) +
+  `scripts/netpol-matrix.sh` run from inside real service pods (10/10 on kind; 12/12 on dev EKS 2026-09-30,
+  12/12 on staging and 12/12 on prod 2026-10-01 during the `rc-v2.1.0` → `v2.1.0` release, incl. the
+  Keycloak JGroups port 7800 cell on the 2-replica prod Keycloak).
+- **IRSA for Fluent Bit and the OTel Collector** — logs reach CloudWatch as JSON with `trace_id`, traces
+  reach X-Ray (a log's `trace_id` resolves to a 13-segment trace across EventBridge → SQS).
+- `tools/ops/orphan_finder.py` — lists anything still billing after `terraform destroy`.
+- Schema migration Release B/C for `customers.email_verified` (expand → migrate → contract), run on RDS.
+- Real Discord alert delivery (alert + runbook link in 132–146 s after a service goes down).
+- ADR-009 (no Jenkins/Helm chart/Ansible alongside the current toolchain).
+- **`Idempotency-Key` on `POST productOrder`** (B-15): a double-click or an automatic retry no longer
+  creates a second order + invoice — the same (user, key) returns the original order (`201` +
+  `Idempotent-Replayed: true`); same key with a different body → 422; a concurrent duplicate loses on the
+  `(owner_sub, idem_key)` primary key, rolls back its whole order and gets 409. web-portal sends one key per
+  order page (with a `getRandomValues` fallback, since `crypto.randomUUID` needs a secure context).
+
+### Security
+
+- `libssl3` CVE-2026-84782 (HIGH) patched in the 5 backend images — Trivy was blocking every backend PR.
 
 ### Changed
 
@@ -118,7 +141,6 @@ Debt pass from Phase 8 back to 0 (after `v2.0.0`), each item verified on real in
 - Karpenter silently fell back to On-Demand on a fresh account (missing `AWSServiceRoleForEC2Spot`) —
   now created by `bootstrap-aws.sh`.
 - Flaky CI (kustomize install hit the unauthenticated GitHub API rate limit).
-
 ## [2.0.0] — 2026-09-29
 
 Giai đoạn 9 — "sản phẩm hoàn chỉnh": danh tính thật + quyền sở hữu dữ liệu + 2 website có đăng nhập
@@ -234,6 +256,9 @@ The platform builds and runs end-to-end against Postgres + LocalStack via
 - Pod `securityContext`: `runAsNonRoot`, `readOnlyRootFilesystem`, all caps dropped.
 - ECR repos with immutable tags.
 
-[Unreleased]: https://github.com/NguyenDucManhDOE247/BSS-Platform/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/NguyenDucManhDOE247/BSS-Platform/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/NguyenDucManhDOE247/BSS-Platform/compare/v2.1.0...v2.2.0
+[2.1.0]: https://github.com/NguyenDucManhDOE247/BSS-Platform/compare/v2.0.0...v2.1.0
+[2.0.0]: https://github.com/NguyenDucManhDOE247/BSS-Platform/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/NguyenDucManhDOE247/BSS-Platform/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/NguyenDucManhDOE247/BSS-Platform/releases/tag/v0.1.0
