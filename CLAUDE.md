@@ -207,7 +207,6 @@ bss-platform/
 │
 ├── packages/                            ← LIBRARY DÙNG CHUNG
 │   ├── bss-common-java/                ← DTO, exception, security
-│   ├── ui-kit/                         ← React components
 │   └── api-contracts/                  ← OpenAPI specs + JSON schemas
 │
 ├── infrastructure/                      ← IaC

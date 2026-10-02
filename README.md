@@ -39,7 +39,7 @@ bss-platform/
 │   ├── frontend/       web-portal, admin-console        (Vite + React, OIDC/PKCE login)
 │   ├── backend/        api-gateway + 4 services         (Spring Boot 3.5, Java 21, JWT resource servers)
 │   └── identity/       keycloak                         (optimized image for AWS — ADR-011)
-├── packages/           bss-common-java, ui-kit, api-contracts (OpenAPI 3.1)
+├── packages/           bss-common-java, api-contracts (OpenAPI 3.1)
 ├── infrastructure/
 │   ├── terraform/      9 modules + environments/{shared,dev,staging,prod}
 │   └── kubernetes/     base/ + components/ (keycloak) + overlays/{local,dev,staging,prod}
