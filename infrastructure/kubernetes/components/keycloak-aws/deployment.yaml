@@ -75,6 +75,11 @@ spec:
             - { name: KC_PROXY_HEADERS, value: xforwarded }
             - { name: KC_HTTP_ENABLED, value: "true" }
             - { name: KC_LOG_CONSOLE_OUTPUT, value: json } # CLAUDE.md §10: log JSON ở môi trường AWS
+            # Lab mất 1 AZ (docs/labs/10-az-outage.md, 2026-10-02): khi RDS failover, kết nối cũ tới primary ở AZ
+            # chết không nhận RST (gói tin mất hút) → treo tới timeout TCP của kernel (~15 phút) → mọi worker
+            # thread kẹt chờ DB ("No executor queue space remaining", pool "Acquisition timeout") → health DOWN.
+            # socketTimeout giới hạn mỗi lần đọc 30 s; tcpKeepAlive phát hiện kết nối chết khi đang rảnh.
+            - { name: KC_DB_URL_PROPERTIES, value: "?socketTimeout=30&connectTimeout=10&tcpKeepAlive=true" }
           ports:
             - { containerPort: 8080, name: http }
             - { containerPort: 9000, name: management }
@@ -94,12 +99,16 @@ spec:
             httpGet: { path: /health/started, port: 9000 }
             periodSeconds: 10
             failureThreshold: 30
+          # timeoutSeconds: mặc định 1 s quá ngắn khi Pod đang bận (bài học #203 với 5 service JVM) — lab AZ
+          # thấy "context deadline exceeded" ở cả readiness của Keycloak.
           readinessProbe:
             httpGet: { path: /health/ready, port: 9000 }
             periodSeconds: 10
+            timeoutSeconds: 3
           livenessProbe:
             httpGet: { path: /health/live, port: 9000 }
             periodSeconds: 20
+            timeoutSeconds: 5
             failureThreshold: 3
           resources:
             # Đo trên kind (GĐ7/9) + EKS dev (GĐ9: 538Mi). Keycloak đặt heap = 70% limit mặc định.
