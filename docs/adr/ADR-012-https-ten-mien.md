@@ -41,7 +41,8 @@ nó — chấp nhận vì account chỉ có 1. TLS policy `ELBSecurityPolicy-TLS
 
 ExternalDNS (chart 1.23.0) tạo alias A trỏ vào ALB từ host của Ingress, `policy: sync` (xóa khi Ingress mất),
 TXT "sở hữu" `external-dns/owner=<cluster>`. Role IRSA chỉ có `ChangeResourceRecordSets` với điều kiện
-`route53:ChangeResourceRecordSetsNormalizedRecordNames` ∈ {`<host>`, `*-<host>`} — cluster staging bị chiếm
+`route53:ChangeResourceRecordSetsNormalizedRecordNames` ∈ {`<host>`, `extdns-{a,aaaa,cname}.<host>`} (tên chính xác,
+không wildcard — xem "Lỗi thật trên prod" dưới) — cluster staging bị chiếm
 cũng không ghi đè được apex của prod.
 
 Cái giá của zone sống lâu hơn cluster: destroy giết ExternalDNS trước khi nó xóa bản ghi → bản ghi treo trỏ
@@ -102,6 +103,27 @@ discovery có `issuer == https://<host>/auth/realms/bss`; `/auth/admin/realms` *
 | `netpol-matrix.sh` dev | **12/12** — "kẻ lạ → keycloak" vẫn BLOCKED dù đã mở `ipBlock` cho subnet public |
 | Trình duyệt | `isSecureContext = true`, có `crypto.subtle`; "Đăng nhập" → trang Keycloak đủ CSS (`/auth/resources`), PKCE `S256`, `redirect_uri=https://dev…/`. **Chủ repo tự đăng ký + đăng nhập thành công**; customer-service nhận 8 JWT hợp lệ, 0 lỗi `iss` |
 | `teardown.sh dev` | Xóa Ingress → **`✓ DNS records gone`** (zone chỉ còn NS/SOA/CNAME xác thực) → destroy 112/112 trong 12 phút; `orphan_finder.py` (có kiểm DNS) sạch |
+
+### Staging + prod (2026-10-02, `rc-v2.2.0` → `v2.2.0`)
+
+| Bước | Kết quả |
+|---|---|
+| Staging | apply 100 / 19 phút; `cd-staging` (run 36954706045) smoke **7/7** qua `https://staging.bssplatform.dpdns.org`; TLS 1.3, `/auth/admin` → web-portal; NetworkPolicy **12/12**; trình duyệt tới trang Keycloak (PKCE S256); teardown `✓ DNS records gone` → 100/100 |
+| Prod | apply 100 / 27 phút (RDS multi-AZ); chủ repo đẩy tag `v2.2.0` + duyệt tay; `cd-prod` (run 36958593826) smoke **7/7** qua `https://bssplatform.dpdns.org`; TLS 1.3; NetworkPolicy **12/12** với Keycloak 2 replica |
+
+### Lỗi thật trên prod: TXT sở hữu nằm NGOÀI zone ở apex
+
+ExternalDNS ở prod tạo `A`/`AAAA` cho `bssplatform.dpdns.org` nhưng **không** tạo TXT nào. Tên TXT mặc định
+(định dạng mới) là `<kiểu>-<host>` → với apex = `a-bssplatform.dpdns.org`, tức là *anh em* dưới `dpdns.org`, không
+phải *con* của zone → domain filter loại lặng lẽ, không log lỗi. Bản ghi không chủ nghĩa là: xóa Ingress **không**
+xóa bản ghi (treo trỏ vào ALB đã chết), và `teardown.sh` + `orphan_finder.py` (dò theo TXT) báo "sạch" **sai**.
+Dev/staging không lộ lỗi vì `a-dev.bssplatform.dpdns.org` vẫn nằm trong zone — chỉ chạy thật ở apex mới thấy.
+
+Sửa theo đúng tài liệu ExternalDNS (`docs/registry/txt.md`: apex → prefix có `%{record_type}` và **kết thúc bằng
+dấu chấm**): `--txt-prefix=extdns-%{record_type}.` → `extdns-a.<host>` luôn nằm trong zone. IAM đổi từ mẫu
+`*-<host>` sang tên chính xác — wildcard ở apex (`*.bssplatform…`) sẽ phủ cả tên của dev/staging. Kiểm ngay trên
+prod đang chạy: apply policy → `helm upgrade` → xóa A/AAAA không chủ → ExternalDNS tạo lại **sau 38 s kèm TXT**
+`extdns-a`/`extdns-aaaa` (owner `bss-prod-eks`), 0 `AccessDenied`; smoke prod lại 7/7.
 
 ### Lưu ý gia hạn cert
 
