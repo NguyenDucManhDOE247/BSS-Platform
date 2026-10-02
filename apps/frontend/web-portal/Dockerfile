@@ -27,7 +27,9 @@ FROM nginxinc/nginx-unprivileged:1.30-alpine
 # had not been rebuilt yet, so patch just that package here. Root only for this one layer; the final
 # user is set back to the unprivileged uid 101 that nginx-unprivileged runs as (CLAUDE.md §10: non-root).
 USER root
-RUN apk upgrade --no-cache libexpat
+# 2026-10-02: tương tự với pcre2 10.48-r0 (CVE-2026-103111, HIGH, vá ở 10.49-r0) — chặn PR #214 (web-portal).
+# Bỏ cả dòng này khi tag nginx-unprivileged:1.30-alpine upstream đã build lại với bản vá.
+RUN apk upgrade --no-cache libexpat pcre2
 USER 101
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
