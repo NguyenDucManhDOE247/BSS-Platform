@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   says the websites can't sign in on AWS or that the 7.9% is unexplained, and gains the apex-TXT production bug;
   `SETUP.md` / `runbooks/auth.md` use `e2e-flow.sh <env>`; `ROADMAP.md` lists the two-website verification.
 
+- `CLAUDE.md` §2–§11 rewritten to match the running system (they were still the scaffold plan): architecture without
+  CloudFront/VPC endpoints and with Keycloak, HTTPS and ExternalDNS; real sizing per environment (incl. the
+  `0.0.0.0/0` endpoint exception during ephemeral demos); 10 workflows; actual tree; the old Phase 0–10 checklist mapped
+  to where each item was done (one item still open: simulating the loss of an AZ); best practices marked ✅ or ⚠️.
+
 ### Removed
 
 - `packages/ui-kit` — never imported by either website (each app keeps its own small components); dropped from
