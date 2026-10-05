@@ -80,6 +80,14 @@ spec:
             # thread kẹt chờ DB ("No executor queue space remaining", pool "Acquisition timeout") → health DOWN.
             # socketTimeout giới hạn mỗi lần đọc 30 s; tcpKeepAlive phát hiện kết nối chết khi đang rảnh.
             - { name: KC_DB_URL_PROPERTIES, value: "?socketTimeout=30&connectTimeout=10&tcpKeepAlive=true" }
+            # Issue #217 — PHẢI đi cùng socketTimeout ở trên, cùng giá trị. Keycloak ≥ 26.8.0 gọi
+            # connection.setNetworkTimeout(...) trên mỗi kết nối JDBC_PING2 mượn từ pool (keycloak/keycloak#51916);
+            # khi trả kết nối, Agroal đặt lại network timeout theo cấu hình CỦA NÓ — mặc định 0 = vô hạn — và xóa
+            # mất socketTimeout của pgjdbc. Health check DB sau đó đọc không timeout trên kết nối tới primary đã
+            # chết → readiness DOWN tới khi kernel bỏ socket (~16 phút, đo trên prod). Đây là property thô của
+            # Quarkus (Keycloak không có option kc.* tương ứng) → sau mỗi lần nâng Keycloak chạy lại
+            # scripts/lab-keycloak-db-failover.sh (chưa sửa: không hồi phục trong 240 s; đã sửa: 26 s).
+            - { name: QUARKUS_DATASOURCE_JDBC_NETWORK_TIMEOUT, value: "30S" }
           ports:
             - { containerPort: 8080, name: http }
             - { containerPort: 9000, name: management }
