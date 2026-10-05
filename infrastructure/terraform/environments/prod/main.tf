@@ -69,6 +69,7 @@ module "vpc" {
   vpc_cidr                   = "10.30.0.0/16"
   az_count                   = 3
   enable_nat_gateway         = true
+  nat_gateway_per_az         = true  # Lab 10 §4: 1 NAT là điểm chết đơn khi mất AZ chứa nó — prod: mỗi AZ một NAT
   enable_interface_endpoints = false # NAT already covers this — see ADR-002 (B-32)
 
   tags = local.common_tags
@@ -99,6 +100,29 @@ module "eks" {
 
   # B-39: full audit trail for prod, unlike dev's trimmed-down default (see modules/eks/variables.tf).
   cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+
+  tags = local.common_tags
+}
+
+# ── Runner CD trong VPC (ADR-013) ─────────────────────────────────────────────────────────────────────────
+# cd-prod chạy job deploy trên runner này và gọi API server qua endpoint PRIVATE → public_access_cidrs chỉ
+# còn cần IP của người vận hành (không còn 0.0.0.0/0 cho runner của GitHub). Chỉ tạo khi state shared đã có kết
+# nối GitHub (apply shared + ủy quyền tay một lần — docs/runbooks/cd-runner.md).
+locals {
+  github_connection_arn = try(data.terraform_remote_state.shared.outputs.github_connection_arn, null)
+}
+
+module "ci_runner" {
+  source = "../../modules/ci-runner"
+  count  = local.github_connection_arn != null ? 1 : 0
+
+  name_prefix               = local.name_prefix
+  region                    = var.region
+  vpc_id                    = module.vpc.vpc_id
+  private_subnet_ids        = module.vpc.private_subnet_ids
+  cluster_security_group_id = module.eks.node_security_group_id
+  github_repo               = data.terraform_remote_state.shared.outputs.github_repo
+  github_connection_arn     = local.github_connection_arn
 
   tags = local.common_tags
 }
