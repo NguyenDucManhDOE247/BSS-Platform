@@ -30,6 +30,12 @@ variable "enable_nat_gateway" {
   description = "NAT Gateway costs ~$1.10/day. See docs/adr/ADR-002-mang-dev.md for why dev also enables this (private nodes need outbound internet for Helm chart images — VPC endpoints alone don't cover it)."
 }
 
+variable "nat_gateway_per_az" {
+  type        = bool
+  default     = false
+  description = "true = 1 NAT Gateway + 1 route table private cho MỖI AZ (không còn điểm chết đơn khi mất 1 AZ — Lab 10 §4). +~$1.4/ngày mỗi NAT thêm; chỉ bật ở prod. Chỉ có tác dụng khi enable_nat_gateway = true."
+}
+
 variable "enable_interface_endpoints" {
   type        = bool
   default     = false

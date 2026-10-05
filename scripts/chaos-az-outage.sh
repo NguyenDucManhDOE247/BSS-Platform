@@ -16,18 +16,20 @@
 #   ./scripts/chaos-az-outage.sh prod                     # AZ = AZ đang chứa RDS primary (mất AZ "tệ nhất")
 #   ./scripts/chaos-az-outage.sh prod ap-southeast-1b     # chỉ định AZ
 #   DURATION=420 RECOVERY=240 NO_RDS_FAILOVER=1 ./scripts/chaos-az-outage.sh staging
+#   INCLUDE_PUBLIC=1 ./scripts/chaos-az-outage.sh prod ap-southeast-1a   # mất CẢ subnet public: node ALB + NAT của AZ đó
 #
 # Biến: DURATION (mặc định 420 s — dài hơn 300 s `tolerationSeconds` mặc định cho node unreachable, để thấy
 # Pod bị đuổi và lên lịch lại), RECOVERY (240 s), BASELINE (60 s), NO_RDS_FAILOVER=1 (bỏ bước 2),
-# OUT_DIR (mặc định results/az-outage-<env>-<thời điểm>, đã .gitignore).
+# OUT_DIR (mặc định results/az-outage-<env>-<thời điểm>, đã .gitignore), INCLUDE_PUBLIC=1 (chặn thêm subnet public
+# của AZ — chỉ có nghĩa khi mỗi AZ có NAT riêng, `nat_gateway_per_az`; với 1 NAT mà chặn đúng AZ chứa nó thì mọi Pod
+# mất đường ra AWS API: đó chính là điểm chết đơn mà ADR-013 gỡ).
 #
 # An toàn: `trap … EXIT` LUÔN trả từng subnet về NACL cũ rồi xóa NACL thí nghiệm — kể cả khi Ctrl-C hay lỗi
 # giữa chừng. Nếu máy tắt đột ngột: `aws ec2 describe-network-acls --filters Name=tag:Purpose,Values=chaos-az-outage`
 # rồi `replace-network-acl-association` về NACL mặc định của VPC (lệnh in sẵn ở đầu thí nghiệm).
 #
-# Giới hạn (ghi trong docs/labs/10-az-outage.md): không chặn subnet PUBLIC — mất AZ thật sẽ làm mất cả node ALB
-# và NAT Gateway của AZ đó; module vpc chỉ có 1 NAT (ở AZ đầu tiên) nên mất AZ đó = mất đường ra Internet của
-# mọi Pod (SQS, EventBridge, STS, ECR). Thí nghiệm này đo phần compute + DB; điểm chết NAT được ghi là rủi ro.
+# Mặc định KHÔNG chặn subnet public (đo phần compute + DB — 2 lần chạy đầu của Lab 10). INCLUDE_PUBLIC=1 chặn cả
+# subnet public: mất luôn node ALB và NAT Gateway của AZ đó, như mất AZ thật (lần chạy 3, sau ADR-013).
 set -euo pipefail
 
 ENV="${1:?Usage: $0 <dev|staging|prod> [az]}"
@@ -78,7 +80,17 @@ mapfile -t SUBNETS < <(awsq ec2 describe-subnets \
   --filters "Name=vpc-id,Values=$VPC_ID" "Name=availability-zone,Values=$TARGET_AZ" "Name=tag:kubernetes.io/role/internal-elb,Values=1" \
   --query 'Subnets[].SubnetId' --output text | tr '\t' '\n' | sed '/^$/d')
 [ "${#SUBNETS[@]}" -ge 1 ] || fail "không tìm thấy subnet private nào ở $TARGET_AZ trong $VPC_ID"
-log "Subnet private sẽ bị cô lập: ${SUBNETS[*]}"
+if [ -n "${INCLUDE_PUBLIC:-}" ]; then
+  mapfile -t PUB < <(awsq ec2 describe-subnets \
+    --filters "Name=vpc-id,Values=$VPC_ID" "Name=availability-zone,Values=$TARGET_AZ" "Name=tag:kubernetes.io/role/elb,Values=1" \
+    --query 'Subnets[].SubnetId' --output text | tr '\t' '\n' | sed '/^$/d')
+  [ "${#PUB[@]}" -ge 1 ] || fail "INCLUDE_PUBLIC=1 nhưng không tìm thấy subnet public ở $TARGET_AZ"
+  NATS="$(awsq ec2 describe-nat-gateways --filter "Name=vpc-id,Values=$VPC_ID" "Name=state,Values=available" --query 'length(NatGateways)' --output text)"
+  log "INCLUDE_PUBLIC: chặn thêm subnet public ${PUB[*]} (node ALB + NAT của AZ). VPC có $NATS NAT Gateway."
+  [ "$NATS" -gt 1 ] || log "⚠ VPC chỉ có 1 NAT — nếu nó nằm ở $TARGET_AZ thì MỌI Pod sẽ mất đường ra AWS API (điểm chết đơn)."
+  SUBNETS+=("${PUB[@]}")
+fi
+log "Subnet sẽ bị cô lập: ${SUBNETS[*]}"
 
 # ── Đầu dò (chạy nền suốt thí nghiệm) ──────────────────────────────────────────────────────────────
 PROBE_CSV="$OUT_DIR/probes.csv"; STATE_CSV="$OUT_DIR/cluster-state.csv"

@@ -96,6 +96,29 @@ module "eks" {
   tags = local.common_tags
 }
 
+# ── Runner CD trong VPC (ADR-013) ─────────────────────────────────────────────────────────────────────────
+# cd-staging chạy job deploy trên runner này và gọi API server qua endpoint PRIVATE → public_access_cidrs chỉ
+# còn cần IP của người vận hành (không còn 0.0.0.0/0 cho runner của GitHub). Chỉ tạo khi state shared đã có kết
+# nối GitHub (apply shared + ủy quyền tay một lần — docs/runbooks/cd-runner.md).
+locals {
+  github_connection_arn = try(data.terraform_remote_state.shared.outputs.github_connection_arn, null)
+}
+
+module "ci_runner" {
+  source = "../../modules/ci-runner"
+  count  = local.github_connection_arn != null ? 1 : 0
+
+  name_prefix               = local.name_prefix
+  region                    = var.region
+  vpc_id                    = module.vpc.vpc_id
+  private_subnet_ids        = module.vpc.private_subnet_ids
+  cluster_security_group_id = module.eks.node_security_group_id
+  github_repo               = data.terraform_remote_state.shared.outputs.github_repo
+  github_connection_arn     = local.github_connection_arn
+
+  tags = local.common_tags
+}
+
 module "rds" {
   source = "../../modules/rds"
 

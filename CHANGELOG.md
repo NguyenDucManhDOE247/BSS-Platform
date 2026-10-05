@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **CD for staging/prod runs on a CodeBuild runner inside the VPC** ([ADR-013](docs/adr/ADR-013-runner-cd-trong-vpc.md),
+  `modules/ci-runner`, `docs/runbooks/cd-runner.md`): the deploy job reaches the API server through the cluster's
+  private endpoint, so the EKS public endpoint is restricted to the operator's IP again — the documented
+  "`0.0.0.0/0` during demos" exception (GitHub-hosted runners have no fixed IP) is gone. The runner carries no deploy
+  permission (jobs still assume the per-Environment deployer role via OIDC). New read-only role
+  `bss-github-cd-preflight` + repository variable `AWS_PREFLIGHT_ROLE_ARN`: a preflight job fails fast when the
+  ephemeral environment (and therefore its runner) does not exist. One manual step, once: authorise the
+  `bss-github` CodeConnections connection in the AWS console.
+- **Prod has one NAT Gateway and one private route table per AZ** (`nat_gateway_per_az`) — the single NAT was a
+  single point of failure for every pod's egress when its AZ is lost (Lab 10 §4). dev/staging keep one.
+- `chaos-az-outage.sh INCLUDE_PUBLIC=1`: also isolates the AZ's public subnet (ALB node + NAT), i.e. a full AZ loss.
 - `scripts/chaos-az-outage.sh <env> [az]` + Lab 10 — loses one Availability Zone the way AWS FIS's "AZ power
   interruption" does (deny-all NACL on that AZ's private subnet, forced RDS failover if the primary is there), probing
   the API and OIDC through the real HTTPS host every second. First run on prod: business API 4/449 errors (0.89 %, all

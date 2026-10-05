@@ -84,23 +84,31 @@ resource "aws_subnet" "private" {
 }
 
 # ── NAT Gateway (optional, expensive: ~$33/month per gateway) ──────────
+# 1 NAT (mặc định) hoặc 1 NAT MỖI AZ (var.nat_gateway_per_az — prod). Với 1 NAT, mất AZ chứa nó = mọi subnet
+# private mất đường ra Internet/AWS API (SQS, EventBridge, STS, ECR) dù Pod ở AZ khác vẫn sống — điểm chết đơn
+# ghi ở docs/labs/10-az-outage.md §4. Mỗi AZ một NAT + một route table private riêng thì AZ nào chết, AZ đó tự chịu.
+locals {
+  nat_count        = var.enable_nat_gateway ? (var.nat_gateway_per_az ? var.az_count : 1) : 0
+  private_rt_count = var.nat_gateway_per_az ? var.az_count : 1
+}
+
 resource "aws_eip" "nat" {
-  count  = var.enable_nat_gateway ? 1 : 0
+  count  = local.nat_count
   domain = "vpc"
 
   tags = merge(var.tags, {
-    Name = "${var.name_prefix}-nat-eip"
+    Name = var.nat_gateway_per_az ? "${var.name_prefix}-nat-eip-${local.azs[count.index]}" : "${var.name_prefix}-nat-eip"
   })
 }
 
 resource "aws_nat_gateway" "this" {
-  count         = var.enable_nat_gateway ? 1 : 0
-  allocation_id = aws_eip.nat[0].id
-  subnet_id     = aws_subnet.public[0].id
+  count         = local.nat_count
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = aws_subnet.public[count.index].id
   depends_on    = [aws_internet_gateway.this]
 
   tags = merge(var.tags, {
-    Name = "${var.name_prefix}-nat"
+    Name = var.nat_gateway_per_az ? "${var.name_prefix}-nat-${local.azs[count.index]}" : "${var.name_prefix}-nat"
   })
 }
 
@@ -123,23 +131,26 @@ resource "aws_route_table_association" "public" {
 }
 
 resource "aws_route_table" "private" {
+  count  = local.private_rt_count
   vpc_id = aws_vpc.this.id
 
   dynamic "route" {
     for_each = var.enable_nat_gateway ? [1] : []
     content {
       cidr_block     = "0.0.0.0/0"
-      nat_gateway_id = aws_nat_gateway.this[0].id
+      nat_gateway_id = aws_nat_gateway.this[var.nat_gateway_per_az ? count.index : 0].id
     }
   }
 
-  tags = merge(var.tags, { Name = "${var.name_prefix}-private-rt" })
+  tags = merge(var.tags, {
+    Name = var.nat_gateway_per_az ? "${var.name_prefix}-private-rt-${local.azs[count.index]}" : "${var.name_prefix}-private-rt"
+  })
 }
 
 resource "aws_route_table_association" "private" {
   count          = var.az_count
   subnet_id      = aws_subnet.private[count.index].id
-  route_table_id = aws_route_table.private.id
+  route_table_id = aws_route_table.private[var.nat_gateway_per_az ? count.index : 0].id
 }
 
 # ── S3 Gateway endpoint — ALWAYS on, it's free and has no AZ multiplier ──
@@ -149,7 +160,7 @@ resource "aws_vpc_endpoint" "s3" {
   vpc_id            = aws_vpc.this.id
   service_name      = "com.amazonaws.${var.region}.s3"
   vpc_endpoint_type = "Gateway"
-  route_table_ids   = [aws_route_table.private.id]
+  route_table_ids   = aws_route_table.private[*].id
 
   tags = merge(var.tags, { Name = "${var.name_prefix}-vpce-s3" })
 }
