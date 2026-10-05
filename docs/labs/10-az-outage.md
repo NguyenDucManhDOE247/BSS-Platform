@@ -19,7 +19,7 @@ Mô phỏng kịch bản **"AZ Availability: Power Interruption"** của AWS Fau
 
 Chọn AZ **đang chứa RDS primary** = trường hợp tệ nhất: mất cùng lúc 1/3 compute **và** DB phải failover.
 
-**Giới hạn có chủ đích:** không chặn subnet **public**. Mất AZ thật còn làm mất node ALB và **NAT Gateway** ở AZ đó.
+**Giới hạn của 2 lần chạy đầu:** không chặn subnet **public** (từ ADR-013 có `INCLUDE_PUBLIC=1` để chặn cả hai). Mất AZ thật còn làm mất node ALB và **NAT Gateway** ở AZ đó.
 Module `vpc` chỉ có **1 NAT** (ở AZ đầu tiên, `ap-southeast-1a`): mất đúng AZ đó = mọi Pod mất đường ra Internet
 (SQS, EventBridge, STS, ECR) → luồng order → hóa đơn dừng. Đó là **điểm chết đơn (SPOF) đã biết**, ghi ở mục 4.
 
@@ -171,7 +171,7 @@ Chưa chạy lại trên AWS: cơ chế đã tái hiện trùng khớp ở máy;
 
 | Rủi ro | Hậu quả | Cách sửa | Vì sao chưa làm |
 |---|---|---|---|
-| **1 NAT Gateway** ở `ap-southeast-1a` | Mất `1a` = mọi Pod mất đường ra AWS API (SQS/EventBridge/STS/ECR) → đơn hàng vẫn tạo (outbox giữ sự kiện) nhưng hóa đơn dừng tới khi AZ về; image mới không kéo được | 1 NAT mỗi AZ + route table private riêng mỗi AZ (module `vpc`) | +$1,4/ngày mỗi NAT; staging/prod ephemeral. Làm khi prod chạy thường trực |
+| ~~1 NAT Gateway ở `ap-southeast-1a`~~ — **đã sửa** ([ADR-013](../adr/ADR-013-runner-cd-trong-vpc.md)) | Trước: mất `1a` = mọi Pod mất đường ra AWS API (SQS/EventBridge/STS/ECR) | Prod: 1 NAT + 1 route table private mỗi AZ (`nat_gateway_per_az`) | Kiểm bằng `INCLUDE_PUBLIC=1 chaos-az-outage.sh` ở lần dựng prod kế tiếp |
 | Pod ở AZ chết chỉ bị đuổi sau **300 s** | 5 phút chạy thiếu replica (vẫn phục vụ nhờ 2 AZ còn lại) | `tolerationSeconds` ngắn hơn cho `node.kubernetes.io/unreachable` | Đánh đổi: ngắn quá thì một lần chập mạng thoáng qua cũng đuổi Pod hàng loạt |
 | ALB vẫn có node ở AZ chết (thí nghiệm không chặn subnet public) | Một phần kết nối mới tới IP ALB ở AZ đó có thể lỗi | Route 53 ARC zonal shift cho ALB | Chưa đo — cần chặn subnet public, mà đó cũng là nơi có NAT |
 

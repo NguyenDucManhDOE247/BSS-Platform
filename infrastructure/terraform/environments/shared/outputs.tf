@@ -34,3 +34,23 @@ output "acm_certificate_arn" {
   description = "Cert apex + wildcard. ALB Controller tự tìm cert theo host của Ingress nên overlay không cần ARN này."
   value       = one(aws_acm_certificate.main[*].arn)
 }
+
+output "github_connection_arn" {
+  value       = aws_codeconnections_connection.github.arn
+  description = "Kết nối CodeConnections tới GitHub cho runner CD trong VPC (ADR-013)."
+}
+
+output "github_connection_status" {
+  value       = aws_codeconnections_connection.github.connection_status
+  description = "PENDING cho tới khi ủy quyền tay trong console (docs/runbooks/cd-runner.md); cần AVAILABLE."
+}
+
+output "github_repo" {
+  value       = var.github_repos[0]
+  description = "owner/repo mà runner CD phục vụ."
+}
+
+output "cd_preflight_role_arn" {
+  value       = aws_iam_role.cd_preflight.arn
+  description = "Repository variable AWS_PREFLIGHT_ROLE_ARN — job kiểm 'cluster + runner đã có chưa' của cd-staging/cd-prod (ADR-013)."
+}
