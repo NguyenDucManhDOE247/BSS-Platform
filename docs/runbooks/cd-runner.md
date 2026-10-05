@@ -61,6 +61,7 @@ aws eks describe-cluster --name bss-<env>-eks --query 'cluster.resourcesVpcConfi
 | Triệu chứng | Nguyên nhân | Xử lý |
 |---|---|---|
 | `tf-apply` lỗi ở `aws_codebuild_webhook`: *connection … is not available / access denied* | Kết nối `bss-github` còn `PENDING`, hoặc GitHub App chưa được cấp repo này | Làm mục 1; rồi `apply` lại |
+| `tf-apply` lỗi ở `aws_codebuild_project`: *OAuthProviderException: User is not authorized to access connection* dù kết nối đã `AVAILABLE` | Policy của role runner vừa gắn chưa kịp có hiệu lực (IAM eventually consistent) — gặp thật 2026-10-05, từ đó module chờ 30 s (`time_sleep`) | `apply` lại; nếu vẫn lỗi, kiểm policy `runner` của role `bss-<env>-gha-runner` có `codeconnections:GetConnection*` trên đúng ARN |
 | Job deploy đứng ở "Waiting for a runner" quá 5 phút dù preflight xanh | Webhook không tới CodeBuild (app bị gỡ khỏi repo), hoặc project lỗi khi cấp ENI | CodeBuild → project → *Build history*: không có build nào = webhook; có build `FAILED` = xem log (thường là subnet hết IP hoặc thiếu quyền ENI) |
 | Runner chạy nhưng `kubectl` treo ở "API server có với tới được không?" | Thiếu luật 443 từ security group của runner vào cluster security group | `terraform plan` phải sạch; kiểm `aws_vpc_security_group_ingress_rule.cluster_from_runner` |
 | `kubectl` từ **laptop** bị từ chối/timeout sau khi đổi mạng | IP công khai của bạn đã đổi | Sửa `public_access_cidrs`, `tf-apply` (vài phút) |

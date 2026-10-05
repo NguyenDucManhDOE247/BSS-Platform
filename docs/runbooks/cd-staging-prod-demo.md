@@ -40,7 +40,7 @@ aws service-quotas get-service-quota --service-code ec2 --quota-code L-1216C47A 
 
 Khi chưa có quota: chạy **tuần tự** — destroy dev trước, staging (6 vCPU) xong thì destroy rồi mới dựng prod (không chạy được prod 10 vCPU với hạn mức 8).
 
-**Ghi chú công cụ (Windows):** Helm trên Windows là v4 (bạn đã chốt giữ Helm v3.22 → dùng trong WSL). `scripts/platform-install.sh` chạy trong WSL cần `terraform output` (WSL không đọc được cache provider của Windows) và tải chart (mạng WSL có lúc timeout tải `.tgz`). Cách né đã dùng: lấy `aws_lb_controller_role_arn` bằng Terraform phía Windows, tải sẵn chart đã ghim phiên bản bằng `curl` rồi `helm upgrade --install <file.tgz>` trong WSL.
+**Ghi chú công cụ (Windows):** Helm trên Windows là v4 (bạn đã chốt giữ Helm v3.22 → dùng trong WSL). `scripts/platform-install.sh` chạy trong WSL cần `terraform output` (WSL không đọc được cache provider của Windows) và tải chart (trình tải của Helm trong WSL có lúc treo 120 s khi lấy `.tgz`). Từ 2026-10-05 script tự tải chart đã ghim phiên bản bằng `curl` có retry rồi cài từ file — không còn phải né tay.
 
 ## 1c. Checklist ngay trước khi dựng prod (release `v0.1.1`)
 
