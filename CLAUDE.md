@@ -356,7 +356,7 @@ bss-platform/
 | 7 — Observability (Prometheus, Grafana, OTel, SLO, alert → chat) | ✅ | GĐ2 (kind) + GĐ7/dọn nợ (EKS): alert → Discord, SLO burn-rate, log JSON + `trace_id` → X-Ray |
 | 8 — Staging + prod (tag rc → v, duyệt tay) | ✅ | GĐ6 + GĐ9: `rc-v2.2.0` → `v2.2.0` (HTTPS) — staging/prod ephemeral (ADR-006) |
 | 9 — Hardening: WAF, NetworkPolicy, PSS restricted, chaos | ✅ | WAF (GĐ7), NetworkPolicy 12/12 cả 3 môi trường, PSS `restricted`, chaos xóa Pod + drain node (lab 08) |
-| 9 — Hardening: **fail 1 AZ → cluster vẫn serve** | ✅ 2026-10-02 (còn 1 điểm mở) | [Lab 10](docs/labs/10-az-outage.md), 2 lần trên prod: API 0,89 % / 1,35 % lỗi (≤ 25 s), 0 Pod Pending, e2e PASS. Lộ + sửa: Keycloak mất cluster sau RDS failover (→ 26.8.0, tự ghép lại sau 34 s), HPA hạ prod về 2 replica (→ `minReplicas: 3`). Còn mở: readiness Keycloak treo ~16 phút theo timeout TCP |
+| 9 — Hardening: **fail 1 AZ → cluster vẫn serve** | ✅ 2026-10-02 / 10-05 | [Lab 10](docs/labs/10-az-outage.md), 2 lần trên prod: API 0,89 % / 1,35 % lỗi (≤ 25 s), 0 Pod Pending, e2e PASS. Lộ + sửa: Keycloak mất cluster sau RDS failover (→ 26.8.0, tự ghép lại sau 34 s), HPA hạ prod về 2 replica (→ `minReplicas: 3`). Readiness Keycloak treo ~16 phút (#217): nguyên nhân gốc = Agroal xóa `socketTimeout` sau mỗi lần JDBC_PING2 trả kết nối → `QUARKUS_DATASOURCE_JDBC_NETWORK_TIMEOUT=30S`, tái hiện + kiểm trên máy (26 s) |
 | 10 — POSTMORTEMS.md | ✅ | `docs/POSTMORTEMS.md` (PM-01: test "xanh giả") |
 | 10 — Video demo 5 phút | ⏳ việc của chủ repo | Kịch bản sẵn: `docs/demo-script.md` |
 | 10 — Blog post | 🟡 bản nháp | `docs/blog-post-draft.md` — chưa đăng |
@@ -432,7 +432,7 @@ bss-platform/
 - ✅ Probe có timeout thật (liveness 5 s, readiness 3 s) — timeout mặc định 1 s từng làm kubelet giết Pod dưới tải.
 - ✅ SLI/SLO + error budget burn-rate alert (`docs/SLO.md`, `order-management`).
 - ⚠️ Mất 1 AZ + RDS failover đã đo 2 lần (Lab 10): service Spring sống (≤ 25 s lỗi), cluster Keycloak tự hồi phục từ 26.8.0;
-  còn mở: readiness Keycloak treo ~16 phút (timeout TCP kernel); 1 NAT là SPOF.
+  readiness Keycloak treo ~16 phút đã sửa (#217, `scripts/lab-keycloak-db-failover.sh`). Còn lại có chủ đích: 1 NAT là SPOF.
 
 ### Cost
 - ✅ Dev: `make ENV=dev tf-destroy` mỗi tối; staging/prod ephemeral (ADR-006). Sau destroy chạy `tools/ops/orphan_finder.py`.
@@ -536,6 +536,7 @@ python tools/ops/orphan_finder.py            # phải rỗng
 | 9 — Sản phẩm hoàn chỉnh (danh tính) | ✅ | Keycloak + PKCE, khách tự đăng ký → admin duyệt → mua, quyền sở hữu 4 service (ADR-008); Playwright 3/3 + `e2e-kind.sh` trên kind; Keycloak trên EKS, `rc-v2.0.0` → staging → `v2.0.0` → prod (duyệt tay), smoke có token 4/4 cả 3 môi trường |
 | Dọn nợ 8 → 0 | ✅ | Karpenter Spot thật (node Ready ~36s, k6 ×2.4 request); NetworkPolicy EKS 11/11; 8 việc GĐ7 trên 1 cluster (alert → Discord 146s, log JSON + `trace_id` → X-Ray); Spring Boot 3.5 → 0 CVE; schema expand → migrate → contract trên RDS; `orphan_finder.py` bắt 3 loại tài nguyên sót |
 | Sau GĐ9 (2026-09-30) | ✅ | Keycloak production-grade trên EKS thật (ADR-011: image optimized, rootfs chỉ đọc, 2 Pod thành cluster qua RDS với NetworkPolicy bật, xóa 1 Pod vẫn giữ session + smoke xanh); auth luôn bật (bỏ `bss.auth.enabled`); rà Definition of Done — xem `docs/ROADMAP.md` |
+| Mất 1 AZ trên prod (2026-10-02 → 05) | ✅ | [Lab 10](docs/labs/10-az-outage.md): 2 lần cô lập AZ chứa RDS primary + failover — API ≤ 1,35 % lỗi trong ≤ 25 s, 0 Pod Pending, e2e PASS. 3 lỗi thật lộ ra và đã sửa: Keycloak mất cluster (→ 26.8.0), HPA hạ prod về 2 replica, readiness Keycloak treo ~16 phút (#217 — tái hiện trên máy: chưa sửa không hồi phục trong 240 s, đã sửa 26 s) |
 | HTTPS + tên miền (2026-10-01) | ✅ | `bssplatform.dpdns.org` (ADR-012): zone Route 53 + cert ACM ở shared, ExternalDNS (IAM theo tên bản ghi); dev EKS: TLS 1.3, smoke 7/7 qua HTTPS, NetworkPolicy 12/12, đăng ký + đăng nhập web thật; Keycloak 26.7.5 |
 | 2 website trên mọi môi trường (2026-10-02) | ✅ | `e2e-flow.sh` (khách + nhân viên + khách khác, kiểm cả phía admin) PASS + Playwright 3/3 trên kind, dev, staging, prod; chủ repo cấp tài khoản nhân viên bằng `admin-user.sh` rồi tự duyệt khách + đối chiếu hóa đơn 2 phía trên dev/staging/prod |
 
@@ -572,4 +573,6 @@ python tools/ops/orphan_finder.py            # phải rỗng
   3 lần đo liền (`docs/labs/07-load-test-dev.md` §2c).
 - ~~B-15~~ — ✅ code xong 2026-10-01 (PR bss-common-java 0.2.0 + PR các service): UUID v7, `Idempotency-Key` cho
   `productOrder`, merge-patch `null` = xóa, 4 service dùng `bss-common-java` (#199, #200 đã merge).
-- **0 issue mở** (2026-10-02). Ngoài repo: buổi review với thầy (ô cuối của Definition of Done — việc của chủ repo).
+- **0 issue mở** (2026-10-05, sau #217). Chưa release: Keycloak 26.8.0 + HPA prod `minReplicas: 3` + network-timeout đang ở
+  `main`, prod chính thức vẫn là `v2.2.0` → lần dựng kế tiếp: `rc-v2.3.0` → `v2.3.0` và chạy lại `chaos-az-outage.sh` trên RDS thật.
+  Ngoài repo: buổi review với thầy (ô cuối của Definition of Done — việc của chủ repo).

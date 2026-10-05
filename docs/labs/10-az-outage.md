@@ -118,19 +118,59 @@ nối sẵn sàng, 0 chờ); `pg_stat_activity` cho thấy mọi phiên của Ke
 cuối cùng lúc **16:45:42 = 963 s sau khi cô lập ≈ thời gian kernel bỏ một kết nối TCP chết (`tcp_retries2 = 15`,
 ~15,5 phút)** — luồng chỉ được giải phóng khi kernel hủy socket tới primary cũ.
 
-Điều chưa giải thích được: `socketTimeout=30` (đã nạp đúng — `kc.sh show-config`) lẽ ra cắt lần đọc đó sau 30 s; mã
-pgjdbc 42.7.13 `isValid(0)` giữ nguyên network timeout. Đường đi này của health check rõ ràng không chịu timeout đó —
-cần đào tiếp ([issue #217](https://github.com/NguyenDucManhDOE247/BSS-Platform/issues/217)).
+Lúc đó chưa giải thích được vì sao `socketTimeout=30` (đã nạp đúng — `kc.sh show-config`) không cắt lần đọc ấy —
+lời giải ở mục 3.2.
 
 **Ảnh hưởng thật trong 13 phút đó:** ALB vẫn trả trang đăng nhập nhờ *fail-open* (mọi target unhealthy → ALB gửi cho tất
 cả) — đầu dò OIDC **0 lỗi là nhờ fail-open, không phải vì Keycloak "khỏe"**. Nhưng Service `keycloak` trong cluster
 **không còn endpoint Ready**: service nào cần tải lại JWKS lúc đó sẽ lỗi (khóa đã cache thì không sao).
 
+### 3.2 Nguyên nhân gốc + bản sửa (issue #217, 2026-10-05) — tái hiện trên máy, $0
+
+**Manh mối:** trong thread dump, lần đọc đi vào `NioSocketImpl.implRead:309 → park(fd, POLLIN)` — nhánh **không
+timeout** của JDK (nhánh có timeout là `timedRead`). Tức socket đó có `SO_TIMEOUT = 0` dù JDBC URL ghi `socketTimeout=30`.
+Phải có ai đặt lại network timeout của kết nối.
+
+**Chuỗi nguyên nhân (đọc mã nguồn 3 dự án):**
+
+1. Keycloak ≥ 26.8.0 — chính bản vá [#51916](https://github.com/keycloak/keycloak/pull/51916) — gọi
+   `connection.setNetworkTimeout(executor, staleness_timeout / 3)` trên **mỗi kết nối JDBC_PING2 mượn từ pool**.
+2. Agroal (`ConnectionHandler.java:163`): khi kết nối được trả về mà network timeout đã bị đổi, nó đặt lại bằng
+   `connectionFactoryConfiguration().networkTimeout()` — cấu hình **của Agroal**, mặc định `0` = vô hạn — chứ không
+   phải giá trị pgjdbc đã đặt từ URL.
+3. JDBC_PING2 chạy vài giây một lần ⇒ chẳng mấy chốc mọi kết nối trong pool mất `socketTimeout`. Primary biến mất
+   im lặng ⇒ health check (`isHealthy → isValid`) đọc vô hạn ⇒ hàng đợi health đầy ⇒ readiness DOWN tới khi kernel
+   bỏ socket.
+
+Nói cách khác: bản vá cứu cluster JDBC_PING2 (mục 3) **đồng thời** vô hiệu hóa timeout của mọi kết nối khác — hai lỗi
+nối đuôi nhau, và chỉ lần chạy 2 mới lộ cái thứ hai.
+
+**Sửa:** `QUARKUS_DATASOURCE_JDBC_NETWORK_TIMEOUT=30S` (ánh xạ vào `networkTimeout` của Agroal, cùng giá trị với
+`socketTimeout`) trong `components/keycloak-aws/deployment.yaml`.
+
+**Kiểm chứng** — [`scripts/lab-keycloak-db-failover.sh`](../../scripts/lab-keycloak-db-failover.sh): đúng image
+`apps/identity/keycloak`, 2 Postgres; `iptables DROP` mọi gói từ Keycloak tới primary cũ (mất hút như NACL), DNS chuyển
+sang primary mới có cùng dữ liệu; đo `/health/ready` mỗi 2 s.
+
+| | Chưa sửa (`NETWORK_TIMEOUT=`) | **Đã sửa (30S)** |
+|---|---|---|
+| `/health/ready` sau khi primary biến mất | không về 200 trong 240 s; để chạy tiếp: **tự Ready ở t = 936 s (15,6 phút)** — khớp prod (963 s) | **về 200 ổn định, lần lỗi cuối ở t = 26 s / 25 s** (3 lần chạy) |
+| Log `No executor queue space remaining` | 132 dòng trong 240 s (820 dòng trong 936 s) | **0** |
+| Thread dump | `isHealthy:629 → isValid:1604 → implRead:309 → park` — trùng từng dòng với prod | không còn luồng kẹt đọc |
+
+`ci-keycloak` chạy bài lab này với image vừa build và **đọc 2 giá trị timeout từ manifest** (thiếu là dừng) — xóa nhầm env,
+hoặc một bản Keycloak mới làm property thô của Quarkus hết tác dụng, là PR đỏ.
+
+Bài học của chính bài lab: 2 lần đo đầu **vô nghĩa** vì Docker cấp cho "primary mới" đúng IP cũ của primary bị chặn
+(nên nó cũng mất hút) — sửa bằng IP tĩnh. Kết quả "vẫn hỏng dù đã sửa" suýt bị tin là thật.
+
+Chưa chạy lại trên AWS: cơ chế đã tái hiện trùng khớp ở máy; lần dựng prod kế tiếp (release `v2.3.0`) chạy lại
+`chaos-az-outage.sh` để lấy số đo trên RDS thật.
+
 ## 4. Rủi ro còn lại (đã đo hoặc đã biết, chưa sửa)
 
 | Rủi ro | Hậu quả | Cách sửa | Vì sao chưa làm |
 |---|---|---|---|
-| **Readiness Keycloak treo ~16 phút** sau khi primary RDS biến mất (mục 3.1) | Pod Keycloak NotReady → không endpoint trong cluster; ALB fail-open che phần người dùng | Tìm vì sao `socketTimeout` không áp cho validation; hoặc `tcp_retries2` thấp hơn trong netns của Pod (sysctl "unsafe" — PSS `restricted` + kubelet chặn) | Chưa rõ nguyên nhân gốc — [issue #217](https://github.com/NguyenDucManhDOE247/BSS-Platform/issues/217) |
 | **1 NAT Gateway** ở `ap-southeast-1a` | Mất `1a` = mọi Pod mất đường ra AWS API (SQS/EventBridge/STS/ECR) → đơn hàng vẫn tạo (outbox giữ sự kiện) nhưng hóa đơn dừng tới khi AZ về; image mới không kéo được | 1 NAT mỗi AZ + route table private riêng mỗi AZ (module `vpc`) | +$1,4/ngày mỗi NAT; staging/prod ephemeral. Làm khi prod chạy thường trực |
 | Pod ở AZ chết chỉ bị đuổi sau **300 s** | 5 phút chạy thiếu replica (vẫn phục vụ nhờ 2 AZ còn lại) | `tolerationSeconds` ngắn hơn cho `node.kubernetes.io/unreachable` | Đánh đổi: ngắn quá thì một lần chập mạng thoáng qua cũng đuổi Pod hàng loạt |
 | ALB vẫn có node ở AZ chết (thí nghiệm không chặn subnet public) | Một phần kết nối mới tới IP ALB ở AZ đó có thể lỗi | Route 53 ARC zonal shift cho ALB | Chưa đo — cần chặn subnet public, mà đó cũng là nơi có NAT |
@@ -145,3 +185,5 @@ cả) — đầu dò OIDC **0 lỗi là nhờ fail-open, không phải vì Keycl
 6. Overlay prod ghi `replicas: 3` nhưng cluster chạy 2 — ai thắng, và vì sao PDB `minAvailable: 2` biến điều đó thành lỗi?
 7. Lần 2 đầu dò OIDC 0 lỗi trong khi cả 2 Pod Keycloak NotReady 13 phút. ALB làm gì để ra con số đó, và vì sao không được
    đọc nó thành "Keycloak khỏe"?
+8. (3.2) Vì sao `socketTimeout=30` trong JDBC URL không đủ, và thread dump cho biết điều đó ở dòng nào?
+9. (3.2) Hai lần đo đầu của lab trên máy cho kết quả "đã sửa mà vẫn hỏng". Sai ở đâu, và bài học chung là gì?
