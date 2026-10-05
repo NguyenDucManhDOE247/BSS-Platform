@@ -22,6 +22,18 @@ REGION="${AWS_REGION:-ap-southeast-1}"
 TF_DIR="infrastructure/terraform/environments/$ENV"
 CLUSTER="bss-$ENV-eks"
 
+# Chart được tải bằng curl (có retry) rồi cài từ FILE, không qua `helm repo add` + tên chart: trình tải của Helm
+# không retry, và trong WSL nó lúc được lúc treo 120 s ở "awaiting headers" khi lấy .tgz từ GitHub Pages (gặp lại
+# 2026-10-05 khi dựng staging — cùng URL đó curl lấy trong 0,4 s). Phiên bản vẫn ghim: nó nằm trong tên file.
+CHART_DIR="$(mktemp -d)"
+trap 'rm -rf "$CHART_DIR"' EXIT
+fetch_chart() {
+  local url="$1" out
+  out="$CHART_DIR/${url##*/}"
+  curl -fsSL --retry 5 --retry-all-errors --connect-timeout 10 --max-time 60 -o "$out" "$url"
+  echo "$out"
+}
+
 echo "=== 1/7 — kubeconfig for $CLUSTER ==="
 aws eks update-kubeconfig --region "$REGION" --name "$CLUSTER"
 
@@ -35,12 +47,10 @@ kubectl apply -f infrastructure/kubernetes/base/namespace.yaml
 
 echo ""
 echo "=== 3/7 — AWS Load Balancer Controller (creates the ALB from Ingress) ==="
-helm repo add eks https://aws.github.io/eks-charts >/dev/null 2>&1 || true
-helm repo update eks >/dev/null
 # Chart/app version 3.5.0 MUST match the iam_policy.json version pinned in
 # infrastructure/terraform/modules/platform-iam/main.tf — see the comment there.
-helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
-  --version 3.5.0 \
+helm upgrade --install aws-load-balancer-controller \
+  "$(fetch_chart https://aws.github.io/eks-charts/aws-load-balancer-controller-3.5.0.tgz)" \
   -n kube-system -f platform/networking/aws-load-balancer-controller-values.yaml \
   --set clusterName="$CLUSTER" \
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$(terraform -chdir="$TF_DIR" output -raw aws_lb_controller_role_arn)"
@@ -51,10 +61,8 @@ kubectl apply -f platform/storage/storageclass-gp3.yaml
 
 echo ""
 echo "=== 5/7 — Secrets Store CSI Driver + AWS provider (B-20: per-service RDS credentials) ==="
-helm repo add secrets-store-csi-driver https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts >/dev/null 2>&1 || true
-helm repo update secrets-store-csi-driver >/dev/null
-helm upgrade --install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver \
-  --version 1.6.1 \
+helm upgrade --install csi-secrets-store \
+  "$(fetch_chart https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts/secrets-store-csi-driver-1.6.1.tgz)" \
   -n kube-system -f platform/secrets/secrets-store-csi-values.yaml
 # Pinned to a release tag, not "main" (B-42) — an unpinned branch can change under you between
 # two runs of this exact same script with no changelog to check.
@@ -86,10 +94,9 @@ echo ""
 echo "=== 7/7 — ExternalDNS (B-23, ADR-012 — bản ghi Route 53 cho host của Ingress) ==="
 EXTERNAL_DNS_ROLE="$(terraform -chdir="$TF_DIR" output -raw external_dns_role_arn 2>/dev/null || true)"
 if [ -n "$EXTERNAL_DNS_ROLE" ] && [ "$EXTERNAL_DNS_ROLE" != "null" ]; then
-  helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/ >/dev/null 2>&1 || true
-  helm repo update external-dns >/dev/null
-  helm upgrade --install external-dns external-dns/external-dns \
-    --version 1.23.0 -n kube-system -f platform/networking/external-dns-values.yaml \
+  helm upgrade --install external-dns \
+    "$(fetch_chart https://github.com/kubernetes-sigs/external-dns/releases/download/external-dns-helm-chart-1.23.0/external-dns-1.23.0.tgz)" \
+    -n kube-system -f platform/networking/external-dns-values.yaml \
     --set txtOwnerId="$CLUSTER" \
     --set "domainFilters={$(terraform -chdir="$TF_DIR" output -raw dns_zone_name)}" \
     --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$EXTERNAL_DNS_ROLE" \
