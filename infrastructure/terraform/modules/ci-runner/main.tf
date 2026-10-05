@@ -176,7 +176,19 @@ resource "aws_codebuild_project" "runner" {
 
   tags = var.tags
 
-  depends_on = [aws_iam_role_policy.runner]
+  depends_on = [time_sleep.runner_iam_propagation]
+}
+
+# CreateProject kiểm NGAY rằng service role đọc được kết nối GitHub, mà policy vừa gắn cần vài giây mới có hiệu
+# lực ở mọi nơi (IAM eventually consistent). Không chờ thì apply đầu tiên của một môi trường mới vỡ với
+# "OAuthProviderException: User is not authorized to access connection …" (gặp thật khi dựng staging 2026-10-05;
+# apply lại lần hai thì qua). Provider AWS không tự retry lỗi này.
+resource "time_sleep" "runner_iam_propagation" {
+  create_duration = "30s"
+
+  triggers = {
+    policy = aws_iam_role_policy.runner.policy
+  }
 }
 
 # GitHub gửi sự kiện "có job đang chờ runner" → CodeBuild khởi động 1 build làm runner cho đúng job đó.

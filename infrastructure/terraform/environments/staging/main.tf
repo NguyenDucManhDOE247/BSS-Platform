@@ -12,6 +12,7 @@ terraform {
     aws    = { source = "hashicorp/aws", version = "~> 5.0" }
     tls    = { source = "hashicorp/tls", version = "~> 4.0" }
     random = { source = "hashicorp/random", version = "~> 3.0" }
+    time   = { source = "hashicorp/time", version = "~> 0.12" }
   }
 
   # Remote state — see the long comment in environments/dev/main.tf (B-38): bucket name comes
