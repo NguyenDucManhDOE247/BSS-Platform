@@ -51,6 +51,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Keycloak readiness stayed DOWN for ~16 minutes after the database primary vanished** (#217, second finding of
+  the AZ lab). Root cause is an interaction, not a missing setting: Keycloak ≥ 26.8.0 calls
+  `connection.setNetworkTimeout()` on every pooled connection JDBC_PING2 borrows (keycloak/keycloak#51916); on return
+  Agroal resets the network timeout to *its own* configured value — default 0, infinite — wiping the `socketTimeout`
+  pgjdbc had applied from the JDBC URL. The DB health check then read forever on a connection to the dead primary until
+  the kernel dropped the socket. Fix: `QUARKUS_DATASOURCE_JDBC_NETWORK_TIMEOUT=30S` next to `socketTimeout=30`.
+  Reproduced and verified locally with the new `scripts/lab-keycloak-db-failover.sh` (iptables DROP to the old primary,
+  DNS flips to a new one): without the fix ready only after 936 s (the kernel's TCP retransmission timeout — prod
+  showed 963 s), with it ready again 25–26 s after the failover. `ci-keycloak` now runs this lab against the freshly
+  built image, reading both timeouts from the manifest.
 - **Prod ran 2 replicas, not 3, and its PDBs blocked every node drain** (AZ lab, run 2): the base HPAs have
   `minReplicas: 2`, so a few minutes after a deploy the HPA scaled prod's `replicas: 3` down to 2; with PDB
   `minAvailable: 2` that left `ALLOWED DISRUPTIONS 0` on 5 services, and both `product-catalog` pods ended up in one AZ.

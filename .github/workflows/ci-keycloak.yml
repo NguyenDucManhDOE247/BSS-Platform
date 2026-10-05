@@ -6,18 +6,25 @@ name: CI — keycloak
 #   3. chạy THẬT 2 replica trên Postgres, rootfs chỉ đọc — đúng điều kiện của components/keycloak-aws:
 #      phải `start --optimized` được, thành cluster 2 node (jdbc-ping), và refresh token cấp ở Pod 1
 #      dùng được ở Pod 2 (session chung). Đây là bài kiểm đã làm tay ngày 2026-09-30, tự động hóa lại.
+#   4. DB primary biến mất im lặng rồi DNS trỏ sang primary mới (issue #217, Lab 10): /health/ready phải tự về
+#      200. Dùng đúng 2 giá trị timeout trong components/keycloak-aws/deployment.yaml → xóa/sai chúng, hoặc bản
+#      Keycloak mới làm property thô của Quarkus hết tác dụng, là PR đỏ.
 
 on:
   pull_request:
     paths:
       - 'apps/identity/keycloak/**'
       - 'infrastructure/kubernetes/components/keycloak-realm/**'
+      - 'infrastructure/kubernetes/components/keycloak-aws/**'
+      - 'scripts/lab-keycloak-db-failover.sh'
       - '.github/workflows/ci-keycloak.yml'
   push:
     branches: [main]
     paths:
       - 'apps/identity/keycloak/**'
       - 'infrastructure/kubernetes/components/keycloak-realm/**'
+      - 'infrastructure/kubernetes/components/keycloak-aws/**'
+      - 'scripts/lab-keycloak-db-failover.sh'
 
 permissions:
   contents: read
@@ -28,9 +35,9 @@ concurrency:
 
 jobs:
   image:
-    name: Build + Trivy + chạy thử 2 replica
+    name: Build + Trivy + chạy thử 2 replica + DB failover
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -91,3 +98,8 @@ jobs:
       - name: Log khi hỏng
         if: failure()
         run: for c in kc1 kc2; do echo "::group::$c"; docker logs "$c" 2>&1 | tail -80 || true; echo "::endgroup::"; done
+
+      - name: DB primary biến mất → Keycloak tự Ready lại (#217)
+        run: |
+          docker rm -f kc1 kc2 pg >/dev/null 2>&1 || true
+          IMAGE=keycloak:ci LIMIT=180 WARMUP=45 ./scripts/lab-keycloak-db-failover.sh
