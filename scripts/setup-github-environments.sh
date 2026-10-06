@@ -96,8 +96,6 @@ ensure_policy staging    'rc-v*' tag
 ensure_policy production 'v*'    tag
 
 do_it "repository variable ECR_REGISTRY" gh variable set ECR_REGISTRY --body "$REGISTRY"
-# ADR-013: role chỉ-đọc cho job "cluster + runner trong VPC đã sẵn sàng?" của cd-staging/cd-prod (không phải bí mật).
-do_it "repository variable AWS_PREFLIGHT_ROLE_ARN" gh variable set AWS_PREFLIGHT_ROLE_ARN --body "arn:aws:iam::$ACCOUNT:role/bss-github-cd-preflight"
 do_it "dev.AWS_ROLE_ARN"        gh variable set AWS_ROLE_ARN --env dev        --body "arn:aws:iam::$ACCOUNT:role/bss-github-deployer-dev"
 do_it "staging.AWS_ROLE_ARN"    gh variable set AWS_ROLE_ARN --env staging    --body "arn:aws:iam::$ACCOUNT:role/bss-github-deployer-staging"
 do_it "production.AWS_ROLE_ARN" gh variable set AWS_ROLE_ARN --env production --body "arn:aws:iam::$ACCOUNT:role/bss-github-deployer-prod"

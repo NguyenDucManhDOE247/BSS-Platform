@@ -78,7 +78,7 @@ Optional, same scripts as on AWS: `./scripts/monitoring-install.sh kind`, `loggi
 
 ```bash
 make ENV=shared tf-init && make ENV=shared tf-plan    # READ the plan
-make ENV=shared tf-apply                              # 8 ECR repos, OIDC provider, deployer + preflight roles, GitHub connection, Route 53 zone + ACM cert
+make ENV=shared tf-apply                              # 8 ECR repos, OIDC provider, 3 deployer roles, Route 53 zone + ACM cert
 ./scripts/setup-github-environments.sh                # dry run — read it
 ./scripts/setup-github-environments.sh --apply        # Environments dev/staging/production + variables
 ```
@@ -152,9 +152,8 @@ delete them at the end). Staging/prod are rebuilt each session — run `admin-us
 ## Part 6 — Staging / prod (ephemeral, one session at a time)
 
 Same shape as Part 5 with `ENV=staging|prod` (`ephemeral = true` in their tfvars), then promote with tags —
-the exact checklist and quota rules are in [runbooks/cd-staging-prod-demo.md](runbooks/cd-staging-prod-demo.md).
-Their deploy jobs run on a **CodeBuild runner inside the VPC** ([ADR-013](adr/ADR-013-runner-cd-trong-vpc.md)), so
-`public_access_cidrs` is just your own IP; the one-time GitHub connection is in [runbooks/cd-runner.md](runbooks/cd-runner.md):
+the exact checklist, quota rules and the API-endpoint ↔ GitHub-runner trade-off are in
+[runbooks/cd-staging-prod-demo.md](runbooks/cd-staging-prod-demo.md):
 
 ```bash
 git tag rc-v2.1.0 <commit> && git push origin rc-v2.1.0   # cd-staging: ecr put-image → deploy → smoke → releases/rc-v2.1.0.json

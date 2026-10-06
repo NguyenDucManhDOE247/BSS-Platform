@@ -110,28 +110,23 @@ kubectl -n kube-system get pods -l k8s-app=aws-node -o jsonpath='{.items[0].spec
 ./scripts/netpol-matrix.sh "$(kubectl config current-context)"                                         # dev 12/12 (30/9); staging + prod 12/12 (1/10)
 ```
 
-## 4. API endpoint của cluster ↔ runner CD
+## 4. API endpoint của cluster ↔ runner của GitHub
 
-Từ [ADR-013](../adr/ADR-013-runner-cd-trong-vpc.md) (2026-10-05) job deploy của `cd-staging` / `cd-prod` chạy trên **runner
-CodeBuild trong VPC** và gọi API server qua endpoint private → trong `terraform.tfvars` đặt
+**Vấn đề.** CLAUDE.md §10 yêu cầu EKS public endpoint **giới hạn CIDR** ở prod. Nhưng runner của GitHub
+(`ubuntu-latest`) không có IP cố định (hàng nghìn dải, đổi liên tục; EKS chỉ nhận tối đa 40 CIDR) — nên nếu
+`public_access_cidrs = ["<IP nhà bạn>"]` thì `kubectl` chạy trong Actions **timeout** ở bước
+`Preflight`/`Render + apply`.
 
-```hcl
-public_access_cidrs = ["<IP công khai của bạn>/32"]     # curl -s https://checkip.amazonaws.com
-```
+| Lựa chọn | Đánh đổi |
+|---|---|
+| **A. `["0.0.0.0/0"]` trong lúc buổi demo** (khuyến nghị cho ephemeral) | API server vẫn cần chữ ký IAM + RBAC (không ẩn danh), và cluster tồn tại vài giờ. Nhưng mở cho cả Internet thăm dò/brute-force và **vi phạm chữ nghĩa** của quy tắc §10 — chấp nhận được **chỉ vì** prod ở đây là ephemeral; ghi rõ trong đề tài |
+| B. Runner trong VPC + endpoint private | Đúng chuẩn production. **Đã thử 2026-10-05 bằng CodeBuild và phải rút lại**: tài khoản này có quota CodeBuild = 0 và AWS từ chối tăng ([ADR-013](../adr/ADR-013-runner-cd-trong-vpc.md)); EC2 self-hosted runner thì không còn vCPU (prod dùng 8/8). Làm lại khi có quota |
+| C. Không để CD chạm cluster; deploy bằng tay từ máy bạn (CIDR = IP nhà) với đúng công cụ của CD | Giữ endpoint chặt, nhưng mất tự động hoá + cổng duyệt của GitHub cho bước deploy. Lệnh: [cd-dev.md §5](cd-dev.md) |
+| D. Thêm/bớt IP runner lúc chạy bằng `aws eks update-cluster-config` | Quyền `UpdateClusterConfig` rất rộng cho role CI, mỗi lần cập nhật mất vài phút, dễ để sót — không khuyến nghị |
 
-Không còn `0.0.0.0/0` — kể cả cho buổi demo. Điều kiện làm một lần (kết nối GitHub ở state `shared` + repository variable
-`AWS_PREFLIGHT_ROLE_ARN`) và sự cố thường gặp: [cd-runner.md](cd-runner.md). IP nhà đổi giữa buổi ⇒ `kubectl` từ laptop
-timeout ⇒ sửa tfvars, `tf-apply` (vài phút).
-
-<details><summary>Lịch sử: vì sao trước đây phải mở <code>0.0.0.0/0</code></summary>
-
-Runner của GitHub (`ubuntu-latest`) không có IP cố định (hàng nghìn dải, đổi liên tục; EKS chỉ nhận tối đa 40 CIDR), nên
-với danh sách chặt `kubectl` trong Actions timeout. Từ GĐ6 tới `v2.2.0` các buổi staging/prod chạy với `0.0.0.0/0` như một
-ngoại lệ có chủ đích của CLAUDE.md §10 (API vẫn cần IAM + RBAC, cluster sống vài giờ). Các phương án đã cân: tự thêm/bớt IP
-runner bằng `update-cluster-config` (quyền rộng, dễ sót), EC2 self-hosted runner (phải nuôi máy), deploy tay từ laptop
-(mất tự động hóa + cổng duyệt) — bảng so sánh ở ADR-013.
-
-</details>
+Mặc định trong `terraform.tfvars.example` là **danh sách chặt**; bạn tự đổi sang `0.0.0.0/0` khi chọn A, và
+**quay lại danh sách chặt/destroy** khi xong. Quyết định này là của bạn — đây là ngoại lệ có chủ đích của
+§10, không phải mặc định mới.
 
 ## 5. Kết thúc buổi (KHÔNG BỎ QUA)
 

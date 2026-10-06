@@ -1,10 +1,18 @@
 # ADR-013 — Runner CD trong VPC (CodeBuild) để khóa endpoint EKS; NAT mỗi AZ ở prod
 
-- **Trạng thái:** Chấp nhận (Accepted) — đóng ngoại lệ "EKS endpoint `0.0.0.0/0` khi demo" (CLAUDE.md §10, từ GĐ6) và
-  rủi ro "1 NAT là điểm chết đơn" ([Lab 10](../labs/10-az-outage.md) §4).
-- **Ngày:** 2026-10-05
+- **Trạng thái:** **Rút lại một phần (2026-10-06).**
+  - Quyết định 1–3 (runner CodeBuild trong VPC, job preflight, kubectl cài trong job): **đã rút lại, code đã gỡ** — tài
+    khoản AWS này không được phép chạy build CodeBuild nào (quota = 0, xin tăng bị từ chối). Xem
+    [Vì sao rút lại](#vì-sao-rút-lại-quyết-định-13-2026-10-06). Ngoại lệ "EKS endpoint `0.0.0.0/0` khi demo"
+    (CLAUDE.md §10, từ GĐ6) **có hiệu lực trở lại**.
+  - Quyết định 4 (prod: 1 NAT mỗi AZ): **vẫn hiệu lực** — đóng rủi ro "1 NAT là điểm chết đơn"
+    ([Lab 10](../labs/10-az-outage.md) §4).
+- **Ngày:** 2026-10-05 (chấp nhận) → 2026-10-06 (rút lại quyết định 1–3)
 - **Liên quan:** [ADR-005](ADR-005-nguon-su-that-phien-ban-cd.md) (CD), [ADR-006](ADR-006-staging-prod-ephemeral.md)
   (staging/prod ephemeral — nơi ghi ràng buộc endpoint ↔ runner), [ADR-002](ADR-002-mang-dev.md) (mạng).
+
+> Phần "Bối cảnh" và "Quyết định" bên dưới giữ nguyên như lúc chấp nhận, để đọc lại được lý do và thiết kế. Bản cài đặt
+> nằm trong lịch sử git: #220 (module `ci-runner`, workflow, role preflight) và #221 (chờ IAM có hiệu lực).
 
 ## Bối cảnh
 
@@ -60,18 +68,46 @@ Image `aws/codebuild/standard:7.0` có sẵn git/jq/aws/curl nhưng kubectl củ
 Mất AZ chứa NAT duy nhất = mọi Pod ở 2 AZ còn lại mất đường ra SQS/EventBridge/STS/ECR dù vẫn "Running". Mỗi AZ một
 NAT thì AZ nào chết, AZ đó tự chịu. Chỉ bật ở prod (+2 NAT ≈ +$0.12/giờ khi prod bật); dev/staging giữ 1 NAT.
 
-## Hệ quả
+## Vì sao rút lại quyết định 1–3 (2026-10-06)
 
-- ✅ CLAUDE.md §10 "EKS public endpoint restricted ở prod" trở lại là quy tắc được tuân thủ, không còn là ngoại lệ.
-- ✅ Prod không còn điểm chết đơn về mạng theo AZ.
-- ⚠️ Thêm một phụ thuộc: GitHub App "AWS Connector for GitHub" + webhook. Runner hỏng (kết nối bị thu hồi, CodeBuild
-  lỗi) thì CD staging/prod dừng — đường lui: deploy tay bằng đúng công cụ của CD (runbook `cd-dev.md` §5) từ máy có IP
-  trong `public_access_cidrs`.
-- ⚠️ IP nhà của người vận hành đổi thì `kubectl` từ laptop mất quyền vào — sửa `public_access_cidrs` rồi `apply`
-  (vài phút). `scripts/platform-install.sh`, `e2e-flow.sh`, `chaos-az-outage.sh` đều chạy từ laptop.
-- ⚠️ Job đầu tiên trên runner chậm hơn runner GitHub ~1 phút (CodeBuild cấp container + ENI trong VPC).
-- 💰 CodeBuild `BUILD_GENERAL1_SMALL` tính theo phút; một lần deploy ~10 phút ≈ vài cent.
+Lần chạy thật đầu tiên (2026-10-05, dựng staging cho `rc-v2.3.0`):
 
-## Bằng chứng chạy thật
+| Bước | Kết quả |
+|---|---|
+| `terraform apply` state `shared` (kết nối `bss-github`, role preflight) + ủy quyền GitHub App | ✅ kết nối `AVAILABLE` |
+| `terraform apply` staging với `public_access_cidrs = ["<IP người vận hành>/32"]` | ✅ sau khi sửa lỗi IAM chưa kịp có hiệu lực (#221): project + webhook tạo được |
+| Job preflight của `cd-staging` (runner GitHub, role chỉ-đọc) | ✅ "cluster ACTIVE, runner sẵn sàng" |
+| Job deploy xếp hàng với nhãn `codebuild-bss-staging-gha-runner-…` | ❌ không bao giờ có runner |
 
-Ghi ở [runbook cd-runner](../runbooks/cd-runner.md) mục 5 sau lần release `rc-v2.3.0` → `v2.3.0`.
+GitHub gửi webhook `workflow_job: queued` tới CodeBuild và nhận **HTTP 400**:
+
+```
+{"message":"Cannot have more than 0 builds in queue for the account"}
+```
+
+`aws service-quotas list-service-quotas --service-code codebuild`: mọi quota *Concurrently running builds for
+<loại máy> environment* (Linux/Small, Medium, Large, ARM/Small, Lambda) của tài khoản đều là **0** — mặc định của AWS
+là 1. Yêu cầu tăng `L-9D07B6EF` (Linux/Small) lên 1 gửi ngày 2026-10-06 đã **bị AWS từ chối** (cùng tài khoản từng bị
+từ chối tăng quota vCPU EC2 ngày 2026-09-28 — ADR-006).
+
+Phương án trong-VPC còn lại ở bảng trên cũng không dùng được với tài khoản này: EC2 self-hosted runner cần thêm ≥ 2 vCPU
+trong khi prod đã dùng đủ 8/8 vCPU On-Demand.
+
+**Quyết định:** gỡ toàn bộ phần runner (module `ci-runner`, kết nối CodeConnections + role preflight ở state `shared`,
+job preflight, repository variable `AWS_PREFLIGHT_ROLE_ARN`); `cd-staging` / `cd-prod` chạy lại trên runner của GitHub
+như tới `v2.2.0`, và staging/prod lại mở endpoint `0.0.0.0/0` **trong buổi demo ephemeral**
+([runbook](../runbooks/cd-staging-prod-demo.md) §4). Không giữ code "để dành" sau một cờ bật/tắt: nó không chạy được
+và không được kiểm thử ở đâu cả.
+
+**Điều kiện xem lại:** tài khoản có quota CodeBuild ≥ 1 (hoặc chuyển sang tài khoản khác) → khôi phục từ #220 + #221.
+Việc đã kiểm được trong lần thử và dùng lại được: Terraform tạo đúng project + webhook, job preflight chạy đúng; phần
+chưa từng chạy: một job deploy thật trên runner trong VPC.
+
+## Hệ quả (sau khi rút lại)
+
+- ⚠️ CLAUDE.md §10 "EKS public endpoint restricted ở prod" **vẫn là ngoại lệ có chủ đích** trong buổi demo: API server
+  cần chữ ký IAM + EKS access entry, cluster chỉ sống vài giờ. Prod chạy thường trực thì phải giải quyết lại bài toán này.
+- ✅ Prod không còn điểm chết đơn về mạng theo AZ (quyết định 4) — chưa đo trên AWS; kiểm bằng
+  `INCLUDE_PUBLIC=1 scripts/chaos-az-outage.sh prod` ở lần dựng prod kế tiếp. +2 NAT ≈ +$0.12/giờ khi prod bật.
+- 📝 Bài học vận hành: trước khi thiết kế dựa trên một dịch vụ AWS chưa từng dùng trong tài khoản, kiểm **quota đang áp
+  dụng** của nó (`aws service-quotas list-service-quotas --service-code <dịch vụ>`) — tài khoản mới có thể bị đặt 0.
