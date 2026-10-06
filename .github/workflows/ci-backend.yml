@@ -138,6 +138,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Ngoại lệ CVE-2026-47884 còn đúng? (service không dùng XsltView)
+        # .trivyignore của 4 service bỏ qua CVE-2026-47884 với lý do "không dùng XsltView" (issue #228).
+        # Lý do đó phải được máy kiểm: XsltView xuất hiện trong code là bước này đỏ — gỡ ngoại lệ trước khi dùng.
+        run: |
+          if grep -rIl --include='*.java' --include='*.xml' -e 'XsltView' "apps/backend/${{ matrix.service }}/src"; then
+            echo "::error::XsltView xuất hiện trong code — ngoại lệ CVE-2026-47884 trong .trivyignore không còn đúng (issue #228)"
+            exit 1
+          fi
+
       - name: Trivy scan
         # B-54: was pinned to tag "0.20.0" (no "v" prefix, and long since removed from the repo's
         # release list) — CI failed with "Unable to resolve action ... unable to find version".
