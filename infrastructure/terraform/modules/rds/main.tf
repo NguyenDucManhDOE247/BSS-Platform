@@ -176,4 +176,16 @@ resource "aws_db_instance" "this" {
   enabled_cloudwatch_logs_exports = ["postgresql"]
 
   tags = var.tags
+
+  # Log group phải có TRƯỚC instance — nếu không RDS tự tạo nó (xem aws_cloudwatch_log_group.postgresql bên dưới).
+  depends_on = [aws_cloudwatch_log_group.postgresql]
+}
+
+# enabled_cloudwatch_logs_exports ghi vào đúng tên này. Cùng lý do với log control plane của EKS (modules/eks):
+# để RDS tự tạo thì log group không có thời hạn lưu và `terraform destroy` không xóa nó.
+resource "aws_cloudwatch_log_group" "postgresql" {
+  name              = "/aws/rds/instance/${var.name_prefix}-pg/postgresql"
+  retention_in_days = var.log_retention_days
+
+  tags = var.tags
 }

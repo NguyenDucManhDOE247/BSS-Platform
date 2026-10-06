@@ -44,7 +44,9 @@ python tools/ops/orphan_finder.py --json     # cho script khác đọc
 
 Kiểm EKS, RDS (+ snapshot thủ công), EC2 (kể cả node Karpenter), ALB/Target Group `k8s-bss-*` (do
 Ingress tạo — không nằm trong state Terraform), NAT, EIP không gắn, EBS/ENI rời, VPC còn sót — theo tag
-`Project=bss-platform`, tag cluster `bss-*`, hoặc tên `bss-`. Chỉ đọc. Tài nguyên bền của
+`Project=bss-platform`, tag cluster `bss-*`, hoặc tên `bss-`. Cũng báo log group `/aws/eks/bss-*` và
+`/aws/rds/instance/bss-*` của cluster / DB instance đã xóa (2026-10-06: EKS và RDS tự tạo chúng không có thời hạn
+lưu khi Terraform không khai báo). Chỉ đọc. Tài nguyên bền của
 `environments/shared` (ECR, OIDC, role deployer, bucket state) là cố ý, không bị báo. `scripts/teardown.sh`
 tự chạy nó ở cuối.
 

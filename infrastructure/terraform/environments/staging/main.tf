@@ -47,6 +47,10 @@ locals {
   name_prefix  = "bss-${local.env}"
   cluster_name = "${local.name_prefix}-eks"
 
+  # Một con số cho MỌI log group của môi trường: application/dataplane/host (modules/observability), log control
+  # plane của EKS (modules/eks) và log PostgreSQL của RDS (modules/rds).
+  log_retention_days = 14
+
   common_tags = {
     Project     = "bss-platform"
     Environment = local.env
@@ -74,6 +78,7 @@ module "eks" {
 
   name_prefix                = local.name_prefix
   cluster_name               = local.cluster_name
+  cluster_log_retention_days = local.log_retention_days
   k8s_version                = "1.34" # B-36: verify current STANDARD_SUPPORT versions before apply
   private_subnet_ids         = module.vpc.private_subnet_ids
   public_subnet_ids          = module.vpc.public_subnet_ids
@@ -111,6 +116,7 @@ module "rds" {
   performance_insights_enabled = true
   deletion_protection          = !var.ephemeral
   secret_recovery_window_days  = var.ephemeral ? 0 : 30 # B-37: see var.ephemeral
+  log_retention_days           = local.log_retention_days
 
   tags = local.common_tags
 }
@@ -126,7 +132,7 @@ module "observability" {
 
   name_prefix        = local.name_prefix
   cluster_name       = local.cluster_name
-  log_retention_days = 14
+  log_retention_days = local.log_retention_days
   xray_sampling_rate = 0.2
 
   tags = local.common_tags
