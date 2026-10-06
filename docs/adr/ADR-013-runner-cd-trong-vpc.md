@@ -107,7 +107,8 @@ chưa từng chạy: một job deploy thật trên runner trong VPC.
 
 - ⚠️ CLAUDE.md §10 "EKS public endpoint restricted ở prod" **vẫn là ngoại lệ có chủ đích** trong buổi demo: API server
   cần chữ ký IAM + EKS access entry, cluster chỉ sống vài giờ. Prod chạy thường trực thì phải giải quyết lại bài toán này.
-- ✅ Prod không còn điểm chết đơn về mạng theo AZ (quyết định 4) — chưa đo trên AWS; kiểm bằng
-  `INCLUDE_PUBLIC=1 scripts/chaos-az-outage.sh prod` ở lần dựng prod kế tiếp. +2 NAT ≈ +$0.12/giờ khi prod bật.
+- ✅ Prod không còn điểm chết đơn về mạng theo AZ (quyết định 4) — **đã đo 2026-10-06** ([Lab 10](../labs/10-az-outage.md)
+  mục 3b, `INCLUDE_PUBLIC=1 scripts/chaos-az-outage.sh prod` trên `v2.3.0`): AZ `1a` chết cùng NAT của nó, Pod ở `1b`/`1c`
+  vẫn mở được kết nối tới SQS/EventBridge/STS (207/208 lần trong 6 phút). +2 NAT ≈ +$0.12/giờ khi prod bật.
 - 📝 Bài học vận hành: trước khi thiết kế dựa trên một dịch vụ AWS chưa từng dùng trong tài khoản, kiểm **quota đang áp
   dụng** của nó (`aws service-quotas list-service-quotas --service-code <dịch vụ>`) — tài khoản mới có thể bị đặt 0.
