@@ -67,8 +67,7 @@ Mục đích kép: **portfolio học tập platform-engineering** + **tham chi�
 │     Discord), Fluent Bit → CloudWatch, OTel → X-Ray             │
 │   • AWS LB Controller, ExternalDNS, StorageClass gp3            │
 │   • NetworkPolicy default-deny, Pod Security `restricted`       │
-│   • GitHub Actions OIDC → 3 IAM role (không static key);        │
-│     CD staging/prod chạy trên runner CodeBuild TRONG VPC        │
+│   • GitHub Actions OIDC → 3 IAM role (không static key)         │
 │   • Terraform state `shared` (ECR, OIDC, role, zone, cert) +    │
 │     dev/staging/prod — staging/prod ephemeral (ADR-006)         │
 └─────────────────────────────────────────────────────────────────┘
@@ -153,8 +152,7 @@ lên **cùng digest** bằng `aws ecr put-image` (ADR-005).
 |---|---|---|---|---|
 | Region / AZ | máy bạn | ap-southeast-1 / 2 | ap-southeast-1 / 3 | ap-southeast-1 / 3 |
 | NAT Gateway | — | 1 (+ S3 gateway endpoint — ADR-002) | 1 | **3 — mỗi AZ một cái** (`nat_gateway_per_az`, ADR-013) |
-| EKS public endpoint | — | `0.0.0.0/0` (thiết kế) | **chỉ IP người vận hành** | **chỉ IP người vận hành** |
-| Runner của CD | — | GitHub-hosted | CodeBuild trong VPC (ADR-013) | CodeBuild trong VPC (ADR-013) |
+| EKS public endpoint | — | `0.0.0.0/0` | `0.0.0.0/0` **trong buổi demo** | `0.0.0.0/0` **trong buổi demo** ⚠️ |
 | Node | 1 node kind | 2× t3.medium (2–3) + Karpenter Spot ≤ 8 vCPU | 3× t3.large (2–5) | 4× t3.large (3–4, vừa quota 8 vCPU) |
 | RDS | Postgres StatefulSet | db.t3.micro, 20 GB, backup 1 ngày | db.t3.small, 50 GB, 7 ngày | db.t3.medium **multi-AZ**, 100 GB, 30 ngày |
 | Deletion protection | — | OFF | `!ephemeral` (OFF khi demo) | `!ephemeral` (OFF khi demo) |
@@ -163,9 +161,10 @@ lên **cùng digest** bằng `aws ecr put-image` (ADR-005).
 | Sống bao lâu | tùy | dựng theo buổi, **destroy mỗi tối** | ephemeral 1 buổi (ADR-006) | ephemeral 1 buổi (ADR-006) |
 | **Chi phí khi bật** | $0 | **~$0.3–0.4/giờ** | **~$0.4/giờ** | **~$1.3/giờ** |
 
-- **Endpoint EKS của staging/prod chỉ mở cho IP người vận hành** (ADR-013): job deploy của CD chạy trên runner CodeBuild
-  trong VPC và gọi API server qua endpoint private. (Tới `v2.2.0` hai môi trường này mở `0.0.0.0/0` trong buổi demo vì
-  runner GitHub không có IP cố định.) Vận hành + sự cố: `docs/runbooks/cd-runner.md`.
+- ⚠️ **Endpoint `0.0.0.0/0` ở staging/prod là ngoại lệ có chủ đích**, không phải mặc định: runner GitHub không có IP cố
+  định nên CIDR chặt làm CD timeout. API server vẫn cần IAM + EKS access entry; cluster chỉ sống vài giờ.
+  `terraform.tfvars.example` để danh sách chặt. Đã thử gỡ ngoại lệ này bằng runner CodeBuild trong VPC (2026-10-05) và
+  phải rút lại: tài khoản có quota CodeBuild = 0, AWS từ chối tăng (ADR-013; runbook `cd-staging-prod-demo.md` §4).
 - Quota On-Demand mặc định **8 vCPU/account** ⇒ chỉ chạy **một** cluster lớn tại một thời điểm (destroy dev trước khi
   dựng prod).
 - Chi phí nền khi không có môi trường nào chạy: zone Route 53 **$0.50/tháng** + ECR storage. Budget alert
@@ -192,8 +191,8 @@ lên **cùng digest** bằng `aws ecr put-image` (ADR-005).
 | `ci-keycloak.yml` | PR đụng `apps/identity/keycloak/**` | docker build + Trivy + chạy thật 2 replica rootfs chỉ đọc (ADR-011) |
 | `ci-scripts.yml` | PR đụng `scripts/**` | shellcheck + test `release-manifest.sh` / `smoke.sh` |
 | `cd-dev.yml` | Merge `main` / thủ công | plan (desired từ git) → build service thiếu image → apply manifest 8 image (7 service + Keycloak) + smoke thật → PASS thì ghi `deploy-state`; hỏng thì rollback về manifest cũ (ADR-005) |
-| `cd-staging.yml` | Tag `rc-vX.Y.Z` | Preflight (cluster + runner có chưa) → job deploy **trên runner trong VPC**: tag phải trên `main` → `ecr put-image` rc-vX → apply staging + smoke → ghi `releases/rc-vX.json` (`verified_in: staging`) |
-| `cd-prod.yml` | Tag `vX.Y.Z` | Cổng kiểm (rc đã qua staging, cùng commit) + preflight → **Approve thủ công** → job deploy **trên runner trong VPC**: `ecr put-image` vX → apply prod + smoke; hỏng thì tự rollback |
+| `cd-staging.yml` | Tag `rc-vX.Y.Z` | Tag phải trên `main` → `ecr put-image` rc-vX → apply staging + smoke → ghi `releases/rc-vX.json` (`verified_in: staging`) |
+| `cd-prod.yml` | Tag `vX.Y.Z` | Cổng kiểm (rc đã qua staging, cùng commit) → **Approve thủ công** → `ecr put-image` vX → apply prod + smoke; hỏng thì tự rollback |
 
 ### Promotion flow (1 release)
 
@@ -214,8 +213,7 @@ Không có AWS access key/secret trong GitHub. Mỗi role AWS chỉ tin **một 
 | `staging` | tag `rc-v*` | không | `bss-github-deployer-staging` |
 | `production` | tag `v*` | **có** | `bss-github-deployer-prod` |
 
-Repository variable `ECR_REGISTRY` = `{account_id}.dkr.ecr.ap-southeast-1.amazonaws.com` và `AWS_PREFLIGHT_ROLE_ARN` =
-`bss-github-cd-preflight` (role chỉ-đọc cho job kiểm "cluster + runner đã có chưa" — ADR-013). Đều không phải bí mật.
+Repository variable `ECR_REGISTRY` = `{account_id}.dkr.ecr.ap-southeast-1.amazonaws.com` (không phải bí mật).
 
 ---
 
@@ -242,9 +240,9 @@ bss-platform/
 │
 ├── infrastructure/
 │   ├── terraform/
-│   │   ├── modules/                    ← 10 module: vpc · eks · rds · ecr · eventbridge · iam · observability · platform-iam · waf · ci-runner
+│   │   ├── modules/                    ← 9 module: vpc · eks · rds · ecr · eventbridge · iam · observability · platform-iam · waf
 │   │   └── environments/
-│   │       ├── shared/                 ← ECR (8 repo), GitHub OIDC + role deployer/preflight, kết nối GitHub (CodeConnections), zone Route 53 + cert ACM — KHÔNG destroy
+│   │       ├── shared/                 ← ECR (8 repo), GitHub OIDC + 3 role deployer, zone Route 53 + cert ACM — KHÔNG destroy
 │   │       ├── dev/                    ← 2 AZ, Karpenter
 │   │       ├── staging/                ← ephemeral
 │   │       └── prod/                   ← ephemeral, RDS multi-AZ
@@ -278,7 +276,7 @@ bss-platform/
 │
 ├── docs/
 │   ├── adr/                            ← 14 ADR (000 → 013)
-│   ├── runbooks/                       ← 18 runbook (mỗi alert một cái + CD, cd-runner, auth, https-domain, WAF…)
+│   ├── runbooks/                       ← 17 runbook (mỗi alert một cái + CD, auth, https-domain, WAF…)
 │   ├── labs/                           ← lab có số đo thật (K8s, rollback, load test, chaos, PITR)
 │   ├── architecture/                   ← ảnh kiến trúc lúc scaffold
 │   ├── images/                         ← ảnh chụp 2 website
@@ -334,7 +332,7 @@ bss-platform/
 
 ### Terraform
 - `terraform fmt && terraform validate` trước commit.
-- Module hóa khi tái sử dụng (10 module trong `modules/`). Thứ sống lâu hơn môi trường → state `shared`.
+- Module hóa khi tái sử dụng (9 module trong `modules/`). Thứ sống lâu hơn môi trường → state `shared`.
 - Resource cost cao (HA RDS, GPU, MSK) → cảnh báo trong PR description.
 - Secret không vào `.tfvars` — sinh random → Secrets Manager.
 
@@ -424,8 +422,9 @@ bss-platform/
 - ✅ NetworkPolicy default-deny + whitelist từng cặp — đo bằng `scripts/netpol-matrix.sh` (12/12 cả 3 môi trường).
 - ✅ Mỗi service một IAM role + một DB user; `/auth/admin` của Keycloak không ra internet.
 - ✅ ECR repo `IMMUTABLE` tags.
-- ✅ EKS public endpoint **restricted** ở staging/prod: chỉ IP người vận hành; CD đi qua runner trong VPC + endpoint
-  private (ADR-013). dev mở `0.0.0.0/0` là thiết kế (CD mỗi lần merge, không có dữ liệu thật).
+- ⚠️ EKS public endpoint **restricted** ở prod — chỉ đúng khi prod chạy thường trực. Trong buổi demo ephemeral đang dùng
+  `0.0.0.0/0` vì runner GitHub không có IP cố định (`docs/runbooks/cd-staging-prod-demo.md` §4). Runner CodeBuild trong
+  VPC đã thử và rút lại vì quota CodeBuild của tài khoản = 0 (ADR-013).
 
 ### Reliability
 - ✅ ≥2 replica ở staging/prod, PDB `minAvailable` ≥ 1 (dev 1 replica dùng `maxUnavailable: 1` để Karpenter gom node được).
@@ -479,8 +478,8 @@ make ENV=dev e2e e2e-browser                 # 2 website, khách + nhân viên
 make ENV=dev admin-user USERNAME=<u> EMAIL=<e>   # tài khoản nhân viên (mật khẩu tạm)
 
 # Promote — v* phải trỏ CÙNG commit với rc-v* đã qua staging
-git tag rc-v2.3.0 <commit> && git push origin rc-v2.3.0   # → cd-staging
-git tag v2.3.0    <commit> && git push origin v2.3.0      # → cd-prod (duyệt tay)
+git tag rc-v2.3.1 <commit> && git push origin rc-v2.3.1   # → cd-staging
+git tag v2.3.1    <commit> && git push origin v2.3.1      # → cd-prod (duyệt tay)
 
 # Kết thúc buổi
 make ENV=dev tf-destroy                      # teardown.sh: Ingress → chờ DNS → NodePool → ENI/SG sót → destroy
@@ -553,8 +552,8 @@ python tools/ops/orphan_finder.py            # phải rỗng
 - **Không thêm Jenkins/Helm chart/Ansible** song song với bộ hiện tại — [ADR-009](docs/adr/ADR-009-khong-them-jenkins-helm-ansible.md).
 - **Mạng dev dùng NAT Gateway**, không phải VPC Endpoint như dự định ban đầu — [ADR-002](docs/adr/ADR-002-mang-dev.md) (VPC Endpoint vừa không đủ chạy được vừa đắt hơn ở quy mô 2 AZ).
 - **3 cluster riêng (dev/staging/prod), nhưng staging/prod ephemeral** (dựng theo buổi) — [ADR-006](docs/adr/ADR-006-staging-prod-ephemeral.md).
-- **Runner CD trong VPC (CodeBuild) + NAT mỗi AZ ở prod** — [ADR-013](docs/adr/ADR-013-runner-cd-trong-vpc.md): endpoint EKS
-  của staging/prod chỉ còn IP người vận hành; role chỉ-đọc `bss-github-cd-preflight` cho job kiểm trước.
+- **NAT mỗi AZ ở prod; runner CD trong VPC (CodeBuild) đã thử rồi rút lại** — [ADR-013](docs/adr/ADR-013-runner-cd-trong-vpc.md):
+  quota CodeBuild của tài khoản = 0 và AWS từ chối tăng (2026-10-06) → CD staging/prod chạy lại trên runner GitHub.
 - **Keycloak production-grade, CD quản lý như image thứ 8** — [ADR-011](docs/adr/ADR-011-keycloak-production-grade.md).
 - **Nguồn sự thật phiên bản CD** = commit git (desired) + release manifest ở nhánh `deploy-state`
   (last-known-good), không phải bot tự commit lại overlay — [ADR-005](docs/adr/ADR-005-nguon-su-that-phien-ban-cd.md).
@@ -578,5 +577,6 @@ python tools/ops/orphan_finder.py            # phải rỗng
 - ~~B-15~~ — ✅ code xong 2026-10-01 (PR bss-common-java 0.2.0 + PR các service): UUID v7, `Idempotency-Key` cho
   `productOrder`, merge-patch `null` = xóa, 4 service dùng `bss-common-java` (#199, #200 đã merge).
 - **0 issue mở** (2026-10-05, sau #217). Chưa release: Keycloak 26.8.0 + HPA prod `minReplicas: 3` + network-timeout đang ở
-  `main`, prod chính thức vẫn là `v2.2.0` → lần dựng kế tiếp: `rc-v2.3.0` → `v2.3.0` và chạy lại `chaos-az-outage.sh` trên RDS thật.
+  `main`, prod chính thức vẫn là `v2.2.0` → lần dựng kế tiếp: `rc-v2.3.1` → `v2.3.1` và chạy lại `chaos-az-outage.sh` trên RDS thật
+  (kèm `INCLUDE_PUBLIC=1` để đo NAT mỗi AZ). Tag `rc-v2.3.0` đã gắn lên commit còn workflow runner CodeBuild — **không dùng được**.
   Ngoài repo: buổi review với thầy (ô cuối của Definition of Done — việc của chủ repo).

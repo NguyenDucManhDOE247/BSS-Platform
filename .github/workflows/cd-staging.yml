@@ -13,10 +13,8 @@ name: CD — staging
 # Chạy lại / dựng lại cluster staging: Actions → CD — staging → Run workflow, chọn "Tag: rc-vX.Y.Z" làm
 # ref (cùng code path như push tag, deterministic).
 #
-# Job deploy chạy trên runner CodeBuild TRONG VPC staging (ADR-013, docs/runbooks/cd-runner.md).
-#
 # Cần: GitHub Environment `staging` (variable AWS_ROLE_ARN = role bss-github-deployer-staging; deployment
-# tag policy `rc-v*`), repository variable ECR_REGISTRY + AWS_PREFLIGHT_ROLE_ARN — xem docs/SETUP.md Part 6.
+# tag policy `rc-v*`), repository variable ECR_REGISTRY — xem docs/SETUP.md Part 6.
 
 on:
   push:
@@ -34,47 +32,13 @@ concurrency:
 env:
   AWS_REGION: ap-southeast-1
   EKS_CLUSTER: bss-staging-eks
-  CD_RUNNER: bss-staging-gha-runner # project CodeBuild (modules/ci-runner) — cùng tên trong `runs-on` bên dưới
   ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
 
 jobs:
-  # Job deploy chạy trên runner CodeBuild TRONG VPC của staging (ADR-013) để gọi API server qua endpoint private —
-  # endpoint public của EKS không còn phải mở cho runner của GitHub. Môi trường là ephemeral: chưa dựng thì project
-  # runner không tồn tại và job deploy sẽ nằm chờ runner vô thời hạn. Job này (runner của GitHub, role chỉ-đọc
-  # bss-github-cd-preflight) báo lỗi rõ ràng TRƯỚC khi điều đó xảy ra.
-  runner:
-    name: Cluster + runner trong VPC đã sẵn sàng?
-    if: startsWith(github.ref, 'refs/tags/rc-v')
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      id-token: write
-    steps:
-      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
-        with:
-          role-to-assume: ${{ vars.AWS_PREFLIGHT_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Kiểm tra
-        run: |
-          if ! status="$(aws eks describe-cluster --name "$EKS_CLUSTER" --query cluster.status --output text 2>&1)"; then
-            if grep -q ResourceNotFoundException <<<"$status"; then
-              echo "::error::Cluster $EKS_CLUSTER chưa được dựng (staging là ephemeral — ADR-006). Dựng theo docs/runbooks/cd-staging-prod-demo.md rồi chạy lại workflow này trên chính tag ${GITHUB_REF_NAME}."
-            else
-              echo "::error::Không hỏi được trạng thái $EKS_CLUSTER: $status"
-            fi
-            exit 1
-          fi
-          [ "$status" = ACTIVE ] || { echo "::error::Cluster $EKS_CLUSTER đang $status — chờ ACTIVE rồi chạy lại."; exit 1; }
-          found="$(aws codebuild batch-get-projects --names "$CD_RUNNER" --query 'projects[0].name' --output text)"
-          [ "$found" = "$CD_RUNNER" ] || { echo "::error::Chưa có project CodeBuild $CD_RUNNER (runner CD trong VPC). State shared đã có kết nối GitHub AVAILABLE chưa? — docs/runbooks/cd-runner.md"; exit 1; }
-          echo "✓ $EKS_CLUSTER ACTIVE, runner $CD_RUNNER sẵn sàng"
-
   promote-and-deploy:
     name: Promote ${{ github.ref_name }} → staging
-    needs: runner
-    # `runs-on` không đọc được context `env` → tên project lặp lại ở đây (phải khớp env.CD_RUNNER).
-    runs-on: codebuild-bss-staging-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    if: startsWith(github.ref, 'refs/tags/rc-v')
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: staging
     permissions:
@@ -93,18 +57,6 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-
-      # Image CodeBuild có sẵn git/jq/aws/curl nhưng kubectl của nó cũ hơn cluster nhiều bản — cài đúng bản
-      # (kustomize đi kèm trong kubectl). Kiểm sha256 vì đây là binary sẽ cầm quyền deploy.
-      - name: kubectl đúng bản cluster
-        env:
-          KUBECTL_VERSION: v1.34.11
-        run: |
-          mkdir -p "$RUNNER_TEMP/bin"
-          curl -fsSLo "$RUNNER_TEMP/bin/kubectl" "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl"
-          echo "$(curl -fsSL "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl.sha256")  $RUNNER_TEMP/bin/kubectl" | sha256sum -c -
-          chmod +x "$RUNNER_TEMP/bin/kubectl"
-          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
       - name: Release manifest = desired tại commit của tag
         id: manifests
