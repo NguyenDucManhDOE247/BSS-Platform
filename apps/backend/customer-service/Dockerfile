@@ -17,7 +17,7 @@
 # look into jlink (custom minimal JRE) or GraalVM native-image — both are reasonable next steps
 # once the app itself is stable; premature at Giai đoạn 1.
 
-FROM maven:3.9.16-eclipse-temurin-21 AS build
+FROM maven:3.9-eclipse-temurin-26 AS build
 WORKDIR /workspace
 
 # customer-service depends on com.bss:bss-common-java (Giai đoạn 3, PR #60), published to
