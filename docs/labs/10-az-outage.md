@@ -1,6 +1,6 @@
 # Lab 10 — Mất 1 Availability Zone trên prod (2026-10-02 → 10-06)
 
-> Mục "Phase 9 — fail 1 AZ → cluster vẫn serve" trong kế hoạch scaffold (CLAUDE.md §8) — mục duy nhất của kế hoạch
+> Mục "Phase 9 — fail 1 AZ → cluster vẫn serve" trong kế hoạch scaffold (PROJECT.md §8) — mục duy nhất của kế hoạch
 > cũ chưa từng làm. Chạy thật trên **prod** (3 AZ, 4 × t3.large, RDS db.t3.medium Multi-AZ, 3 replica/service,
 > Keycloak 2 replica), release `v2.2.0`, qua `https://bssplatform.dpdns.org` với cert thật.
 > Script: [`scripts/chaos-az-outage.sh`](../../scripts/chaos-az-outage.sh). Số liệu thô (gitignored):

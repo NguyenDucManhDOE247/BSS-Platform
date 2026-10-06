@@ -3,7 +3,7 @@
 - **Trạng thái:** Chấp nhận (Accepted)
 - **Ngày:** 2026-09-25
 - **Giai đoạn:** 6 — CD: dev tự động, promotion staging → prod
-- **Liên quan:** ADR-002 (mạng dev), ADR-005 (nguồn sự thật phiên bản), CLAUDE.md §4
+- **Liên quan:** ADR-002 (mạng dev), ADR-005 (nguồn sự thật phiên bản), PROJECT.md §4
 
 ## Bối cảnh
 
@@ -13,7 +13,7 @@ Promotion `rc-vX` → staging → `vX` → prod cần **một nơi thật để 
 1. staging & prod là **namespace** `bss-staging`/`bss-prod` trên **cùng một cluster**; hoặc
 2. dựng cluster staging/prod **chỉ trong buổi demo rồi destroy**.
 
-Ngoài ra thiết kế gốc là **3 cluster** (CLAUDE.md §4) và người dùng đã xác nhận ở Giai đoạn 0
+Ngoài ra thiết kế gốc là **3 cluster** (PROJECT.md §4) và người dùng đã xác nhận ở Giai đoạn 0
 (2026-09-14): *3 cluster riêng*, ngân sách "thoải mái", mục tiêu là **đề tài nghiên cứu** cần
 "hoàn thiện" chứ không phải bài tập môn học.
 
@@ -21,7 +21,7 @@ Ngoài ra thiết kế gốc là **3 cluster** (CLAUDE.md §4) và người dùn
 
 | | Namespace, cùng cluster | 3 cluster chạy 24/7 | **3 cluster, staging/prod ephemeral** |
 |---|---|---|---|
-| Chi phí | Rẻ nhất | ≈ $44+/ngày cộng dồn (CLAUDE.md §4: dev ~$5 + staging ~$9 + prod ~$30+) | ≈ tỷ lệ số giờ bật: ~3 giờ/buổi ⇒ staging ≈ $1, prod ≈ $4 (ước tính từ số/ngày của CLAUDE.md — kiểm chứng bằng Cost Explorer sau buổi đầu) |
+| Chi phí | Rẻ nhất | ≈ $44+/ngày cộng dồn (PROJECT.md §4: dev ~$5 + staging ~$9 + prod ~$30+) | ≈ tỷ lệ số giờ bật: ~3 giờ/buổi ⇒ staging ≈ $1, prod ≈ $4 (ước tính từ số/ngày của PROJECT.md — kiểm chứng bằng Cost Explorer sau buổi đầu) |
 | Giống prod thật (3 AZ, `t3.large`, RDS multi-AZ) | ❌ không kiểm chứng được | ✅ | ✅ (trong lúc bật) |
 | Cô lập blast radius / IAM / dữ liệu | ❌ chung node, chung RDS; IRSA + DB + EventBridge phải nhân bản theo namespace | ✅ | ✅ |
 | Vừa tài nguyên | ❌ 2×`t3.medium` chỉ ~34 pod tối đa (giới hạn ENI, xem B-22): system+addon ≈ 15 (ước tính) + 3 env × 7 app = 36 > 34 | ✅ | ✅ |
@@ -64,7 +64,7 @@ Ngoài ra thiết kế gốc là **3 cluster** (CLAUDE.md §4) và người dùn
 
 ## Ràng buộc kèm theo: EKS public endpoint ↔ runner của GitHub
 
-CLAUDE.md §10 yêu cầu endpoint API của EKS **giới hạn CIDR** ở prod. Nhưng CD chạy trên runner do GitHub
+PROJECT.md §10 yêu cầu endpoint API của EKS **giới hạn CIDR** ở prod. Nhưng CD chạy trên runner do GitHub
 cấp (`ubuntu-latest`) — không có IP cố định (hàng nghìn dải, đổi liên tục; EKS chỉ nhận ≤ 40 CIDR). Với danh
 sách chặt, `kubectl` trong Actions **timeout**. Không có lựa chọn "vừa chặt vừa tự động" miễn phí:
 

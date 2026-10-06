@@ -5,7 +5,7 @@
 #   `kc.sh start` (không --optimized) chạy bước "augmentation" của Quarkus MỖI LẦN khởi động — build
 #   lại runtime theo các build option (db, health, metrics, relative path) rồi GHI vào
 #   /opt/keycloak/lib/quarkus. Hệ quả: (1) phải tắt readOnlyRootFilesystem (ngoại lệ duy nhất với
-#   CLAUDE.md §7), (2) khởi động chậm hơn hẳn (startupProbe phải chờ tới 5 phút).
+#   PROJECT.md §7), (2) khởi động chậm hơn hẳn (startupProbe phải chờ tới 5 phút).
 #   Ở đây bước đó chạy MỘT LẦN lúc `docker build`; lúc chạy `start --optimized` chỉ đọc, không ghi
 #   gì vào rootfs → bật lại readOnlyRootFilesystem: true (chỉ cần emptyDir cho /tmp và
 #   /opt/keycloak/data).

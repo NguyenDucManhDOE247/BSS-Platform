@@ -25,7 +25,7 @@ FROM nginxinc/nginx-unprivileged:1.30-alpine
 # Giai đoạn 6: a NEW HIGH CVE (libexpat 2.8.4-r0, fixed in 2.8.5-r0) appeared in the Alpine base image on
 # 2026-09-25 and Trivy (ci-frontend.yml) blocks every PR that touches this app. The upstream base tag
 # had not been rebuilt yet, so patch just that package here. Root only for this one layer; the final
-# user is set back to the unprivileged uid 101 that nginx-unprivileged runs as (CLAUDE.md §10: non-root).
+# user is set back to the unprivileged uid 101 that nginx-unprivileged runs as (PROJECT.md §10: non-root).
 USER root
 # 2026-10-02: tương tự với pcre2 10.48-r0 (CVE-2026-103111, HIGH, vá ở 10.49-r0) — chặn PR #214 (web-portal).
 # Bỏ cả dòng này khi tag nginx-unprivileged:1.30-alpine upstream đã build lại với bản vá.

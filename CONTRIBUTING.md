@@ -4,7 +4,7 @@ Thanks for your interest! This is a personal learning / portfolio project, but P
 
 ## Ground rules
 
-- Read [`CLAUDE.md`](CLAUDE.md) first — it is the source of truth for architecture, coding conventions, and the Phase-based roadmap.
+- Read [`PROJECT.md`](PROJECT.md) first — it is the source of truth for architecture, coding conventions, and the Phase-based roadmap.
 - One concern per PR. Split large changes into a stack of small reviewable commits.
 - Don't introduce abstractions for hypothetical future requirements.
 - No secrets in commits. `.env`, `*.tfvars`, AWS credentials are gitignored — keep them that way.

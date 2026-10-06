@@ -17,7 +17,7 @@ resource "aws_secretsmanager_secret" "db_master" {
   # reserved for those 30 days, so the next `terraform apply` under the same name_prefix fails
   # with "You can't create this secret because a secret with this name is already scheduled for
   # deletion". That's exactly what happens on dev's "apply every morning, destroy every night"
-  # cycle (CLAUDE.md §10) unless recovery is disabled. staging/prod keep real protection since
+  # cycle (PROJECT.md §10) unless recovery is disabled. staging/prod keep real protection since
   # they're NOT destroyed nightly.
   recovery_window_in_days = var.secret_recovery_window_days
 
@@ -130,7 +130,7 @@ resource "aws_db_parameter_group" "this" {
     name = "log_statement"
     # B-39: "all" logs the full text of EVERY SQL statement — including literal values, which
     # for this project means customer names/emails/order details end up in CloudWatch Logs
-    # (PII in logs is explicitly banned by CLAUDE.md §10). "ddl" logs schema changes only
+    # (PII in logs is explicitly banned by PROJECT.md §10). "ddl" logs schema changes only
     # (CREATE/ALTER/DROP) — the audit trail you actually want without the data.
     value = var.log_statement
   }

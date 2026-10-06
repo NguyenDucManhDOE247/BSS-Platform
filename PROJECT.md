@@ -1,6 +1,6 @@
-# CLAUDE.md — BSS Platform (AWS / EKS)
+# PROJECT.md — BSS Platform (AWS / EKS)
 
-> File này là **bản kế hoạch tổng thể** + **bộ quy ước làm việc** cho Claude Code khi tương tác với repo này. Mọi quyết định kiến trúc, công nghệ, quy ước code và lộ trình triển khai đều ở đây.
+> File này là **bản kế hoạch tổng thể** + **bộ quy ước làm việc** với repo này. Mọi quyết định kiến trúc, công nghệ, quy ước code và lộ trình triển khai đều ở đây.
 
 ---
 
@@ -270,7 +270,7 @@ bss-platform/
 │   ├── workflows/                      ← 10 workflow (6 CI + publish thư viện + 3 CD) — mục 5
 │   └── actions/deploy-release/         ← composite action dùng chung 3 CD (render → apply → rollout → drift → smoke → rollback)
 │
-├── scripts/                             ← 25 script + lib/keycloak.sh (bootstrap, kind, e2e, platform-install, smoke, teardown, release-manifest…)
+├── scripts/                             ← 27 script + lib/keycloak.sh (bootstrap, kind, e2e, platform-install, smoke, chaos, teardown, release-manifest…)
 ├── tools/ops/                           ← Python boto3: orphan_finder, cost_report, dlq_tool, health_check
 ├── tests/                               ← load/ (k6) · e2e-browser/ (Playwright)
 │
@@ -282,7 +282,7 @@ bss-platform/
 │   ├── images/                         ← ảnh chụp 2 website
 │   └── SETUP.md · ROADMAP.md · SLO.md · POSTMORTEMS.md · demo-script.md · blog-post-draft.md
 │
-├── CLAUDE.md · README.md · CHANGELOG.md · CONTRIBUTING.md · SECURITY.md · LICENSE
+├── PROJECT.md · README.md · CHANGELOG.md · CONTRIBUTING.md · SECURITY.md · LICENSE
 ├── Makefile                             ← `make help` liệt kê mọi target
 └── kind.yaml                            ← cấu hình cluster kind
 
@@ -364,7 +364,7 @@ bss-platform/
 
 ---
 
-## 9. Quy ước cho Claude khi làm việc với repo này
+## 9. Quy ước khi làm việc với repo này
 
 ### Nguyên tắc chung
 - **Bám lộ trình Phase.** Không nhảy cóc nếu user chưa khẳng định.
@@ -509,7 +509,7 @@ python tools/ops/orphan_finder.py            # phải rỗng
 > local**, không commit lên git — xem `.gitignore`). File này là bản public, súc tích; nhật ký local
 > là bản đầy đủ dùng để học lại.
 
-- **Ngày khởi tạo:** 2026-05-22 — dự án được dựng ban đầu (scaffold) trong ~1 tuần cùng Claude Code.
+- **Ngày khởi tạo:** 2026-05-22 — dự án được dựng ban đầu (scaffold) trong ~1 tuần.
 - **Ngày tiếp nhận:** repo được người maintain hiện tại (không phải người dựng scaffold ban đầu)
   tiếp nhận, kiểm chứng lại toàn bộ từ đầu, và tách hẳn khỏi repo gốc — xem
   `learning/01-hien-trang-va-danh-sach-loi.md` cho danh sách đầy đủ lỗi phát hiện lúc tiếp nhận.

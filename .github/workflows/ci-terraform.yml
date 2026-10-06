@@ -64,7 +64,7 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: '1'
 
-  # B-38/CLAUDE.md §9: `plan-dev` needs `secrets.AWS_DEPLOYER_ROLE_ARN` (an IAM role created by
+  # B-38/PROJECT.md §9: `plan-dev` needs `secrets.AWS_DEPLOYER_ROLE_ARN` (an IAM role created by
   # `environments/shared` — Giai đoạn 4, not created yet) and a real S3 backend (also Giai đoạn
   # 4). Left in place rather than deleted so the Giai đoạn 4 diff is small — re-enable by
   # deleting the `if: false` line once both exist. See learning/20 Giai đoạn 3 mục 3 and

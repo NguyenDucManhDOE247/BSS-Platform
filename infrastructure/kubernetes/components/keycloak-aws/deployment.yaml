@@ -74,7 +74,7 @@ spec:
             # (NetworkPolicy) nên không ai ngoài ALB giả được header này.
             - { name: KC_PROXY_HEADERS, value: xforwarded }
             - { name: KC_HTTP_ENABLED, value: "true" }
-            - { name: KC_LOG_CONSOLE_OUTPUT, value: json } # CLAUDE.md §10: log JSON ở môi trường AWS
+            - { name: KC_LOG_CONSOLE_OUTPUT, value: json } # PROJECT.md §10: log JSON ở môi trường AWS
             # Lab mất 1 AZ (docs/labs/10-az-outage.md, 2026-10-02): khi RDS failover, kết nối cũ tới primary ở AZ
             # chết không nhận RST (gói tin mất hút) → treo tới timeout TCP của kernel (~15 phút) → mọi worker
             # thread kẹt chờ DB ("No executor queue space remaining", pool "Acquisition timeout") → health DOWN.

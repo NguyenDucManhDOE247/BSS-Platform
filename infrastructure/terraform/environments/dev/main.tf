@@ -201,7 +201,7 @@ module "observability" {
 
 # ── Keycloak admin (Giai đoạn 9 việc 7) ─────────────────────────────────
 # Mật khẩu admin master realm: sinh ngẫu nhiên → Secrets Manager → CSI → K8s Secret keycloak-admin
-# (overlays/dev/secrets/keycloak-credentials-spc.yaml). Không nằm trong git/tfvars (CLAUDE.md §7).
+# (overlays/dev/secrets/keycloak-credentials-spc.yaml). Không nằm trong git/tfvars (PROJECT.md §7).
 # Nằm ở state của MÔI TRƯỜNG (không phải shared): Keycloak + DB của nó sống/chết cùng cluster.
 resource "random_password" "keycloak_admin" {
   length  = 24

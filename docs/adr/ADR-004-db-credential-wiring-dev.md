@@ -16,7 +16,7 @@ DB_URL=jdbc:postgresql://bss-dev-rds.CHANGE_ME.rds.amazonaws.com:5432/customer
 ```
 — một placeholder phải sửa tay **mỗi lần** sau `terraform apply` (hostname RDS gồm 1 chuỗi ngẫu
 nhiên AWS sinh ra, không đoán trước được), dễ quên, và dev bị `terraform destroy`/`apply` lại mỗi
-ngày (CLAUDE.md §10) — nghĩa là bước sửa tay này lẽ ra phải lặp lại **hằng ngày**.
+ngày (PROJECT.md §10) — nghĩa là bước sửa tay này lẽ ra phải lặp lại **hằng ngày**.
 
 ## Quyết định
 
@@ -56,7 +56,7 @@ bỏ qua CSI. Không chọn — 2 lý do:
 ## Hệ quả
 
 - ✅ Không còn bước thủ công "copy RDS endpoint từ `terraform output` dán vào YAML" — đúng nguyên
-  nhân gốc CLAUDE.md §13 từng liệt kê ("Replace CHANGE_ME... sau khi có RDS hostname").
+  nhân gốc PROJECT.md §13 từng liệt kê ("Replace CHANGE_ME... sau khi có RDS hostname").
 - ✅ `overlays/local` và `overlays/dev` giờ dùng **chung 1 cơ chế** (Deployment đọc 5 key giống hệt
   nhau từ 1 Secret cùng tên) — chỉ khác nguồn tạo Secret, base Deployment không cần biết.
 - ⚠️ Deployment giờ cần mount CSI volume (`overlays/dev/kustomization.yaml` patches) — thêm vì

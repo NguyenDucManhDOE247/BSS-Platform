@@ -12,7 +12,7 @@
 resource này) **một** tài nguyên AWS thật duy nhất:
 
 - `terraform apply` ở env thứ 2 (sau khi env đầu đã tạo repo) báo lỗi `RepositoryAlreadyExists`.
-- `terraform destroy` ở dev (chạy **mỗi tối** để tiết kiệm chi phí — CLAUDE.md §10) sẽ xóa
+- `terraform destroy` ở dev (chạy **mỗi tối** để tiết kiệm chi phí — PROJECT.md §10) sẽ xóa
   ECR repo mà staging/prod đang dùng để pull image.
 - Tương tự với GitHub OIDC provider + deployer role (`enable_github_oidc = true` chỉ ở dev,
   `module "iam"`): vai trò CI/CD duy nhất của **cả 3** môi trường nằm trong state hay bị xóa
@@ -59,7 +59,7 @@ có `shared/terraform.tfstate` để đọc).
 - ✅ `terraform destroy` dev không còn kéo theo xóa nhầm tài nguyên staging/prod đang dùng.
 - ✅ Apply 3 môi trường song song (khi cần) không còn tranh chấp tạo cùng 1 ECR repo.
 - ✅ Prod có role CI/CD triển khai **riêng**, không lẫn với dev/staging — đúng nguyên tắc least
-  privilege / giảm blast radius của CLAUDE.md §10.
+  privilege / giảm blast radius của PROJECT.md §10.
 - ⚠️ Thêm một bước thủ công: phải nhớ `apply shared` trước, và nhớ **không** `terraform destroy`
   `shared` theo lịch "destroy mỗi tối" (chỉ `dev` mới destroy hằng đêm — `shared`, `staging`,
   `prod` không nằm trong lịch đó).

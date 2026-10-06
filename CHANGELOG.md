@@ -29,6 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   days, receiving EKS and RDS log streams, plan clean; after the teardown no `bss` log group exists, and none had
   been re-created 10 minutes later.
 
+### Changed
+
+- `README.md` brought in line with `v2.3.0` — it still described `v2.0.0` (HTTPS "pending a domain", Keycloak 26.7, a
+  billing service that takes payments, dev at "$1.5–2/hour"). It now shows the architecture with Route 53 / ACM /
+  ExternalDNS, both websites signing in on AWS, the measured per-environment cost, and a "Scope and known limits"
+  section. `docs/ROADMAP.md` gains the AZ-outage lab and the `v2.3.0` release.
+- The project handbook at the repository root (architecture, conventions, status) is now named `PROJECT.md`; every
+  reference in docs, code comments and workflows follows.
+
 ## [2.3.0] — 2026-10-06
 
 Keycloak survives a database failover on its own, prod loses its single-NAT point of failure, and the loss of a whole
@@ -79,7 +88,7 @@ then 3/3 on the re-run).
   says the websites can't sign in on AWS or that the 7.9% is unexplained, and gains the apex-TXT production bug;
   `SETUP.md` / `runbooks/auth.md` use `e2e-flow.sh <env>`; `ROADMAP.md` lists the two-website verification.
 
-- `CLAUDE.md` §2–§11 rewritten to match the running system (they were still the scaffold plan): architecture without
+- `PROJECT.md` §2–§11 rewritten to match the running system (they were still the scaffold plan): architecture without
   CloudFront/VPC endpoints and with Keycloak, HTTPS and ExternalDNS; real sizing per environment (incl. the
   `0.0.0.0/0` endpoint exception during ephemeral demos); 10 workflows; actual tree; the old Phase 0–10 checklist mapped
   to where each item was done (one item still open: simulating the loss of an AZ); best practices marked ✅ or ⚠️.
@@ -89,7 +98,7 @@ then 3/3 on the re-run).
 - `zustand` from `web-portal` — declared since the scaffold but never imported (UI state is local `useState`);
   lockfile drops it and `use-sync-external-store`. Lint, 13 vitest tests and the build pass.
 - `packages/ui-kit` — never imported by either website (each app keeps its own small components); dropped from
-  `ci-frontend.yml` paths, `CLAUDE.md` and `README.md`.
+  `ci-frontend.yml` paths, `PROJECT.md` and `README.md`.
 - `platform/secrets/customer-secrets-spc.yaml` — sample pointing at the RDS master secret, replaced in Phase 5 by the
   per-service SecretProviderClass files in `overlays/<env>/secrets/` (B-20/B-21); the file asked to be deleted.
 - Scaffold-era architecture docs that no longer matched the system (`docs/architecture/system_architecture.md`,
@@ -362,7 +371,7 @@ The platform builds and runs end-to-end against Postgres + LocalStack via
 - **Local dev** — `docker-compose` stack: Postgres + Redis + LocalStack
   with init scripts for databases, EventBridge bus, and SQS queues.
 - **Scripts**: `bootstrap-aws.sh`, `teardown.sh`, `smoke.sh`.
-- **Docs**: `CLAUDE.md` (architecture + roadmap), `README.md`, `docs/SETUP.md`,
+- **Docs**: `PROJECT.md` (architecture + roadmap), `README.md`, `docs/SETUP.md`,
   `docs/ROADMAP.md`, ADR scaffolding.
 
 ### Security

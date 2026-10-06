@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
         "--budget",
         type=float,
         default=30.0,
-        help="Monthly budget in USD to compare against (default: 30, matches CLAUDE.md dev budget)",
+        help="Monthly budget in USD to compare against (default: 30, matches PROJECT.md dev budget)",
     )
     parser.add_argument(
         "--tag-key",

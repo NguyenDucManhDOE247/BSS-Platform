@@ -5,7 +5,7 @@ metadata:
   namespace: monitoring
   labels:
     release: monitoring   # so kube-prometheus-stack picks it up
-# Giai đoạn 7: mỗi alert trỏ tới runbook RIÊNG của nó (CLAUDE.md §10 — "Mọi alert có runbook_url").
+# Giai đoạn 7: mỗi alert trỏ tới runbook RIÊNG của nó (PROJECT.md §10 — "Mọi alert có runbook_url").
 # Trước đây cả 5 alert dùng chung 1 file (bss-high-error-rate.md) — người trực đêm bấm link vẫn
 # phải tự đoán mình đang ở mục nào. Bộ quy tắc này có test đơn vị bằng promtool:
 #   ./scripts/test-alert-rules.sh        (xem platform/monitoring/alerts/tests/)

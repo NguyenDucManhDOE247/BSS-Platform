@@ -92,7 +92,7 @@ tại của AWS WAF, kể cả sau khi bạn đã sửa rule và apply xong.
   chạy tay 1 lần. Đưa vào CD là một cải tiến riêng, không phải phần bắt buộc của việc 7.
 - Chưa bật WAF logging (`aws_wafv2_web_acl_logging_configuration` → CloudWatch Logs) — thêm nếu
   cần điều tra chi tiết request bị chặn thay vì chỉ xem metric CloudWatch.
-- CLAUDE.md LỚP 2 vẽ `CloudFront → ALB → AWS WAF` — CloudFront chưa tồn tại (domain/HTTPS bị hoãn,
+- PROJECT.md LỚP 2 vẽ `CloudFront → ALB → AWS WAF` — CloudFront chưa tồn tại (domain/HTTPS bị hoãn,
   xem memory `bss-platform-phase0-decisions` mục 4), nên hôm nay WAF (`scope = REGIONAL`) nằm thẳng
   trên ALB. Nếu sau này thêm CloudFront, WAF cho CloudFront cần 1 Web ACL **riêng** với
   `scope = CLOUDFRONT` (khác region, luôn phải là `us-east-1`) — không dùng lại ACL này.

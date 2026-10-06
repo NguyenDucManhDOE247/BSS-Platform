@@ -60,7 +60,7 @@ variable "secret_recovery_window_days" {
 variable "log_statement" {
   type        = string
   default     = "ddl"
-  description = "B-39: Postgres log_statement level. \"all\" logs full SQL text (can leak PII into CloudWatch Logs — see CLAUDE.md §10) and costs more per GB ingested. \"ddl\" (schema changes only) is the safe default; log_min_duration_statement=1000 (hardcoded below) still catches slow queries regardless."
+  description = "B-39: Postgres log_statement level. \"all\" logs full SQL text (can leak PII into CloudWatch Logs — see PROJECT.md §10) and costs more per GB ingested. \"ddl\" (schema changes only) is the safe default; log_min_duration_statement=1000 (hardcoded below) still catches slow queries regardless."
 }
 
 variable "log_retention_days" {

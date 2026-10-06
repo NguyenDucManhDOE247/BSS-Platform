@@ -3,7 +3,7 @@
 # Bản dùng cho kind (không cần AWS, exporter "debug" thay "awsxray"): otel-collector-values-local.yaml.
 #
 # ⚠️ Chưa kiểm chứng trên X-Ray thật (cần tài khoản AWS + tốn một khoản rất nhỏ, hỏi trước khi
-# bật — CLAUDE.md §9). Điều CHƯA làm, ghi rõ để không tưởng nhầm là xong: X-Ray yêu cầu trace ID
+# bật — PROJECT.md §9). Điều CHƯA làm, ghi rõ để không tưởng nhầm là xong: X-Ray yêu cầu trace ID
 # theo định dạng riêng của nó (8 ký tự đầu = Unix timestamp dạng hex) — OTel Java agent mặc định
 # sinh trace ID ngẫu nhiên theo chuẩn W3C, KHÔNG khớp định dạng đó. Cần thêm
 # `io.opentelemetry.contrib:opentelemetry-aws-xray` (autoconfigure customizer, đặt qua

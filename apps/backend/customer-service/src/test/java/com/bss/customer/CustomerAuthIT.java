@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p>{@code jwt()} chỉ thay bước "giải mã + kiểm chữ ký" (việc của Keycloak/JWKS, đã kiểm thật ở
  * việc 2). Bộ lọc Spring Security THẬT vẫn chạy và áp luật phân quyền thật; DB là Postgres thật
- * (Testcontainers) — không mock framework (CLAUDE.md §9).
+ * (Testcontainers) — không mock framework (PROJECT.md §9).
  *
  * <p>{@code jwk-set-uri} trỏ tới cổng không tồn tại: bắt buộc có để context dựng được bean
  * JwtDecoder, nhưng không bao giờ bị gọi vì {@code jwt()} bỏ qua bước giải mã.

@@ -85,7 +85,7 @@ jobs:
       - name: Cluster dev có đang chạy không?
         id: cluster
         run: |
-          # Dev bị `terraform destroy` mỗi tối (CLAUDE.md §10). Chỉ ResourceNotFoundException mới nghĩa
+          # Dev bị `terraform destroy` mỗi tối (PROJECT.md §10). Chỉ ResourceNotFoundException mới nghĩa
           # là "cluster tắt"; lỗi khác (quyền, mạng) phải làm run đỏ chứ không được âm thầm bỏ qua deploy.
           if out="$(aws eks describe-cluster --name "$EKS_CLUSTER" --region "$AWS_REGION" 2>&1)"; then
             echo "up=true" >> "$GITHUB_OUTPUT"

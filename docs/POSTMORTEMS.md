@@ -54,7 +54,7 @@ chính sẽ ném exception" — giả định đó **sai** với cách JPA xử 
 ### Vì sao không phát hiện sớm hơn — đây là phần quan trọng nhất
 
 1. **Test "trông đúng logic" nhưng chưa từng thực sự chạy.** `OrderCompletedHandlerIT` dùng
-   Testcontainers (Postgres thật trong Docker) — đúng cách làm được khuyến khích (CLAUDE.md §9:
+   Testcontainers (Postgres thật trong Docker) — đúng cách làm được khuyến khích (PROJECT.md §9:
    "không mock DB ở integration test"). Nhưng ở Giai đoạn 1, Testcontainers **bị chặn bởi lỗi môi
    trường** (Docker Desktop/docker-java trên Windows) — nên "test đã viết, đã tưởng chạy xanh ở PR
    #47" thực ra **chưa từng được chạy trên máy nào** cho tới khi có CI Linux thật.

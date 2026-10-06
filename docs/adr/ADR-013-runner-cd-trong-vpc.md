@@ -4,7 +4,7 @@
   - Quyết định 1–3 (runner CodeBuild trong VPC, job preflight, kubectl cài trong job): **đã rút lại, code đã gỡ** — tài
     khoản AWS này không được phép chạy build CodeBuild nào (quota = 0, xin tăng bị từ chối). Xem
     [Vì sao rút lại](#vì-sao-rút-lại-quyết-định-13-2026-10-06). Ngoại lệ "EKS endpoint `0.0.0.0/0` khi demo"
-    (CLAUDE.md §10, từ GĐ6) **có hiệu lực trở lại**.
+    (PROJECT.md §10, từ GĐ6) **có hiệu lực trở lại**.
   - Quyết định 4 (prod: 1 NAT mỗi AZ): **vẫn hiệu lực** — đóng rủi ro "1 NAT là điểm chết đơn"
     ([Lab 10](../labs/10-az-outage.md) §4).
 - **Ngày:** 2026-10-05 (chấp nhận) → 2026-10-06 (rút lại quyết định 1–3)
@@ -16,7 +16,7 @@
 
 ## Bối cảnh
 
-CLAUDE.md §10 yêu cầu endpoint public của EKS **giới hạn CIDR** ở prod. Từ GĐ6 quy tắc đó bị vi phạm có chủ đích:
+PROJECT.md §10 yêu cầu endpoint public của EKS **giới hạn CIDR** ở prod. Từ GĐ6 quy tắc đó bị vi phạm có chủ đích:
 runner do GitHub host không có IP cố định (hàng nghìn dải, đổi liên tục; EKS nhận tối đa 40 CIDR), nên `kubectl` trong
 CD chỉ chạy được khi `public_access_cidrs = ["0.0.0.0/0"]`. Lý do chấp nhận lúc đó: API server vẫn cần chữ ký IAM +
 EKS access entry, cluster chỉ sống vài giờ. Đó là lý do đúng cho một buổi demo — và sai cho một prod chạy thường trực.
@@ -105,7 +105,7 @@ chưa từng chạy: một job deploy thật trên runner trong VPC.
 
 ## Hệ quả (sau khi rút lại)
 
-- ⚠️ CLAUDE.md §10 "EKS public endpoint restricted ở prod" **vẫn là ngoại lệ có chủ đích** trong buổi demo: API server
+- ⚠️ PROJECT.md §10 "EKS public endpoint restricted ở prod" **vẫn là ngoại lệ có chủ đích** trong buổi demo: API server
   cần chữ ký IAM + EKS access entry, cluster chỉ sống vài giờ. Prod chạy thường trực thì phải giải quyết lại bài toán này.
 - ✅ Prod không còn điểm chết đơn về mạng theo AZ (quyết định 4) — **đã đo 2026-10-06** ([Lab 10](../labs/10-az-outage.md)
   mục 3b, `INCLUDE_PUBLIC=1 scripts/chaos-az-outage.sh prod` trên `v2.3.0`): AZ `1a` chết cùng NAT của nó, Pod ở `1b`/`1c`
