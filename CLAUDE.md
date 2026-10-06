@@ -478,8 +478,8 @@ make ENV=dev e2e e2e-browser                 # 2 website, khách + nhân viên
 make ENV=dev admin-user USERNAME=<u> EMAIL=<e>   # tài khoản nhân viên (mật khẩu tạm)
 
 # Promote — v* phải trỏ CÙNG commit với rc-v* đã qua staging
-git tag rc-v2.3.1 <commit> && git push origin rc-v2.3.1   # → cd-staging
-git tag v2.3.1    <commit> && git push origin v2.3.1      # → cd-prod (duyệt tay)
+git tag rc-v2.3.0 <commit> && git push origin rc-v2.3.0   # → cd-staging
+git tag v2.3.0    <commit> && git push origin v2.3.0      # → cd-prod (duyệt tay)
 
 # Kết thúc buổi
 make ENV=dev tf-destroy                      # teardown.sh: Ingress → chờ DNS → NodePool → ENI/SG sót → destroy
@@ -577,6 +577,7 @@ python tools/ops/orphan_finder.py            # phải rỗng
 - ~~B-15~~ — ✅ code xong 2026-10-01 (PR bss-common-java 0.2.0 + PR các service): UUID v7, `Idempotency-Key` cho
   `productOrder`, merge-patch `null` = xóa, 4 service dùng `bss-common-java` (#199, #200 đã merge).
 - **0 issue mở** (2026-10-05, sau #217). Chưa release: Keycloak 26.8.0 + HPA prod `minReplicas: 3` + network-timeout đang ở
-  `main`, prod chính thức vẫn là `v2.2.0` → lần dựng kế tiếp: `rc-v2.3.1` → `v2.3.1` và chạy lại `chaos-az-outage.sh` trên RDS thật
-  (kèm `INCLUDE_PUBLIC=1` để đo NAT mỗi AZ). Tag `rc-v2.3.0` đã gắn lên commit còn workflow runner CodeBuild — **không dùng được**.
+  `main`, prod chính thức vẫn là `v2.2.0` → lần dựng kế tiếp: `rc-v2.3.0` → `v2.3.0` và chạy lại `chaos-az-outage.sh` trên RDS thật
+  (kèm `INCLUDE_PUBLIC=1` để đo NAT mỗi AZ). Tag `rc-v2.3.0` gắn ngày 2026-10-05 lên commit còn workflow runner CodeBuild chưa từng
+  được promote và đã xóa (2026-10-06) — gắn lại trên `main` khi staging đã dựng.
   Ngoài repo: buổi review với thầy (ô cuối của Definition of Done — việc của chủ repo).
