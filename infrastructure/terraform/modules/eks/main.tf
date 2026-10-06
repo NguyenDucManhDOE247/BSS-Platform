@@ -82,7 +82,22 @@ resource "aws_eks_cluster" "this" {
 
   tags = var.tags
 
-  depends_on = [aws_iam_role_policy_attachment.cluster_AmazonEKSClusterPolicy]
+  # Log group phải có TRƯỚC cluster — nếu không EKS tự tạo nó (xem aws_cloudwatch_log_group.cluster bên dưới).
+  depends_on = [
+    aws_iam_role_policy_attachment.cluster_AmazonEKSClusterPolicy,
+    aws_cloudwatch_log_group.cluster,
+  ]
+}
+
+# Log control plane (var.cluster_log_types) luôn vào đúng tên này. Không khai báo ở đây thì EKS tự tạo log group
+# khi cluster bật log: KHÔNG có thời hạn lưu và KHÔNG nằm trong state → `terraform destroy` để nó lại mãi.
+# Đo 2026-10-06 sau khi destroy cả 3 môi trường: 3 log group "…/cluster" còn nguyên từ 22–25/9, retention = None,
+# dev 734 MB. Terraform tạo trước thì nó có retention và bị xóa cùng môi trường.
+resource "aws_cloudwatch_log_group" "cluster" {
+  name              = "/aws/eks/${var.cluster_name}/cluster"
+  retention_in_days = var.cluster_log_retention_days
+
+  tags = var.tags
 }
 
 # ── OIDC provider for IRSA ─────────────────────────────────────────────

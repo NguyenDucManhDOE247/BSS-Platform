@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Control-plane and PostgreSQL log groups are owned by Terraform.** `modules/eks` enabled control-plane logging and
+  `modules/rds` exported the PostgreSQL log, but neither declared the log group, so EKS and RDS created
+  `/aws/eks/<cluster>/cluster` and `/aws/rds/instance/<id>/postgresql` themselves: no retention, not in the state,
+  left behind by every `terraform destroy` (found 2026-10-06 with all environments destroyed: six groups dating from
+  22–25 September, dev's at 734 MB). Both modules now create the group first, with the environment's single
+  `log_retention_days` (3 / 14 / 30). `tools/ops/orphan_finder.py` reports `/aws/eks/bss-*` and
+  `/aws/rds/instance/bss-*` log groups whose cluster / DB instance no longer exists.
+
 ## [2.3.0] — 2026-10-06
 
 Keycloak survives a database failover on its own, prod loses its single-NAT point of failure, and the loss of a whole

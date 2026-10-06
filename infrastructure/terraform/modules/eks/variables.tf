@@ -29,6 +29,12 @@ variable "cluster_log_types" {
   EOT
 }
 
+variable "cluster_log_retention_days" {
+  type        = number
+  default     = 7
+  description = "Retention of /aws/eks/<cluster>/cluster (control-plane logs). Environments pass the same value they give modules/observability."
+}
+
 variable "private_subnet_ids" {
   type = list(string)
 }
