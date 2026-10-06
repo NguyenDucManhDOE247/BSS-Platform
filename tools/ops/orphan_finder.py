@@ -161,16 +161,42 @@ def find_dns(route53, live_clusters: set[str]) -> list[Orphan]:
     return out
 
 
+def find_log_groups(logs, live_clusters: set[str], live_dbs: set[str]) -> list[Orphan]:
+    """Log group của cluster / DB instance ĐÃ XÓA. Lỗi thật 2026-10-06: EKS và RDS tự tạo
+    `/aws/eks/<cluster>/cluster` và `/aws/rds/instance/<db>/postgresql` khi Terraform không khai báo chúng —
+    không có thời hạn lưu, không nằm trong state → sống mãi sau destroy (dev: 734 MB từ 22/9). Giờ modules/eks
+    và modules/rds tạo chúng; mục này bắt trường hợp AWS tạo lại sau destroy (log giao trễ) hoặc log group do
+    tài nguyên ngoài Terraform sinh ra (vd. instance tạm của lab-rds-pitr.sh). Tiền nhỏ ($0.03/GB-tháng) nhưng
+    không tự hết, và lần `apply` sau sẽ vỡ ResourceAlreadyExistsException nếu còn."""
+    out: list[Orphan] = []
+    for prefix, live, what in (
+        (f"/aws/eks/{PREFIX}", live_clusters, "cluster"),
+        (f"/aws/rds/instance/{PREFIX}", live_dbs, "DB instance"),
+    ):
+        for page in logs.get_paginator("describe_log_groups").paginate(logGroupNamePrefix=prefix):
+            for group in page["logGroups"]:
+                name = group["logGroupName"]
+                owner = name[len(prefix) - len(PREFIX):].split("/", 1)[0]
+                if owner not in live:
+                    retention = group.get("retentionInDays")
+                    keep = f"giữ {retention} ngày" if retention else "KHÔNG có thời hạn lưu"
+                    out.append(Orphan("Log group", name, f"của {what} đã xóa {owner} — {group.get('storedBytes', 0) / 1048576:.1f} MB, {keep}"))
+    return out
+
+
 def find_all(session: boto3.session.Session) -> list[Orphan]:
     ec2 = session.client("ec2")
     eks = session.client("eks")
+    rds = session.client("rds")
     live_clusters = set(eks.list_clusters()["clusters"])
+    live_dbs = {db["DBInstanceIdentifier"] for db in rds.describe_db_instances()["DBInstances"]}
     return (
-        find_eks_rds(eks, session.client("rds"))
+        find_eks_rds(eks, rds)
         + find_ec2(ec2)
         + find_elb(session.client("elbv2"))
         + find_nat_eip_ebs_eni(ec2, live_clusters)
         + find_dns(session.client("route53"), live_clusters)
+        + find_log_groups(session.client("logs"), live_clusters, live_dbs)
     )
 
 

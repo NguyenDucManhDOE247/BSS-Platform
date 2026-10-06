@@ -63,6 +63,12 @@ variable "log_statement" {
   description = "B-39: Postgres log_statement level. \"all\" logs full SQL text (can leak PII into CloudWatch Logs — see CLAUDE.md §10) and costs more per GB ingested. \"ddl\" (schema changes only) is the safe default; log_min_duration_statement=1000 (hardcoded below) still catches slow queries regardless."
 }
 
+variable "log_retention_days" {
+  type        = number
+  default     = 7
+  description = "Retention of /aws/rds/instance/<id>/postgresql (the exported PostgreSQL log). Environments pass the same value they give modules/observability."
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

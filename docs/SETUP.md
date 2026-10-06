@@ -177,6 +177,7 @@ python tools/ops/cost_report.py            # last 7 days of spend
 |---|---|---|
 | `terraform plan` wants to create everything on an env that exists | `terraform init` without the backend bucket → empty local state | `make ENV=<env> tf-init` (passes `-backend-config`) |
 | Node group `CREATE_FAILED` after RDS/NAT were already created | vCPU quota (not checked by `plan`) | Destroy other clusters or request quota; [runbooks/cd-staging-prod-demo.md §1b](runbooks/cd-staging-prod-demo.md) |
+| `terraform apply`: `ResourceAlreadyExistsException: The specified log group already exists` (`/aws/eks/bss-<env>-eks/cluster` or `/aws/rds/instance/bss-<env>-pg/postgresql`) | A log group from an earlier build that AWS created itself (before 2026-10-06 Terraform did not own these) or re-created after a destroy | `python tools/ops/orphan_finder.py` lists them; delete the one named in the error (`aws logs delete-log-group --log-group-name <name>`), then `apply` again |
 | `terraform destroy` stuck on the VPC (`DependencyViolation`) | ALB / Karpenter nodes / target groups outside Terraform | `./scripts/teardown.sh` does the order; then `tools/ops/orphan_finder.py` |
 | Pod `CreateContainerConfigError` | Secret not synced: Secrets CSI not installed or pod doesn't mount the CSI volume | `platform-install.sh`, [ADR-004](adr/ADR-004-db-credential-wiring-dev.md) |
 | cd-dev: "Runner không kết nối được API server" | `public_access_cidrs` excludes GitHub runners | [runbooks/cd-staging-prod-demo.md §4](runbooks/cd-staging-prod-demo.md) |
