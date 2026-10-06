@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-10-06
+
+Keycloak survives a database failover on its own, prod loses its single-NAT point of failure, and the loss of a whole
+Availability Zone is measured a third time. Released `rc-v2.3.0` → staging and `v2.3.0` → prod (manual approval) through
+CD on GitHub-hosted runners; on each: smoke 7/7 over HTTPS, `e2e-flow.sh` PASS, Playwright 3/3, NetworkPolicy 12/12
+(prod Playwright: 2/3 on the first run, minutes after Keycloak started — sign-in after registration took over 20 s —
+then 3/3 on the re-run).
+
+### Measured
+
+- **AZ-outage lab, run 3 on prod** ([Lab 10](docs/labs/10-az-outage.md) §3b): private **and** public subnets of the AZ
+  holding the RDS primary isolated for 7 minutes + forced failover. Keycloak readiness down ≈ 45 s (run 2: ≈ 13 min —
+  #217 confirmed on real RDS); pods in the two healthy AZs kept reaching SQS/EventBridge/STS through their own NAT
+  (207/208); business API unavailable for the first ≈ 55 s; e2e PASS afterwards. New, unfixed findings: a CoreDNS pod in
+  the dead AZ slows every pod for ≈ 50 s (inferred), prod has no spare CPU when a node is lost (one pod Pending 99 s),
+  pods do not rebalance when the AZ returns, and the probing machine itself has a ≈ 1 % error floor (control run).
+
 ### Added
 
 - **Prod has one NAT Gateway and one private route table per AZ** (`nat_gateway_per_az`) — the single NAT was a

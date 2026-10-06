@@ -1,4 +1,4 @@
-# Lab 10 — Mất 1 Availability Zone trên prod (2026-10-02)
+# Lab 10 — Mất 1 Availability Zone trên prod (2026-10-02 → 10-06)
 
 > Mục "Phase 9 — fail 1 AZ → cluster vẫn serve" trong kế hoạch scaffold (CLAUDE.md §8) — mục duy nhất của kế hoạch
 > cũ chưa từng làm. Chạy thật trên **prod** (3 AZ, 4 × t3.large, RDS db.t3.medium Multi-AZ, 3 replica/service,
@@ -19,9 +19,10 @@ Mô phỏng kịch bản **"AZ Availability: Power Interruption"** của AWS Fau
 
 Chọn AZ **đang chứa RDS primary** = trường hợp tệ nhất: mất cùng lúc 1/3 compute **và** DB phải failover.
 
-**Giới hạn của 2 lần chạy đầu:** không chặn subnet **public** (từ ADR-013 có `INCLUDE_PUBLIC=1` để chặn cả hai). Mất AZ thật còn làm mất node ALB và **NAT Gateway** ở AZ đó.
-Module `vpc` chỉ có **1 NAT** (ở AZ đầu tiên, `ap-southeast-1a`): mất đúng AZ đó = mọi Pod mất đường ra Internet
-(SQS, EventBridge, STS, ECR) → luồng order → hóa đơn dừng. Đó là **điểm chết đơn (SPOF) đã biết**, ghi ở mục 4.
+**Giới hạn của 2 lần chạy đầu:** không chặn subnet **public**. Mất AZ thật còn làm mất node ALB và **NAT Gateway** ở AZ đó.
+Lúc ấy module `vpc` chỉ có **1 NAT** (ở AZ đầu tiên, `ap-southeast-1a`): mất đúng AZ đó = mọi Pod mất đường ra Internet
+(SQS, EventBridge, STS, ECR) → luồng order → hóa đơn dừng. Từ ADR-013 prod có **1 NAT mỗi AZ** và script có
+`INCLUDE_PUBLIC=1` (chặn cả subnet public) — **lần chạy 3 (mục 3b)** đo đúng trường hợp đó.
 
 ## 1. Lần chạy 1 — `v2.2.0` (Keycloak 26.7.5)
 
@@ -164,16 +165,82 @@ hoặc một bản Keycloak mới làm property thô của Quarkus hết tác d�
 Bài học của chính bài lab: 2 lần đo đầu **vô nghĩa** vì Docker cấp cho "primary mới" đúng IP cũ của primary bị chặn
 (nên nó cũng mất hút) — sửa bằng IP tĩnh. Kết quả "vẫn hỏng dù đã sửa" suýt bị tin là thật.
 
-Chưa chạy lại trên AWS: cơ chế đã tái hiện trùng khớp ở máy; lần dựng prod kế tiếp (release `v2.3.0`) chạy lại
-`chaos-az-outage.sh` để lấy số đo trên RDS thật.
+Đã chạy lại trên AWS với RDS thật ở lần chạy 3 (mục 3b): readiness DOWN ≈ 45 s thay vì ≈ 13 phút.
+
+## 3b. Lần chạy 3 — `v2.3.0`, mất **cả** AZ (private + public), prod có NAT mỗi AZ (2026-10-06)
+
+Bản `v2.3.0` do **CD** đưa lên (không còn "chỉ cho lab"): Keycloak 26.8.0 + `QUARKUS_DATASOURCE_JDBC_NETWORK_TIMEOUT=30S`
+(#217) + HPA `minReplicas: 3`; prod dựng với **3 NAT** (mỗi subnet private đi ra qua NAT của đúng AZ mình — kiểm bằng
+`describe-route-tables` trước thí nghiệm). `e2e-flow.sh prod` **PASS** trước thí nghiệm. RDS primary ở `1a`, standby `1b`.
+
+```bash
+INCLUDE_PUBLIC=1 OUT_DIR=results/az-outage-prod-run3 ./scripts/chaos-az-outage.sh prod   # AZ = ap-southeast-1a
+```
+
+Cô lập **cả hai** subnet của `1a` (private: 1 node, 7 Pod `bss`, 1 trong 2 Pod CoreDNS; public: node ALB + NAT của AZ) và
+ép RDS failover `1a → 1b`. Đo thêm, ngoài 2 đầu dò của script:
+
+- **Readiness Keycloak** mỗi 5 s (`kubectl get pods` + số endpoint Ready của Service `keycloak`).
+- **Đường ra AWS API qua NAT**: từ 4 Pod ở AZ **không** bị cô lập (`order-management` + `billing-service` ở `1b`, `1c`),
+  `kubectl exec` mở TCP 443 tới endpoint SQS, EventBridge, STS (tên miền → cần cả DNS trong cluster lẫn NAT).
+- **Đo đối chứng** 7 phút ngay sau thí nghiệm, prod khỏe, cùng máy đo: 2 đầu dò cũ + một trang ngoài
+  (`checkip.amazonaws.com`) + `kubectl get --raw /readyz`.
+
+| Đo | Lần 2 (private, 1 NAT) | **Lần 3 (private + public, 3 NAT)** |
+|---|---|---|
+| **Readiness Keycloak** | DOWN t = 195 → 963 s (≈ 13 phút) | **DOWN t ≈ 27–37 → 74 s (≈ 45 s)**, 2 Pod Ready lại cùng lúc ✅ |
+| Log Keycloak | `No executor queue space remaining` hàng trăm dòng; mất coordinator 34 s | **0 dòng** `No executor queue space`, **0** lần mất coordinator |
+| OIDC qua ALB | 0 / 446 (nhờ ALB fail-open) | 11 / 398: 2 timeout (t = 23, 47 s) + **7 × `503` ở t = 58–68 s** (lúc cả 2 Pod NotReady) + 2 lỗi nhiễu máy đo (xem dưới) |
+| **API catalog** | 6 / 446 (1,35 %) — 5 timeout ở t = 0…25 s | 16 / 398 (4,02 %): **8 timeout liên tiếp ở t = −2…47 s** (API không phục vụ được ≈ 55 s; t = 0 ghi sau khi đổi NACL xong cả 2 subnet nên lỗi đầu rơi vào t = −2), 8 lỗi còn lại là nhiễu máy đo |
+| **Đường ra AWS API** từ Pod ở `1b`/`1c` | không đo (1 NAT ở `1a` ⇒ lẽ ra mất hết) | t = 60 → 424 s (AZ `1a` + NAT của nó vẫn chết): **207 / 208 lần mở được** ✅ — nhưng **8 / 8 lần đầu (t = 8…51 s) thất bại** |
+| RDS | — | `rebooting` t ≈ 6 → `available` t ≈ 73 s (trường `AvailabilityZone` đổi ở t ≈ 185 s) |
+| Node `1a` | NotReady 1 | NotReady t ≈ 46–60 s → Ready t ≈ 448 s (mạng trả ở t = 424) |
+| Pod | 0 Pending | Pod ở `1a` bị đuổi ở t = 346 s; **1 Pod Pending 99 s** (`customer-service` thay thế: `3 Insufficient cpu`) |
+| Sau thí nghiệm | `e2e-flow.sh prod` PASS | `e2e-flow.sh prod` **PASS**; không còn NACL thí nghiệm |
+
+**Điều lần 3 chứng minh được**
+
+1. **#217 đã sửa trên RDS thật.** Readiness của Keycloak tự hồi phục sau ≈ 45 s (lần 2: ≈ 13 phút), khớp với bài lab trên
+   máy (26 s). Lần này ALB có trả `503` trong ≈ 10 s — con số "0 lỗi" của lần 2 là nhờ fail-open, không phải vì tốt hơn.
+2. **NAT mỗi AZ hoạt động.** Suốt 6 phút AZ `1a` chết cùng NAT của nó, Pod ở `1b`/`1c` vẫn mở được kết nối tới SQS,
+   EventBridge, STS (207/208; lần hỏng duy nhất trùng một nhịp nhiễu của máy đo). Với 1 NAT ở `1a`, cùng thí nghiệm này sẽ
+   cắt toàn bộ đường ra.
+
+**Điều lần 3 làm lộ ra (chưa sửa — mục 4)**
+
+1. **≈ 55 s đầu tệ hơn hai lần trước** (API 8 timeout liên tiếp; lần 1–2: 21–25 s), và trong đúng khoảng đó **mọi** lần thử
+   đường ra từ Pod ở AZ *khỏe* cũng hỏng (8/8), rồi cùng hết khi node `1a` bị đánh dấu NotReady (t ≈ 46–60 s).
+   Giải thích khớp nhất với số liệu — **suy luận, chưa đo tách riêng**: 1 trong 2 Pod CoreDNS nằm ở `1a`; cho tới khi node
+   NotReady, Service `kube-dns` vẫn chia ≈ 50 % truy vấn cho Pod đã chết, mỗi truy vấn rơi vào đó chờ 5 s. Một tên như
+   `sqs.ap-southeast-1.amazonaws.com` bị `ndots:5` nhân thành ~10 truy vấn ⇒ gần như chắc chắn dính ít nhất một lần.
+   Lần 1–2 không ghi CoreDNS nằm ở đâu nên không so được. Lần sau: thêm đầu dò DNS riêng (và thử bằng IP) để tách DNS
+   khỏi NAT.
+2. **Prod không còn chỗ khi mất 1 node:** 3 node còn lại ở 98–99 % CPU `requests` ⇒ 1 Pod thay thế phải chờ node `1a`
+   quay lại (99 s). `customer-service` vẫn còn 2 replica ở 2 AZ nên không gián đoạn, nhưng mất AZ lâu hơn = chạy thiếu
+   replica suốt thời gian đó. Nguyên nhân là trần 8 vCPU của tài khoản (ADR-006), không phải thiếu cấu hình.
+3. **AZ quay lại nhưng Pod không tự trải lại:** sau thí nghiệm Pod `bss` theo AZ là **1 / 7 / 14** (trước: 7 / 6 / 9).
+   Topology spread chỉ có tác dụng lúc xếp lịch. Nếu ngay sau đó mất `1c` thì mất 14/22 Pod cùng lúc.
+4. **`e2e-flow.sh` không chạy được giữa lúc mất AZ**: script dừng ở điều kiện "mọi Pod phải Ready" (Pod ở node chết đang
+   `Terminating`). Vì thế luồng order → hóa đơn **trong lúc** mất AZ chưa được đo; bằng chứng NAT là đầu dò TCP ở trên.
+
+**Độ tin cậy của phép đo.** Đo đối chứng trên prod khỏe: API 2/153 lỗi, OIDC 1/153, trang ngoài 1/153, `kubectl` 2/153 —
+các lỗi **trùng giây nhau** trên những đích không liên quan gì tới nhau ⇒ máy đo (WSL trên laptop) tự rớt mạng vài giây
+mỗi ≈ 2 phút, tạo sàn nhiễu ≈ 1 %. Trong lần 3, 8 lỗi API theo cặp ở t ≈ 148/160, 360/372, 480/491, 600/611 (kéo dài cả
+sau khi mạng đã trả) đúng mẫu đó, và các vòng `kubectl` chạy song song cũng khựng ở cùng giây. Hệ quả: **tỉ lệ % lỗi của
+bài lab này không chính xác hơn ±1 %**; thứ đáng tin là các **chuỗi lỗi liên tiếp** và mốc thời gian. Lần 1–2 đo từ cùng
+laptop nhưng không có phép đo đối chứng, nên không biết lúc đó sàn nhiễu có giống vậy không.
 
 ## 4. Rủi ro còn lại (đã đo hoặc đã biết, chưa sửa)
 
 | Rủi ro | Hậu quả | Cách sửa | Vì sao chưa làm |
 |---|---|---|---|
-| ~~1 NAT Gateway ở `ap-southeast-1a`~~ — **đã sửa** ([ADR-013](../adr/ADR-013-runner-cd-trong-vpc.md)) | Trước: mất `1a` = mọi Pod mất đường ra AWS API (SQS/EventBridge/STS/ECR) | Prod: 1 NAT + 1 route table private mỗi AZ (`nat_gateway_per_az`) | Kiểm bằng `INCLUDE_PUBLIC=1 chaos-az-outage.sh` ở lần dựng prod kế tiếp |
+| ~~1 NAT Gateway ở `ap-southeast-1a`~~ — **đã sửa và đã đo** ([ADR-013](../adr/ADR-013-runner-cd-trong-vpc.md), lần 3) | Trước: mất `1a` = mọi Pod mất đường ra AWS API (SQS/EventBridge/STS/ECR) | Prod: 1 NAT + 1 route table private mỗi AZ (`nat_gateway_per_az`) | — |
 | Pod ở AZ chết chỉ bị đuổi sau **300 s** | 5 phút chạy thiếu replica (vẫn phục vụ nhờ 2 AZ còn lại) | `tolerationSeconds` ngắn hơn cho `node.kubernetes.io/unreachable` | Đánh đổi: ngắn quá thì một lần chập mạng thoáng qua cũng đuổi Pod hàng loạt |
-| ALB vẫn có node ở AZ chết (thí nghiệm không chặn subnet public) | Một phần kết nối mới tới IP ALB ở AZ đó có thể lỗi | Route 53 ARC zonal shift cho ALB | Chưa đo — cần chặn subnet public, mà đó cũng là nơi có NAT |
+| ALB vẫn có node ở AZ chết | Một phần kết nối mới tới IP ALB ở AZ đó có thể lỗi | Route 53 ARC zonal shift cho ALB | Lần 3 (chặn subnet public) **không thấy** lỗi kéo dài từ 1 máy đo, nhưng không ghi lại DNS của ALB nên chưa biết IP ấy bị gỡ sau bao lâu |
+| **CoreDNS có Pod ở AZ chết** (lần 3 — suy luận từ số liệu) | ≈ 50 s đầu: tra DNS trong cluster chậm/hỏng với **mọi** Pod, kể cả ở AZ khỏe | NodeLocal DNSCache; hoặc `ndots` thấp hơn cho các service gọi tên miền ngoài | Chưa đo tách riêng DNS khỏi NAT — làm trước khi chọn cách sửa |
+| **Không còn CPU dự phòng khi mất 1 node** (lần 3) | Pod thay thế Pending tới khi node quay lại | Thêm node / hạ `requests` | Trần 8 vCPU của tài khoản (ADR-006) — prod đã dùng 8/8 |
+| **Pod không tự trải lại sau khi AZ quay lại** (lần 3: 1 / 7 / 14) | Mất tiếp AZ đang dồn Pod = mất quá nửa số Pod | Descheduler (`RemovePodsViolatingTopologySpreadConstraint`) hoặc `rollout restart` sau sự cố | Thêm một thành phần phải nuôi; môi trường ephemeral — ghi vào quy trình sau sự cố là đủ lúc này |
+| **Máy đo tự rớt mạng** (sàn nhiễu ≈ 1 %) | Tỉ lệ % lỗi của lab không chính xác hơn ±1 % | Chạy đầu dò từ trong AWS, hoặc thêm đích đối chứng vào `chaos-az-outage.sh` | Chưa làm — mới phát hiện ở lần 3 |
 
 ## 5. Tự kiểm tra
 
@@ -187,3 +254,8 @@ Chưa chạy lại trên AWS: cơ chế đã tái hiện trùng khớp ở máy;
    đọc nó thành "Keycloak khỏe"?
 8. (3.2) Vì sao `socketTimeout=30` trong JDBC URL không đủ, và thread dump cho biết điều đó ở dòng nào?
 9. (3.2) Hai lần đo đầu của lab trên máy cho kết quả "đã sửa mà vẫn hỏng". Sai ở đâu, và bài học chung là gì?
+10. (3b) Lần 3 ghi 16 lỗi API nhưng chỉ 8 lỗi được tính cho sự cố. Dựa vào đâu để loại 8 lỗi kia, và vì sao phải có phép
+    đo đối chứng mới nói được điều đó?
+11. (3b) Pod ở AZ khỏe có NAT riêng mà 50 s đầu vẫn không gọi được SQS. Thành phần nào nằm giữa, và vì sao `ndots:5` làm
+    chuyện tệ hơn?
+12. (3b) Vì sao sau khi AZ quay lại, Pod không tự trải đều về 3 AZ?
