@@ -9,14 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **CD for staging/prod runs on a CodeBuild runner inside the VPC** ([ADR-013](docs/adr/ADR-013-runner-cd-trong-vpc.md),
-  `modules/ci-runner`, `docs/runbooks/cd-runner.md`): the deploy job reaches the API server through the cluster's
-  private endpoint, so the EKS public endpoint is restricted to the operator's IP again — the documented
-  "`0.0.0.0/0` during demos" exception (GitHub-hosted runners have no fixed IP) is gone. The runner carries no deploy
-  permission (jobs still assume the per-Environment deployer role via OIDC). New read-only role
-  `bss-github-cd-preflight` + repository variable `AWS_PREFLIGHT_ROLE_ARN`: a preflight job fails fast when the
-  ephemeral environment (and therefore its runner) does not exist. One manual step, once: authorise the
-  `bss-github` CodeConnections connection in the AWS console.
 - **Prod has one NAT Gateway and one private route table per AZ** (`nat_gateway_per_az`) — the single NAT was a
   single point of failure for every pod's egress when its AZ is lost (Lab 10 §4). dev/staging keep one.
 - `chaos-az-outage.sh INCLUDE_PUBLIC=1`: also isolates the AZ's public subnet (ALB node + NAT), i.e. a full AZ loss.
@@ -36,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `customer` default role removed, idempotent. `make e2e`, `make e2e-browser`, `make admin-user`.
 
 ### Changed
+
+- `scripts/platform-install.sh` downloads the pinned Helm charts with `curl --retry` and installs from the file — Helm's
+  own downloader has no retry and hung for 120 s in WSL (twice in a row while building staging on 2026-10-05).
+- CD for staging/prod stays on GitHub-hosted runners: an in-VPC CodeBuild runner was built and tried (#220, #221) and
+  withdrawn — this AWS account's CodeBuild concurrency quota is 0 and the increase was refused
+  ([ADR-013](docs/adr/ADR-013-runner-cd-trong-vpc.md)). The `0.0.0.0/0` endpoint exception for ephemeral demos remains.
 
 - Docs brought in line with `v2.2.0` + #210: `docs/demo-script.md` films the product scenes on AWS over HTTPS
   (kind as the $0 fallback) and tells the "7.9% errors" story with its fix; `docs/blog-post-draft.md` no longer

@@ -80,8 +80,3 @@ output "dns_zone_name" {
   description = "Zone Route 53 dùng chung (state shared) — --domain-filter của ExternalDNS"
   value       = local.dns_zone_name
 }
-
-output "ci_runner_project" {
-  value       = try(module.ci_runner[0].project_name, null)
-  description = "Project CodeBuild làm runner CD trong VPC (ADR-013); null nếu state shared chưa có kết nối GitHub."
-}
