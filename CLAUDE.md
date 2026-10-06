@@ -356,7 +356,7 @@ bss-platform/
 | 7 — Observability (Prometheus, Grafana, OTel, SLO, alert → chat) | ✅ | GĐ2 (kind) + GĐ7/dọn nợ (EKS): alert → Discord, SLO burn-rate, log JSON + `trace_id` → X-Ray |
 | 8 — Staging + prod (tag rc → v, duyệt tay) | ✅ | GĐ6 + GĐ9: `rc-v2.2.0` → `v2.2.0` (HTTPS) — staging/prod ephemeral (ADR-006) |
 | 9 — Hardening: WAF, NetworkPolicy, PSS restricted, chaos | ✅ | WAF (GĐ7), NetworkPolicy 12/12 cả 3 môi trường, PSS `restricted`, chaos xóa Pod + drain node (lab 08) |
-| 9 — Hardening: **fail 1 AZ → cluster vẫn serve** | ✅ 2026-10-02 / 10-05 | [Lab 10](docs/labs/10-az-outage.md), 2 lần trên prod: API 0,89 % / 1,35 % lỗi (≤ 25 s), 0 Pod Pending, e2e PASS. Lộ + sửa: Keycloak mất cluster sau RDS failover (→ 26.8.0, tự ghép lại sau 34 s), HPA hạ prod về 2 replica (→ `minReplicas: 3`). Readiness Keycloak treo ~16 phút (#217): nguyên nhân gốc = Agroal xóa `socketTimeout` sau mỗi lần JDBC_PING2 trả kết nối → `QUARKUS_DATASOURCE_JDBC_NETWORK_TIMEOUT=30S`, tái hiện + kiểm trên máy (26 s) |
+| 9 — Hardening: **fail 1 AZ → cluster vẫn serve** | ✅ 2026-10-02 → 10-06 | [Lab 10](docs/labs/10-az-outage.md), 3 lần trên prod (lần 3: mất cả subnet public, `v2.3.0`): API gián đoạn 21–55 s đầu rồi phục vụ tiếp, e2e PASS sau mỗi lần. Lộ + sửa: Keycloak mất cluster sau RDS failover (→ 26.8.0, tự ghép lại sau 34 s), HPA hạ prod về 2 replica (→ `minReplicas: 3`). Readiness Keycloak treo ~16 phút (#217): nguyên nhân gốc = Agroal xóa `socketTimeout` sau mỗi lần JDBC_PING2 trả kết nối → `QUARKUS_DATASOURCE_JDBC_NETWORK_TIMEOUT=30S`, tái hiện trên máy (26 s) và **đo trên RDS thật ở lần 3: ≈ 45 s**. Lần 3 cũng đo NAT mỗi AZ (207/208) và lộ 3 rủi ro chưa sửa: CoreDNS ở AZ chết, hết CPU dự phòng (1 Pod Pending 99 s), Pod không tự trải lại |
 | 10 — POSTMORTEMS.md | ✅ | `docs/POSTMORTEMS.md` (PM-01: test "xanh giả") |
 | 10 — Video demo 5 phút | ⏳ việc của chủ repo | Kịch bản sẵn: `docs/demo-script.md` |
 | 10 — Blog post | 🟡 bản nháp | `docs/blog-post-draft.md` — chưa đăng |
@@ -432,8 +432,9 @@ bss-platform/
 - ✅ Gọi REST giữa service: timeout + retry + circuit breaker (Resilience4j); DB: HikariCP pool tối đa 5/Pod (ngân sách kết nối RDS).
 - ✅ Probe có timeout thật (liveness 5 s, readiness 3 s) — timeout mặc định 1 s từng làm kubelet giết Pod dưới tải.
 - ✅ SLI/SLO + error budget burn-rate alert (`docs/SLO.md`, `order-management`).
-- ⚠️ Mất 1 AZ + RDS failover đã đo 2 lần (Lab 10): service Spring sống (≤ 25 s lỗi), cluster Keycloak tự hồi phục từ 26.8.0;
-  readiness Keycloak treo ~16 phút đã sửa (#217, `scripts/lab-keycloak-db-failover.sh`); prod có NAT mỗi AZ (ADR-013).
+- ⚠️ Mất 1 AZ + RDS failover đã đo 3 lần (Lab 10): API gián đoạn 21–55 s đầu rồi phục vụ tiếp; Keycloak tự hồi phục
+  (readiness DOWN ≈ 45 s trên RDS thật sau #217); prod có NAT mỗi AZ, đã đo (ADR-013). Còn lại, chưa sửa (Lab 10 §4): CoreDNS có
+  Pod ở AZ chết (suy luận), prod hết CPU dự phòng khi mất 1 node (trần 8 vCPU), Pod không tự trải lại sau khi AZ quay lại.
 
 ### Cost
 - ✅ Dev: `make ENV=dev tf-destroy` mỗi tối; staging/prod ephemeral (ADR-006). Sau destroy chạy `tools/ops/orphan_finder.py`.
@@ -478,8 +479,8 @@ make ENV=dev e2e e2e-browser                 # 2 website, khách + nhân viên
 make ENV=dev admin-user USERNAME=<u> EMAIL=<e>   # tài khoản nhân viên (mật khẩu tạm)
 
 # Promote — v* phải trỏ CÙNG commit với rc-v* đã qua staging
-git tag rc-v2.3.0 <commit> && git push origin rc-v2.3.0   # → cd-staging
-git tag v2.3.0    <commit> && git push origin v2.3.0      # → cd-prod (duyệt tay)
+git tag rc-v2.4.0 <commit> && git push origin rc-v2.4.0   # → cd-staging
+git tag v2.4.0    <commit> && git push origin v2.4.0      # → cd-prod (duyệt tay)
 
 # Kết thúc buổi
 make ENV=dev tf-destroy                      # teardown.sh: Ingress → chờ DNS → NodePool → ENI/SG sót → destroy
@@ -512,7 +513,7 @@ python tools/ops/orphan_finder.py            # phải rỗng
 - **Ngày tiếp nhận:** repo được người maintain hiện tại (không phải người dựng scaffold ban đầu)
   tiếp nhận, kiểm chứng lại toàn bộ từ đầu, và tách hẳn khỏi repo gốc — xem
   `learning/01-hien-trang-va-danh-sach-loi.md` cho danh sách đầy đủ lỗi phát hiện lúc tiếp nhận.
-- **Phase hiện tại: 9 hoàn thành + dọn nợ xong; release mới nhất `v2.2.0` (HTTPS, chạy thật trên dev/staging/prod).** Mọi phase đã **hoàn thành và kiểm chứng thật** trên hạ tầng thật
+- **Phase hiện tại: 9 hoàn thành + dọn nợ xong; release mới nhất `v2.3.0` (2026-10-06, qua staging → prod).** Mọi phase đã **hoàn thành và kiểm chứng thật** trên hạ tầng thật
   (không chỉ code) — xem [docs/ROADMAP.md](docs/ROADMAP.md) cho bảng public, bảng dưới cho bằng chứng.
 - **AWS account:** đã tạo, MFA bật, Budget alert theo dõi (ngân sách dev mục tiêu **< $50/tháng**,
   không chạy 24/7 — mọi environment dựng theo buổi rồi `terraform destroy`, xem
@@ -537,7 +538,8 @@ python tools/ops/orphan_finder.py            # phải rỗng
 | 9 — Sản phẩm hoàn chỉnh (danh tính) | ✅ | Keycloak + PKCE, khách tự đăng ký → admin duyệt → mua, quyền sở hữu 4 service (ADR-008); Playwright 3/3 + `e2e-kind.sh` trên kind; Keycloak trên EKS, `rc-v2.0.0` → staging → `v2.0.0` → prod (duyệt tay), smoke có token 4/4 cả 3 môi trường |
 | Dọn nợ 8 → 0 | ✅ | Karpenter Spot thật (node Ready ~36s, k6 ×2.4 request); NetworkPolicy EKS 11/11; 8 việc GĐ7 trên 1 cluster (alert → Discord 146s, log JSON + `trace_id` → X-Ray); Spring Boot 3.5 → 0 CVE; schema expand → migrate → contract trên RDS; `orphan_finder.py` bắt 3 loại tài nguyên sót |
 | Sau GĐ9 (2026-09-30) | ✅ | Keycloak production-grade trên EKS thật (ADR-011: image optimized, rootfs chỉ đọc, 2 Pod thành cluster qua RDS với NetworkPolicy bật, xóa 1 Pod vẫn giữ session + smoke xanh); auth luôn bật (bỏ `bss.auth.enabled`); rà Definition of Done — xem `docs/ROADMAP.md` |
-| Mất 1 AZ trên prod (2026-10-02 → 05) | ✅ | [Lab 10](docs/labs/10-az-outage.md): 2 lần cô lập AZ chứa RDS primary + failover — API ≤ 1,35 % lỗi trong ≤ 25 s, 0 Pod Pending, e2e PASS. 3 lỗi thật lộ ra và đã sửa: Keycloak mất cluster (→ 26.8.0), HPA hạ prod về 2 replica, readiness Keycloak treo ~16 phút (#217 — tái hiện trên máy: chưa sửa không hồi phục trong 240 s, đã sửa 26 s) |
+| Release `v2.3.0` (2026-10-06) | ✅ | `rc-v2.3.0` → staging → `v2.3.0` → prod (duyệt tay), CD trên runner GitHub sau khi gỡ runner CodeBuild (ADR-013): mỗi nơi smoke 7/7 HTTPS, `e2e-flow.sh` PASS, Playwright 3/3 (prod: lần đầu 2/3 vì Keycloak vừa khởi động, chạy lại 3/3), NetworkPolicy 12/12. Prod lần đầu dựng 3 NAT (mỗi AZ một cái) |
+| Mất 1 AZ trên prod (2026-10-02 → 06) | ✅ | [Lab 10](docs/labs/10-az-outage.md): 3 lần cô lập AZ chứa RDS primary + failover; lần 3 (`v2.3.0`) chặn cả subnet public — readiness Keycloak DOWN ≈ 45 s (lần 2: ≈ 13 phút), NAT mỗi AZ 207/208, API gián đoạn ≈ 55 s đầu, 1 Pod Pending 99 s, e2e PASS. Lần 1–2: API ≤ 1,35 % lỗi trong ≤ 25 s, 0 Pod Pending. 3 lỗi thật lộ ra và đã sửa: Keycloak mất cluster (→ 26.8.0), HPA hạ prod về 2 replica, readiness Keycloak treo ~16 phút (#217 — tái hiện trên máy: chưa sửa không hồi phục trong 240 s, đã sửa 26 s) |
 | HTTPS + tên miền (2026-10-01) | ✅ | `bssplatform.dpdns.org` (ADR-012): zone Route 53 + cert ACM ở shared, ExternalDNS (IAM theo tên bản ghi); dev EKS: TLS 1.3, smoke 7/7 qua HTTPS, NetworkPolicy 12/12, đăng ký + đăng nhập web thật; Keycloak 26.7.5 |
 | 2 website trên mọi môi trường (2026-10-02) | ✅ | `e2e-flow.sh` (khách + nhân viên + khách khác, kiểm cả phía admin) PASS + Playwright 3/3 trên kind, dev, staging, prod; chủ repo cấp tài khoản nhân viên bằng `admin-user.sh` rồi tự duyệt khách + đối chiếu hóa đơn 2 phía trên dev/staging/prod |
 
@@ -576,8 +578,10 @@ python tools/ops/orphan_finder.py            # phải rỗng
   3 lần đo liền (`docs/labs/07-load-test-dev.md` §2c).
 - ~~B-15~~ — ✅ code xong 2026-10-01 (PR bss-common-java 0.2.0 + PR các service): UUID v7, `Idempotency-Key` cho
   `productOrder`, merge-patch `null` = xóa, 4 service dùng `bss-common-java` (#199, #200 đã merge).
-- **0 issue mở** (2026-10-05, sau #217). Chưa release: Keycloak 26.8.0 + HPA prod `minReplicas: 3` + network-timeout đang ở
-  `main`, prod chính thức vẫn là `v2.2.0` → lần dựng kế tiếp: `rc-v2.3.0` → `v2.3.0` và chạy lại `chaos-az-outage.sh` trên RDS thật
-  (kèm `INCLUDE_PUBLIC=1` để đo NAT mỗi AZ). Tag `rc-v2.3.0` gắn ngày 2026-10-05 lên commit còn workflow runner CodeBuild chưa từng
-  được promote và đã xóa (2026-10-06) — gắn lại trên `main` khi staging đã dựng.
+- ~~Release Keycloak 26.8.0 + HPA prod `minReplicas: 3` + network-timeout~~ — ✅ 2026-10-06: `v2.3.0` trên prod, lab mất AZ
+  lần 3 trên RDS thật (Lab 10 mục 3b).
+- **Chưa sửa, lộ ra ở lab mất AZ lần 3** (Lab 10 §4): CoreDNS có Pod ở AZ chết làm ≈ 50 s đầu chậm với mọi Pod (suy luận — cần
+  đầu dò DNS riêng trước khi sửa); prod không còn CPU dự phòng khi mất 1 node (trần 8 vCPU); Pod không tự trải lại sau khi AZ
+  quay lại; máy đo có sàn nhiễu ≈ 1 % (nên thêm đích đối chứng vào `chaos-az-outage.sh`).
+- **0 issue mở** (2026-10-06).
   Ngoài repo: buổi review với thầy (ô cuối của Definition of Done — việc của chủ repo).
