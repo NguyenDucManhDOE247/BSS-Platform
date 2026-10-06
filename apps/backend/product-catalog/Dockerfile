@@ -6,7 +6,7 @@
 # RUN (which has no `|| true`) was the one that finally errored out, several lines away from
 # the real cause. `maven:...-eclipse-temurin-21` already has Maven installed — no wrapper,
 # no `|| true` needed, and a genuine build failure now fails `docker build` where it happens.
-FROM maven:3.9.16-eclipse-temurin-21 AS build
+FROM maven:3.9-eclipse-temurin-26 AS build
 WORKDIR /workspace
 # B-15: com.bss:bss-common-java đến từ GitHub Packages (cần auth) — token vào qua BuildKit secret,
 # không nằm trong layer nào. Giải thích đầy đủ: customer-service/Dockerfile.
