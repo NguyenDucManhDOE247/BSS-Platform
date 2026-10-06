@@ -13,7 +13,7 @@
 #   - kind: ingress-nginx forward request MANG IP của chính Pod controller (namespace ingress-nginx).
 #   - AWS: ALB Controller dùng target-type "ip" — request tới THẲNG IP Pod, nguồn là ENI của ALB
 #     nằm trong VPC (không phải 1 Pod/namespace K8s nào để `namespaceSelector` chọn được).
-# Siết đúng theo AWS (SecurityGroup của ALB, ACM, WAF ở lớp trước — CLAUDE.md §2 lớp 2) an toàn
+# Siết đúng theo AWS (SecurityGroup của ALB, ACM, WAF ở lớp trước — PROJECT.md §2 lớp 2) an toàn
 # hơn nhiều so với NetworkPolicy cho ca này; NetworkPolicy chỉ cần đảm bảo 3 Pod NÀY được vào,
 # còn lại (billing, order, ...) không nhận trực tiếp — đó mới là phần whitelist NetworkPolicy lo.
 apiVersion: networking.k8s.io/v1

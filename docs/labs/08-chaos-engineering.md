@@ -40,7 +40,7 @@ tới khi đủ số Pod `Ready` trở lại.
 **Kỳ vọng:**
 - Nếu overlay có `replicas: 1` (dev, B-22) — sẽ có request lỗi thật trong lúc Pod khởi động lại.
   Đây KHÔNG phải lab thất bại — đây chính là bằng chứng sống cho "dev không HA, đúng như thiết kế
-  cost-saving của CLAUDE.md §4 sizing table".
+  cost-saving của PROJECT.md §4 sizing table".
 - Nếu overlay có `replicas ≥ 2` (staging/prod) — 0 request lỗi. Chạy lại lab với
   `kubectl -n bss scale deploy/order-management --replicas=2` trên dev để tự thấy sự khác biệt.
 
@@ -107,7 +107,7 @@ thứ 2 rơi vào Pod còn sống) — **đây là lý do B-13 chọn retry, kh�
   of failure ở tầng node", không phải script hỏng.
 - Trên dev EKS (2 node): Pod sẽ di dời hết sang node còn lại; nếu di dời sẽ vi phạm
   `PodDisruptionBudget` của service nào đó (`kubectl -n bss get pdb` — mọi service base đều có
-  `maxUnavailable: 0` theo CLAUDE.md §7, xem `infrastructure/kubernetes/base/<svc>/pdb.yaml`),
+  `maxUnavailable: 0` theo PROJECT.md §7, xem `infrastructure/kubernetes/base/<svc>/pdb.yaml`),
   `drain` sẽ đứng chờ đúng ở Pod đó cho tới khi ReplicaSet tạo được bản thay thế trên node kia
   trước — quan sát bằng `kubectl -n bss get pods -o wide -w` ở 1 terminal khác trong lúc drain chạy.
 
@@ -149,7 +149,7 @@ drain, và `kubectl get pods -o wide` xác nhận pod thay thế xuất hiện *
 `ip-10-10-11-196...`). **Kết luận đúng:** Pod chỉ thực sự "di chuyển" được qua `drain` khi service
 đó có **> 1 replica đang chạy tại thời điểm drain** — với dev sizing mặc định (`minReplicas: 1`
 mọi service, B-22), **không service nghiệp vụ nào của dev có thể được drain an toàn**, kể cả trên
-cluster nhiều node — đây chính là lý do CLAUDE.md §4 quy định staging/prod phải có `replicas ≥ 2`.
+cluster nhiều node — đây chính là lý do PROJECT.md §4 quy định staging/prod phải có `replicas ≥ 2`.
 
 ## 4. Ghi vào nhật ký
 

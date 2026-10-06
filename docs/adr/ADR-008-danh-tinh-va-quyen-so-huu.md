@@ -164,7 +164,7 @@ hiện ở đâu cả.
   | # | Phương án | Ghi chú |
   |---|---|---|
   | A | Mua domain + ACM + Route 53 | Chuẩn nhất; chủ repo từng muốn để domain về sau |
-  | B | **CloudFront trước ALB**, dùng domain mặc định `*.cloudfront.net` (HTTPS miễn phí của AWS) | Không cần mua domain; khớp lớp Edge "CloudFront → ALB" trong CLAUDE.md §2 |
+  | B | **CloudFront trước ALB**, dùng domain mặc định `*.cloudfront.net` (HTTPS miễn phí của AWS) | Không cần mua domain; khớp lớp Edge "CloudFront → ALB" trong PROJECT.md §2 |
   | C | Chứng chỉ tự ký import vào ACM | Trình duyệt cảnh báo — không dùng được cho người dùng thật |
 
 ## Quyết định 8 — AWS trước khi có HTTPS: Keycloak chỉ trong cluster, `iss` = DNS nội bộ (bổ sung 2026-09-29, GĐ9 việc 7)
@@ -208,7 +208,7 @@ rootfs chỉ đọc, prod 2 replica (jdbc-ping), Keycloak 26.7.4.
 - ✅ B-18 đóng thật ở mọi môi trường (sau việc 7). Không còn endpoint ghi nào mở.
 - ✅ Dọn luôn phần còn lại của B-13: `unitPrice` và `customerId` không còn nhận từ client.
 - ⚠️ Mọi test IT hiện có gọi API không kèm token sẽ đỏ khi bật resource server. Phải cập nhật bằng
-  `spring-security-test` (`jwt()`), không mock framework (đúng CLAUDE.md §9).
+  `spring-security-test` (`jwt()`), không mock framework (đúng PROJECT.md §9).
 - ⚠️ Script `e2e-kind.sh` phải tự lấy token (client `api-gateway`, password grant, chỉ cho test).
   **Đã làm (việc 6):** mỗi lần chạy tạo 1 user Keycloak mới qua Admin REST API, đi đủ luồng tạo hồ sơ →
   422 khi chưa duyệt → admin duyệt → mua → hóa đơn, và kiểm quyền sở hữu (khách khác đọc → 404).

@@ -13,7 +13,7 @@ hạ tầng thật (EKS dev + ALB + RDS), không phải trên `kind` 1 node như
 - Cách đọc bảng tổng kết k6 theo **từng bậc** (không chỉ số p95 tổng toàn bài).
 
 ⚠️ **Tốn tiền** — cần dev EKS đang chạy thật (không làm được trên `kind`, vì mục tiêu là số đo trên
-hạ tầng production-like: ALB thật, RDS thật, network thật giữa các AZ). Xem CLAUDE.md §9 "hỏi
+hạ tầng production-like: ALB thật, RDS thật, network thật giữa các AZ). Xem PROJECT.md §9 "hỏi
 trước khi tốn tiền" — chạy lab này trong đúng 1 buổi rồi `terraform destroy` ngay sau, như mọi lần
 lên AWS thật trước đó.
 

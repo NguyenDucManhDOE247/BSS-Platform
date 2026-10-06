@@ -38,7 +38,7 @@ services:
       timeout: 5s
       retries: 10
 
-  # Not consumed by any service yet (CLAUDE.md marks ElastiCache Redis as "optional, add when
+  # Not consumed by any service yet (PROJECT.md marks ElastiCache Redis as "optional, add when
   # needed" — see §2). Kept running here so the wiring exists for whenever a service adds a
   # cache dependency; until then this container is just idle memory (B-08).
   redis:

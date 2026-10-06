@@ -3,7 +3,7 @@
 - **Trạng thái:** Chấp nhận (Accepted)
 - **Ngày:** 2026-09-25
 - **Giai đoạn:** 6 — CD: dev tự động, promotion staging → prod
-- **Liên quan:** B-50, B-51, B-52, B-54 · thay thế phần "Promotion" cũ trong CLAUDE.md §5
+- **Liên quan:** B-50, B-51, B-52, B-54 · thay thế phần "Promotion" cũ trong PROJECT.md §5
 
 ## Bối cảnh
 
@@ -26,11 +26,11 @@ không chạy được ở repo này:
    `required_pull_request_reviews` có mặt; `enforce_admins: false` chỉ mở cửa cho *admin người*,
    không phải `github-actions[bot]`), và `default_workflow_permissions = read`. Bot không có cách
    hợp lệ để push thẳng vào `main`. Muốn push được phải hoặc (a) cấp PAT/GitHub App dài hạn — đi
-   ngược nguyên tắc "không có credential tĩnh" (CLAUDE.md §10), hoặc (b) tháo branch protection.
+   ngược nguyên tắc "không có credential tĩnh" (PROJECT.md §10), hoặc (b) tháo branch protection.
 2. **Phát hiện thay đổi bằng "diff của push" (`dorny/paths-filter` trên sự kiện push) không bền.**
    `concurrency` của GitHub chỉ giữ **1** run đang chờ: merge A, B, C liên tiếp thì run của B bị
    hủy — và B đã đổi service nào thì **không ai build**, vì run C chỉ so C với B.
-3. **Cluster dev bị `destroy` mỗi tối** (CLAUDE.md §10). "Trạng thái đang chạy" nếu chỉ tồn tại
+3. **Cluster dev bị `destroy` mỗi tối** (PROJECT.md §10). "Trạng thái đang chạy" nếu chỉ tồn tại
    trong cluster thì biến mất cùng cluster; sáng hôm sau không có gì để biết phải deploy lại cái gì.
 
 ## Quyết định
@@ -100,7 +100,7 @@ lifecycle **không xóa** image đã phát hành (rule ưu tiên 1 trong `module
 |---|---|
 | **A nguyên bản** — bot commit overlay vào `main` | Bị branch protection chặn (điểm 1). Muốn chạy phải thêm PAT dài hạn hoặc bỏ bảo vệ. |
 | **A + PR tự động** (bot mở PR bump tag rồi tự merge) | Cần PAT/App để PR kích hoạt được CI; mỗi deploy thêm một vòng PR + chờ CI; nhiễu lịch sử `main`. Lợi ích duy nhất (review) là vô nghĩa vì bot tự merge. |
-| **B — ArgoCD** | Là đích đến hợp lý về lâu dài (không cần credential cluster trong CI, tự sửa drift) nhưng thêm một hệ thống phải cài/vận hành/bảo mật cho 7 service — CLAUDE.md §2: "không over-engineer". Xem lại khi >10 service hoặc cần tự heal drift. |
+| **B — ArgoCD** | Là đích đến hợp lý về lâu dài (không cần credential cluster trong CI, tự sửa drift) nhưng thêm một hệ thống phải cài/vận hành/bảo mật cho 7 service — PROJECT.md §2: "không over-engineer". Xem lại khi >10 service hoặc cần tự heal drift. |
 | **C — build cả 7 mỗi lần merge** | Đơn giản nhưng lãng phí, và **không** giải quyết rollback/nguồn sự thật (image giống hệt vẫn build lại, cluster vẫn không có "bản tốt gần nhất"). |
 | **D — chỉ `kubectl set image` service đổi** | Cluster lệch khỏi git (drift), không có lịch sử, không dựng lại được sau destroy. |
 | Lưu manifest ở SSM Parameter Store/S3 | Khả thi (có versioning), nhưng lịch sử/audit/diff bằng `git` quen thuộc hơn và không cần thêm quyền IAM/tài nguyên Terraform. Xem lại nếu cần ghi từ ngoài GitHub. |

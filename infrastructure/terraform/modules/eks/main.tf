@@ -56,7 +56,7 @@ resource "aws_eks_cluster" "this" {
     endpoint_private_access = true
     # AWS-0040/AWS-0041 (dev): a static scanner can't see the tfvars value applied at `plan`
     # time, so it always assumes the worst case for a CIDR-typed variable. `public_access_cidrs`
-    # defaults to 0.0.0.0/0 ONLY in dev on purpose (CLAUDE.md §4: dev is a $0, nightly-destroyed
+    # defaults to 0.0.0.0/0 ONLY in dev on purpose (PROJECT.md §4: dev is a $0, nightly-destroyed
     # learning cluster with no fixed office/home IP to pin to yet) — staging and prod require an
     # explicit value with no permissive default (see their own variables.tf), so this is a
     # documented, reviewed trade-off for dev specifically, not an oversight.
@@ -153,7 +153,7 @@ resource "aws_iam_instance_profile" "node" {
 # hop through the CNI). The controller SDK falls back to instance metadata to auto-discover the
 # VPC ID when none is passed explicitly, so any Pod doing that (not just this controller — the
 # same trap catches anything relying on IMDS auto-discovery) times out. Bumping the hop limit to 2
-# is the standard fix (see AWS EKS best practices guide, already linked in CLAUDE.md §12) —
+# is the standard fix (see AWS EKS best practices guide, already linked in PROJECT.md §12) —
 # requires a custom launch template since `aws_eks_node_group` has no native argument for it.
 #
 # `iam_instance_profile` is deliberately NOT set here (unlike a self-managed launch template you

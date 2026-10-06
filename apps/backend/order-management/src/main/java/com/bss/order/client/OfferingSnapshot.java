@@ -12,7 +12,7 @@ import java.util.UUID;
  * response has more fields (description, categoryId, bundle, ...) and will grow more over
  * time. Without this annotation, Jackson's default "fail on unknown property" would break
  * order-management every time product-catalog adds a field — exactly the kind of tight
- * coupling CLAUDE.md's "backward-compatible only" contract rule warns about.
+ * coupling PROJECT.md's "backward-compatible only" contract rule warns about.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record OfferingSnapshot(

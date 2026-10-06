@@ -10,7 +10,7 @@
 
 Giai đoạn 9 việc 7 đưa Keycloak lên EKS ở dạng "chạy được", còn 2 nợ ghi rõ trong manifest:
 
-1. **Ngoại lệ `readOnlyRootFilesystem: false`** — duy nhất trong repo (CLAUDE.md §7). Nguyên nhân: image gốc
+1. **Ngoại lệ `readOnlyRootFilesystem: false`** — duy nhất trong repo (PROJECT.md §7). Nguyên nhân: image gốc
    `quay.io/keycloak/keycloak` chạy `kc.sh start` (không `--optimized`) thực hiện bước "augmentation" của
    Quarkus **mỗi lần khởi động**, ghi vào `/opt/keycloak/lib/quarkus`. Hệ quả phụ: khởi động chậm
    (startupProbe phải chờ tới 5 phút).
@@ -114,7 +114,7 @@ ro còn lại được giảm vì Keycloak trên AWS không mở ra ALB (ADR-008
 | Bước "chạy thử 2 replica" của `ci-keycloak.yml` chạy tại máy | PASS |
 
 **Chưa chạy trên EKS** (cần `terraform apply` shared để có repo `bss/keycloak` + dựng dev/prod — hỏi
-trước khi tốn tiền, CLAUDE.md §9). Checklist khi chạy: `docs/runbooks/auth.md` → "Kiểm Keycloak HA trên EKS".
+trước khi tốn tiền, PROJECT.md §9). Checklist khi chạy: `docs/runbooks/auth.md` → "Kiểm Keycloak HA trên EKS".
 
 ## Hệ quả
 

@@ -117,7 +117,7 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- jwt() của MockMvc: giả lập token đã kiểm xong, KHÔNG mock framework (CLAUDE.md §9) —
+        <!-- jwt() của MockMvc: giả lập token đã kiểm xong, KHÔNG mock framework (PROJECT.md §9) —
              bộ lọc Spring Security thật vẫn chạy và áp luật phân quyền thật. -->
         <dependency>
             <groupId>org.springframework.security</groupId>

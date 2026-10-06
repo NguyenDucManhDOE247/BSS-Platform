@@ -1,7 +1,7 @@
 # Giai đoạn 7 / việc 7: AWS WAF in front of the ALB.
 #
 # REGIONAL scope (not CLOUDFRONT) because this attaches to an ALB, not a CloudFront distribution —
-# LỚP 2 in CLAUDE.md is "CloudFront → ALB → AWS WAF" as a diagram, but there's no CloudFront
+# LỚP 2 in PROJECT.md is "CloudFront → ALB → AWS WAF" as a diagram, but there's no CloudFront
 # distribution anywhere in this repo yet (deferred with the rest of the domain/HTTPS work — see
 # memory bss-platform-phase0-decisions item 4), so today WAF sits directly on the ALB.
 #
@@ -23,7 +23,7 @@ resource "aws_wafv2_web_acl" "this" {
   }
 
   # Priority 1-2: AWS-managed rule groups. Free to use (no extra $ beyond the WebACL/rule
-  # baseline), maintained by AWS, cover the OWASP-style basics CLAUDE.md §10 asks for without this
+  # baseline), maintained by AWS, cover the OWASP-style basics PROJECT.md §10 asks for without this
   # project having to hand-write and maintain its own signature set.
   rule {
     name     = "aws-common-rule-set"

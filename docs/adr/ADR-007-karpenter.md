@@ -6,10 +6,10 @@
 
 ## Bối cảnh
 
-CLAUDE.md §2 chọn "EKS Managed Node Groups + Karpenter cho workload" ngay từ đầu, với lý do
+PROJECT.md §2 chọn "EKS Managed Node Groups + Karpenter cho workload" ngay từ đầu, với lý do
 "Karpenter tự provision spot rẻ hơn ~70%". Giai đoạn 8, việc 3 yêu cầu: bật Karpenter thật (ưu tiên
 Spot) **hoặc** ghi ADR giải thích vì sao không dùng. Trước khi quyết định, cần đối chiếu lại lý do
-ban đầu với thực tế đã thay đổi rất nhiều kể từ khi CLAUDE.md được viết (2026-05-22):
+ban đầu với thực tế đã thay đổi rất nhiều kể từ khi PROJECT.md được viết (2026-05-22):
 
 1. **ADR-006** (Giai đoạn 6) đã chốt staging/prod là **ephemeral** — dựng theo buổi, destroy ngay
    sau, không chạy 24/7. Lợi ích lớn nhất của Karpenter (tự co giãn node theo giờ, tránh trả tiền
@@ -43,7 +43,7 @@ có giá trị tham khảo), nhưng **không cài đặt** (không có trong `sc
 Lý do chính: giá trị tiết kiệm chi phí của Karpenter đã bị **ADR-006 (ephemeral cluster) chiếm mất
 phần lớn** — cluster không chạy đủ lâu để chênh lệch giá Spot/On-Demand tích lũy thành số tiền đáng
 kể, trong khi độ phức tạp thêm vào (2 CRD, interruption handling, thay thế node group đang hoạt
-động ổn định) có rủi ro cao hơn giá trị học được ở đúng giai đoạn này (CLAUDE.md §2 "không
+động ổn định) có rủi ro cao hơn giá trị học được ở đúng giai đoạn này (PROJECT.md §2 "không
 over-engineer").
 
 **Khi nào nên quay lại quyết định này:** nếu dự án chuyển sang chạy dev **24/7 không destroy**
@@ -57,8 +57,8 @@ cần bin-packing thông minh hơn desired_size cố định) — lúc đó chi 
   threshold đo được không bị nhiễu bởi Spot interruption ngẫu nhiên.
 - ✅ Giữ đúng nguyên tắc "sửa/thêm theo nhu cầu của bước đang làm" (`learning/20` mục 0.2) — Karpenter
   không phải nhu cầu của Giai đoạn 8.
-- ⚠️ CLAUDE.md §2 dòng "Karpenter tự provision spot rẻ hơn ~70%" nay là **thông tin lịch sử của
-  quyết định ban đầu**, không phải trạng thái hiện tại — CLAUDE.md §13 (cập nhật cùng đợt với ADR
+- ⚠️ PROJECT.md §2 dòng "Karpenter tự provision spot rẻ hơn ~70%" nay là **thông tin lịch sử của
+  quyết định ban đầu**, không phải trạng thái hiện tại — PROJECT.md §13 (cập nhật cùng đợt với ADR
   này) trỏ sang ADR-007 để tránh đọc nhầm là "đã làm".
 - ⚠️ `platform/networking/karpenter-nodepool.yaml` (còn lại từ scaffold ban đầu) trở thành tài liệu
   tham khảo "đã cân nhắc nhưng chưa dùng", không phải cấu hình đang chạy — không xóa để giữ giá trị

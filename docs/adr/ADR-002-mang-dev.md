@@ -6,7 +6,7 @@
 
 ## Bối cảnh
 
-Thiết kế ban đầu của `environments/dev` (CLAUDE.md §4, `modules/vpc`) đặt node EKS trong private
+Thiết kế ban đầu của `environments/dev` (PROJECT.md §4, `modules/vpc`) đặt node EKS trong private
 subnet, **không có NAT Gateway**, thay bằng 5 VPC Interface Endpoint (`ecr.api`, `ecr.dkr`,
 `secretsmanager`, `logs`, `sts`) + 1 S3 Gateway Endpoint — với lý do "VPC Endpoint rẻ hơn NAT
 Gateway". Đây là **B-32**, một trong 13 lỗi P0 phát hiện ở `learning/01`.
@@ -50,7 +50,7 @@ giờ đặt node worker ra Internet trực tiếp. NAT Gateway giữ đúng ran
 workload" mà staging/prod đã áp dụng, nên dev không còn là ngoại lệ kiến trúc.
 
 **Vì sao không chọn B:** giá trị học thêm được (tự mirror image, quản lý interface endpoint đầy
-đủ) không tương xứng với công sức bỏ ra ở giai đoạn hiện tại — CLAUDE.md §2 đã nêu nguyên tắc
+đủ) không tương xứng với công sức bỏ ra ở giai đoạn hiện tại — PROJECT.md §2 đã nêu nguyên tắc
 "không over-engineer". Có thể quay lại phương án B sau này như một bài tập riêng về private
 cluster nếu muốn (ghi trong `learning/`).
 

@@ -31,7 +31,7 @@ Tại thời điểm làm Giai đoạn 2, chưa có webhook Discord hay Slack n�
    - Truyền qua `helm upgrade --set-string 'alertmanager.config.receivers[0].discord_configs[0].webhook_url=...'`
      lúc cài, không đụng file nào cả.
 3. Mỗi alert trong `bss-alerts.yaml` có thêm annotation `runbook_url` trỏ tới
-   `docs/runbooks/bss-high-error-rate.md` — đúng yêu cầu CLAUDE.md §10 ("Mọi alert có
+   `docs/runbooks/bss-high-error-rate.md` — đúng yêu cầu PROJECT.md §10 ("Mọi alert có
    `runbook_url` annotation").
 4. **Checkpoint của Giai đoạn 2 không yêu cầu webhook thật hoạt động** — chỉ cần xác nhận alert
    chuyển `Firing` trong Alertmanager UI (xem `learning/20` checkpoint: "ép lỗi 500 → alert tới

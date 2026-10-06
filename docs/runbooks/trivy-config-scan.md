@@ -42,7 +42,7 @@ việc 8, ghi lại để tra cứu sau)
 34 finding LOW/MEDIUM (0 HIGH/CRITICAL) — toàn bộ đều là tính năng **tốn thêm tiền AWS** khi bật
 (KMS customer-managed key cho ECR/RDS/Secrets Manager, VPC Flow Logs, EKS control-plane logging
 đầy đủ 5 loại, RDS Performance Insights, tăng backup retention) — đúng tinh thần cost-conscious của
-CLAUDE.md §10 ("Budget alert $30/tháng cho dev"). Không bật hàng loạt mà không hỏi (CLAUDE.md §9).
+PROJECT.md §10 ("Budget alert $30/tháng cho dev"). Không bật hàng loạt mà không hỏi (PROJECT.md §9).
 Việc riêng nếu muốn bật cho `staging`/`prod` — nên làm theo từng module, cân nhắc chi phí cụ thể.
 
 ## Đã kiểm chứng

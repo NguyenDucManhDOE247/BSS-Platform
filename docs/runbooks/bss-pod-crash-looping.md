@@ -42,4 +42,4 @@ kubectl -n bss debug pod/<pod> -it --image=busybox:1.36 --target=app
 
 ## 5. Sau sự cố
 
-Test tái hiện (fail trước, pass sau) theo quy ước CLAUDE.md §9 và ghi vào nhật ký/postmortem.
+Test tái hiện (fail trước, pass sau) theo quy ước PROJECT.md §9 và ghi vào nhật ký/postmortem.

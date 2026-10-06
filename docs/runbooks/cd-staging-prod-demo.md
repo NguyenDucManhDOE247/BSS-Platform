@@ -4,7 +4,7 @@ Bối cảnh: [ADR-006](../adr/ADR-006-staging-prod-ephemeral.md) — staging/pr
 (đúng thiết kế gốc) nhưng **chỉ tồn tại trong một buổi làm việc**. Cách promote: [cd-promotion.md](cd-promotion.md).
 
 > ⚠️ Mọi `terraform apply` ở đây tốn tiền thật. Luôn `plan` trước, đọc, rồi mới `apply`. Ước tính
-> (chỉ để định hướng, số/ngày của CLAUDE.md §4 chia theo giờ — kiểm bằng Cost Explorer sau buổi đầu):
+> (chỉ để định hướng, số/ngày của PROJECT.md §4 chia theo giờ — kiểm bằng Cost Explorer sau buổi đầu):
 > staging ≈ $0.4/giờ, prod ≈ $1.3/giờ ⇒ một buổi 3 giờ cả hai ≈ $5. **Quên destroy ≈ $40/ngày.**
 
 ## 1. Điều kiện (làm một lần)
@@ -112,7 +112,7 @@ kubectl -n kube-system get pods -l k8s-app=aws-node -o jsonpath='{.items[0].spec
 
 ## 4. API endpoint của cluster ↔ runner của GitHub
 
-**Vấn đề.** CLAUDE.md §10 yêu cầu EKS public endpoint **giới hạn CIDR** ở prod. Nhưng runner của GitHub
+**Vấn đề.** PROJECT.md §10 yêu cầu EKS public endpoint **giới hạn CIDR** ở prod. Nhưng runner của GitHub
 (`ubuntu-latest`) không có IP cố định (hàng nghìn dải, đổi liên tục; EKS chỉ nhận tối đa 40 CIDR) — nên nếu
 `public_access_cidrs = ["<IP nhà bạn>"]` thì `kubectl` chạy trong Actions **timeout** ở bước
 `Preflight`/`Render + apply`.
