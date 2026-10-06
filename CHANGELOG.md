@@ -270,7 +270,7 @@ Debt pass from Phase 8 back to 0 (after `v2.0.0`), each item verified on real in
 
 Giai đoạn 9 — "sản phẩm hoàn chỉnh": danh tính thật + quyền sở hữu dữ liệu + 2 website có đăng nhập
 ([ADR-008](docs/adr/ADR-008-danh-tinh-va-quyen-so-huu.md)). Shipped `rc-v2.0.0` → staging →
-`v2.0.0` → prod (manual approval) on the same commit `b75b43f`, each environment smoke-tested for
+`v2.0.0` → prod (manual approval) on the same commit `43fa805`, each environment smoke-tested for
 real and destroyed afterwards (ADR-006).
 
 ### ⚠️ Breaking
