@@ -15,7 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   left behind by every `terraform destroy` (found 2026-10-06 with all environments destroyed: six groups dating from
   22–25 September, dev's at 734 MB). Both modules now create the group first, with the environment's single
   `log_retention_days` (3 / 14 / 30). `tools/ops/orphan_finder.py` reports `/aws/eks/bss-*` and
-  `/aws/rds/instance/bss-*` log groups whose cluster / DB instance no longer exists.
+  `/aws/rds/instance/bss-*` log groups whose cluster / DB instance no longer exists. Verified on dev the same day
+  (apply 114 resources → teardown): both groups created by Terraform before the cluster (28 s earlier), retention 3
+  days, receiving EKS and RDS log streams, plan clean; after the teardown no `bss` log group exists, and none had
+  been re-created 10 minutes later.
 
 ## [2.3.0] — 2026-10-06
 
