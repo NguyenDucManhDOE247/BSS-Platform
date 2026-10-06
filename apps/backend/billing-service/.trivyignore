@@ -2,3 +2,14 @@
 # pom.xml) → `trivy image --severity HIGH,CRITICAL` trên image của service này ra 0 — KHÔNG cần bỏ qua gì.
 # Đã xóa 49 mục CVE tạm thời có từ Giai đoạn 1. File vẫn giữ vì ci-backend.yml trỏ `trivyignores` tới đây.
 # Chỉ thêm mục mới kèm lý do thật + hướng xử lý (như bản cũ), không "bỏ qua cho xanh".
+
+# CVE-2026-47884 (CRITICAL, spring-webmvc <= 6.2.19) — thêm 2026-10-06, theo dõi ở issue #228.
+# Lỗ hổng: XsltView nạp stylesheet từ vị trí không kiểm tra → SSRF/RCE. Mô tả chính thức của CVE: chỉ khai thác được khi
+# ứng dụng DÙNG XsltView và có mapping "/**" render view mà không đặt tên view.
+# Service này chỉ có @RestController trả JSON: không XsltView, không view resolver, không mapping "/**"
+# (ci-backend.yml kiểm "không dùng XsltView" ngay trước bước Trivy — lý do này được máy kiểm, không phải được tin).
+# Chưa vá được: 6.2.19 là bản 6.2.x mới nhất trên Maven Central, Spring Boot 3.5.16 là bản 3.5.x mới nhất (kiểm
+# 2026-10-06); bản sửa mã nguồn mở chỉ có ở Spring Framework 7.0.9 (= Spring Boot 4).
+# Gỡ mục này khi có spring-webmvc 6.2.20+ trên Maven Central hoặc khi dự án lên Spring Boot 4.
+# `exp:` buộc xem lại: qua ngày đó Trivy báo đỏ trở lại.
+CVE-2026-47884 exp:2027-01-06

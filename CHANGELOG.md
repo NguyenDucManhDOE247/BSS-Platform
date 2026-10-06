@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **CVE-2026-47884** (CRITICAL, `spring-webmvc` ≤ 6.2.19 — SSRF/RCE through `XsltView`) accepted with an expiry
+  (`exp:2027-01-06`) in the `.trivyignore` of the four servlet services (#228). The CVE is only exploitable when an
+  application uses `XsltView` with a `/**` mapping that renders a view; these services are JSON-only
+  `@RestController`s, and `ci-backend.yml` now fails if `XsltView` ever appears in a service. No open-source fix
+  exists on the 6.2 line yet (6.2.19 and Spring Boot 3.5.16 are the latest on Maven Central, checked 2026-10-06);
+  the fix ships in Spring Framework 7.0.9. `api-gateway` (WebFlux) is not affected.
+
 ### Fixed
 
 - **Control-plane and PostgreSQL log groups are owned by Terraform.** `modules/eks` enabled control-plane logging and
