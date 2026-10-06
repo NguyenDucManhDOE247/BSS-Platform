@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.6
 # B-01 fix — see product-catalog/Dockerfile for the full explanation (Maven wasn't on the
 # base image; `|| true` was hiding that instead of failing the build where it actually broke).
-FROM maven:3.9.16-eclipse-temurin-21 AS build
+FROM maven:3.9-eclipse-temurin-26 AS build
 WORKDIR /workspace
 # B-15: com.bss:bss-common-java đến từ GitHub Packages (cần auth) — token vào qua BuildKit secret,
 # không nằm trong layer nào. Giải thích đầy đủ: customer-service/Dockerfile.
