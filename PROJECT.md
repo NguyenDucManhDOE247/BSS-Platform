@@ -81,7 +81,7 @@ Mục đích kép: **portfolio học tập platform-engineering** + **tham chi�
 | Edge | **ALB + WAF**, không CloudFront | ALB Controller tạo ALB từ chính Ingress; WAF gắn bằng `wire-waf.sh`. CloudFront chưa có nhu cầu (không có nội dung tĩnh toàn cầu) |
 | HTTPS + DNS | **Route 53 + ACM + ExternalDNS** | Zone + cert ở state `shared` (sống lâu hơn môi trường); ExternalDNS chỉ ghi được tên của môi trường mình (ADR-012) |
 | Orchestration | **EKS Managed Node Groups + Karpenter (dev)** | Production-realistic; Karpenter tự thêm node Spot khi thiếu chỗ (đo thật: Spot −53%, node Ready ~36s — ADR-010). Staging/prod giữ node group cố định (ADR-006) |
-| Backend | **Java 21 + Spring Boot 3.5** | Telco VN dùng Java; Spring Cloud Gateway / Boot 3 ecosystem chuẩn (3.5.16 + ghi đè patch Tomcat/Jackson/pgjdbc/Netty → 0 CVE HIGH/CRITICAL) |
+| Backend | **Java 21 + Spring Boot 3.5** | Telco VN dùng Java; Spring Cloud Gateway / Boot 3 ecosystem chuẩn (3.5.16 + ghi đè patch Tomcat/Jackson/pgjdbc/Netty → 0 CVE HIGH/CRITICAL lúc nâng; từ 2026-10-06 có 1 ngoại lệ có thời hạn — CVE-2026-47884, #228) |
 | Frontend | **Vite + React + TypeScript** | Vite build nhanh, React phổ biến, dễ tuyển; SSR có thể thêm sau |
 | DB | **RDS PostgreSQL 16** | Managed, có HA, PITR (đã khôi phục thật — lab 09); 1 instance, database-per-service |
 | Cache | **Redis — chưa dùng** | Load test chưa cho thấy catalog là nút thắt; thêm ElastiCache khi có số đo cần |
@@ -583,5 +583,7 @@ python tools/ops/orphan_finder.py            # phải rỗng
 - **Chưa sửa, lộ ra ở lab mất AZ lần 3** (Lab 10 §4): CoreDNS có Pod ở AZ chết làm ≈ 50 s đầu chậm với mọi Pod (suy luận — cần
   đầu dò DNS riêng trước khi sửa); prod không còn CPU dự phòng khi mất 1 node (trần 8 vCPU); Pod không tự trải lại sau khi AZ
   quay lại; máy đo có sàn nhiễu ≈ 1 % (nên thêm đích đối chứng vào `chaos-az-outage.sh`).
-- **0 issue mở** (2026-10-06).
+- **1 issue mở** (2026-10-06): #228 — CVE-2026-47884 (CRITICAL, `spring-webmvc` ≤ 6.2.19, SSRF/RCE qua `XsltView`). Bốn service servlet
+  không dùng `XsltView` (CI kiểm điều đó) nên không khai thác được; dòng 6.2 chưa có bản vá mã nguồn mở ⇒ ngoại lệ trong
+  `.trivyignore` có hạn `2027-01-06`. Gỡ khi có `spring-webmvc` 6.2.20+ trên Maven Central hoặc khi lên Spring Boot 4.
   Ngoài repo: buổi review với thầy (ô cuối của Definition of Done — việc của chủ repo).

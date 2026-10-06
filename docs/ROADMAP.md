@@ -55,7 +55,9 @@ Reviewed item by item on **2026-09-30** — every ✅ was re-run or re-checked t
 - [x] Chaos (pod delete, node drain) on a real cluster ([labs/08](labs/08-chaos-engineering.md)); plus 2026-09-30: deleting a
   Keycloak pod under a 2-replica cluster kept sessions and the authenticated smoke test green.
 
-**Open issues:** none. **B-23 (HTTPS)** — downgraded P1 → P2 on 2026-09-30 while waiting for a domain — and the web
+**Open issues:** one, opened 2026-10-06 — #228: CVE-2026-47884 in `spring-webmvc` (`XsltView`), not exploitable in these
+JSON-only services and accepted in `.trivyignore` with an expiry until a 6.2.x fix exists (see [CHANGELOG](../CHANGELOG.md)).
+**B-23 (HTTPS)** — downgraded P1 → P2 on 2026-09-30 while waiting for a domain — and the web
 part of **B-18** were closed on 2026-10-01: `bssplatform.dpdns.org` with an ACM certificate, Keycloak behind the ALB
 (only `/auth/realms` + `/auth/resources`), and a real browser sign-up/sign-in on dev EKS ([ADR-012](adr/ADR-012-https-ten-mien.md)).
 
