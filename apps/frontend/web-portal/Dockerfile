@@ -20,7 +20,7 @@ RUN npm run build
 # `nginxinc/nginx-unprivileged` is the same nginx image reconfigured specifically for this:
 # pid file moved to /tmp, cache/log directories already owned by the non-root user, and it
 # listens on 8080 by default — no manual `adduser`/`chown`/`USER` dance needed at all.
-FROM nginxinc/nginx-unprivileged:1.30-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 
 # Giai đoạn 6: a NEW HIGH CVE (libexpat 2.8.4-r0, fixed in 2.8.5-r0) appeared in the Alpine base image on
 # 2026-09-25 and Trivy (ci-frontend.yml) blocks every PR that touches this app. The upstream base tag
