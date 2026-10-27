@@ -8,7 +8,7 @@ RUN npm ci --no-audit --no-fund
 COPY . .
 RUN npm run build
 
-FROM nginxinc/nginx-unprivileged:1.30-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 
 # Giai đoạn 6: a NEW HIGH CVE (libexpat 2.8.4-r0, fixed in 2.8.5-r0) appeared in the Alpine base image on
 # 2026-09-25 and Trivy (ci-frontend.yml) blocks every PR that touches this app — same fix as web-portal.
